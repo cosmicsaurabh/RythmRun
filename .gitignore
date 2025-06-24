@@ -1,0 +1,59 @@
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backend specific (Spring Boot)
+RythmRun_backend/target/
+RythmRun_backend/.env
+RythmRun_backend/HELP.md
+RythmRun_backend/*.iml
+RythmRun_backend/.apt_generated
+RythmRun_backend/.classpath
+RythmRun_backend/.factorypath
+RythmRun_backend/.project
+RythmRun_backend/.settings
+RythmRun_backend/.springBeans
+RythmRun_backend/.sts4-cache
+
+# Frontend specific (Flutter)
+RythmRun_frontend/.dart_tool/
+RythmRun_frontend/.flutter-plugins
+RythmRun_frontend/.flutter-plugins-dependencies
+RythmRun_frontend/.packages
+RythmRun_frontend/.pub-cache/
+RythmRun_frontend/.pub/
+RythmRun_frontend/build/
+RythmRun_frontend/ios/Pods/
+RythmRun_frontend/ios/.symlinks/
+RythmRun_frontend/ios/Flutter/Flutter.framework
+RythmRun_frontend/ios/Flutter/Flutter.podspec
+RythmRun_frontend/ios/Runner.xcworkspace/
+RythmRun_frontend/android/.gradle/
+RythmRun_frontend/android/captures/
+RythmRun_frontend/android/gradlew
+RythmRun_frontend/android/gradlew.bat
+RythmRun_frontend/android/local.properties
+RythmRun_frontend/android/app/*.jks
+RythmRun_frontend/android/key.properties
+RythmRun_frontend/android/app/.cxx/
+RythmRun_frontend/android/.cxx/
+RythmRun_frontend/.metadata
+RythmRun_frontend/pubspec.lock
+
+# Log files
+*.log
+
+# Reference or legacy code (not tracked)
+legacy/
