@@ -9,9 +9,9 @@ Rebuild the existing Spring Boot RythmRun backend API using Node.js to create a 
 ### Core Technologies
 
 - **Runtime**: Node.js (v18+)
-- **Framework**: Express.js or Fastify
+- **Framework**: Express.js 
 - **Database**: PostgreSQL
-- **ORM**: Prisma or TypeORM
+- **ORM**: Prisma 
 - **Authentication**: JWT (jsonwebtoken)
 - **Password Security**: bcrypt
 - **Validation**: Joi or Zod
