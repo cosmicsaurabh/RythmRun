@@ -13,3 +13,112 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model User {
+  id                Int       @id @default(autoincrement())
+  firstname         String?   @db.VarChar(255)
+  lastname          String?   @db.VarChar(255)
+  username          String    @unique @db.VarChar(255)
+  password          String    @db.VarChar(255)
+  profilePicture    Bytes?
+  profilePictureType String?  @db.VarChar(100)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
+
+  // Relationships
+  activities        Activity[]
+  comments         Comment[]
+  likes           Like[]
+  friendsAsUser1  Friend[]    @relation("UserFriends")
+  friendsAsUser2  Friend[]    @relation("UserFriends2")
+  refreshToken    RefreshToken?  // One-to-one relationship
+}
+
+model Activity {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  type        String   @db.VarChar(50)  // RUN, WALK, CYCLE etc.
+  startTime   DateTime
+  endTime     DateTime
+  distance    Float    // in meters
+  duration    Int      // in seconds
+  avgSpeed    Float    // in m/s
+  maxSpeed    Float    // in m/s
+  calories    Int?
+  description String?  @db.Text
+  isPublic    Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  // Relationships
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locations   Location[]
+  comments    Comment[]
+  likes       Like[]
+}
+
+model Location {
+  id          Int      @id @default(autoincrement())
+  activityId  Int
+  latitude    Float
+  longitude   Float
+  altitude    Float?
+  timestamp   DateTime
+  accuracy    Float?
+  speed       Float?
+
+  // Relationship
+  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id          Int      @id @default(autoincrement())
+  activityId  Int
+  userId      Int
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  // Relationships
+  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Like {
+  id          Int      @id @default(autoincrement())
+  activityId  Int
+  userId      Int
+  createdAt   DateTime @default(now())
+
+  // Relationships
+  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, userId])
+}
+
+model Friend {
+  id          Int      @id @default(autoincrement())
+  user1Id     Int
+  user2Id     Int
+  status      String   @db.VarChar(20) // PENDING, ACCEPTED, REJECTED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  // Relationships
+  user1       User     @relation("UserFriends", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2       User     @relation("UserFriends2", fields: [user2Id], references: [id], onDelete: Cascade)
+
+  @@unique([user1Id, user2Id])
+}
+
+model RefreshToken {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique  // One user can have only one refresh token
+  token       String   @unique @db.VarChar(512)
+  expiryDate  DateTime
+  createdAt   DateTime @default(now())
+
+  // Relationship
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
