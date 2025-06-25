@@ -23,4 +23,16 @@ export class RegisterUserDto {
     @IsOptional()
     @MaxLength(50)
     lastname?: string;
+}
+
+export class LoginUserDto {
+    @IsString()
+    @MinLength(3)
+    @MaxLength(30)
+    username!: string;
+
+    @IsString()
+    @MinLength(8)
+    @MaxLength(50)
+    password!: string;
 } 

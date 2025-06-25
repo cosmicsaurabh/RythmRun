@@ -17,6 +17,7 @@ app.use(helmet());
 // Routes
 const userController = new UserController();
 app.post('/api/users/register', userController.register);
+app.post('/api/users/login', userController.login);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
