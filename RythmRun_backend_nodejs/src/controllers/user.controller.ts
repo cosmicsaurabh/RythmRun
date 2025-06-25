@@ -30,11 +30,11 @@ export class UserController {
             }
 
             // Register user
-            const user = await this.userService.register(registerDto);
+            const result = await this.userService.register(registerDto);
 
             return res.status(201).json({
                 status: 'success',
-                data: user
+                data: result
             });
 
         } catch (error: any) {
@@ -72,11 +72,11 @@ export class UserController {
             }
 
             // Login user
-            const user = await this.userService.login(loginDto);
+            const result = await this.userService.login(loginDto);
 
             return res.status(200).json({
                 status: 'success',
-                data: user
+                data: result
             });
 
         } catch (error: any) {
@@ -93,5 +93,14 @@ export class UserController {
                 message: 'Internal server error'
             });
         }
+    };
+
+    logout = async (req: Request, res: Response) => {
+        // Since we're using JWT, we don't need to do anything server-side
+        // The client should remove the token from their storage
+        return res.status(200).json({
+            status: 'success',
+            message: 'Successfully logged out'
+        });
     };
 } 

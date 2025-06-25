@@ -1,13 +1,21 @@
 import { PrismaClient } from '../../generated/prisma';
 import { RegisterUserDto, LoginUserDto } from '../models/dto/user.dto';
-
 import * as bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 export class UserService {
     private prisma: PrismaClient;
 
     constructor() {
         this.prisma = new PrismaClient();
+    }
+
+    private generateToken(user: { id: number; username: string }) {
+        return jwt.sign(
+            { id: user.id, username: user.username },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '24h' }
+        );
     }
 
     async register(registerDto: RegisterUserDto) {
@@ -33,9 +41,12 @@ export class UserService {
             }
         });
 
+        // Generate token
+        const token = this.generateToken(user);
+
         // Remove password from response
         const { password, ...userWithoutPassword } = user;
-        return userWithoutPassword;
+        return { user: userWithoutPassword, token };
     }
 
     async login(loginDto: LoginUserDto) {
@@ -54,8 +65,11 @@ export class UserService {
             throw new Error('Invalid username or password');
         }
 
+        // Generate token
+        const token = this.generateToken(user);
+
         // Remove password from response
         const { password, ...userWithoutPassword } = user;
-        return userWithoutPassword;
+        return { user: userWithoutPassword, token };
     }
 } 
