@@ -1,9 +1,10 @@
-import express = require('express');
-import cors  = require('cors');
+import type { Request, Response } from 'express';
+const express = require('express');
+const cors = require('cors');
 const helmet = require('helmet');
-import dotenv = require('dotenv');
+const dotenv = require('dotenv');
+const { UserController } = require('./controllers/user.controller');
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
@@ -13,13 +14,16 @@ app.use(express.json());
 app.use(cors());
 app.use(helmet());
 
-// Health check route
-app.get('/health', (req, res) => {
+// Routes
+const userController = new UserController();
+app.post('/api/users/register', userController.register);
+
+// Health check
+app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Start server
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-}); 
+});
