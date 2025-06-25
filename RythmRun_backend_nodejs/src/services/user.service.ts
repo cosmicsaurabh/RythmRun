@@ -1,5 +1,6 @@
 import { PrismaClient } from '../../generated/prisma';
-import { RegisterUserDto } from '../models/dto/user.dto';
+import { RegisterUserDto, LoginUserDto } from '../models/dto/user.dto';
+
 import * as bcrypt from 'bcrypt';
 
 export class UserService {
@@ -9,10 +10,10 @@ export class UserService {
         this.prisma = new PrismaClient();
     }
 
-    async register(userData: RegisterUserDto) {
+    async register(registerDto: RegisterUserDto) {
         // Check if username already exists
         const existingUser = await this.prisma.user.findUnique({
-            where: { username: userData.username }
+            where: { username: registerDto.username }
         });
 
         if (existingUser) {
@@ -20,25 +21,41 @@ export class UserService {
         }
 
         // Hash password
-        const hashedPassword = await bcrypt.hash(userData.password, 10);
+        const hashedPassword = await bcrypt.hash(registerDto.password, 10);
 
         // Create user
         const user = await this.prisma.user.create({
             data: {
-                username: userData.username,
+                username: registerDto.username,
                 password: hashedPassword,
-                firstname: userData.firstname,
-                lastname: userData.lastname
-            },
-            select: {
-                id: true,
-                username: true,
-                firstname: true,
-                lastname: true,
-                createdAt: true
+                firstname: registerDto.firstname,
+                lastname: registerDto.lastname
             }
         });
 
-        return user;
+        // Remove password from response
+        const { password, ...userWithoutPassword } = user;
+        return userWithoutPassword;
+    }
+
+    async login(loginDto: LoginUserDto) {
+        // Find user by username
+        const user = await this.prisma.user.findUnique({
+            where: { username: loginDto.username }
+        });
+
+        if (!user) {
+            throw new Error('Invalid username or password');
+        }
+
+        // Verify password
+        const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+        if (!isPasswordValid) {
+            throw new Error('Invalid username or password');
+        }
+
+        // Remove password from response
+        const { password, ...userWithoutPassword } = user;
+        return userWithoutPassword;
     }
 } 

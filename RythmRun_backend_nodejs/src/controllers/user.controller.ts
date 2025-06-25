@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { UserService } from '../services/user.service';
-import { RegisterUserDto } from '../models/dto/user.dto';
+import { RegisterUserDto, LoginUserDto } from '../models/dto/user.dto';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
 
@@ -46,6 +46,48 @@ export class UserController {
             }
 
             console.error('Registration error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    login = async (req: Request, res: Response) => {
+        try {
+            // Transform request body to DTO
+            const loginDto = plainToClass(LoginUserDto, req.body);
+
+            // Validate DTO
+            const errors = await validate(loginDto);
+            if (errors.length > 0) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid input',
+                    errors: errors.map(error => ({
+                        property: error.property,
+                        constraints: error.constraints
+                    }))
+                });
+            }
+
+            // Login user
+            const user = await this.userService.login(loginDto);
+
+            return res.status(200).json({
+                status: 'success',
+                data: user
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'Invalid username or password') {
+                return res.status(401).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Login error:', error);
             return res.status(500).json({
                 status: 'error',
                 message: 'Internal server error'
