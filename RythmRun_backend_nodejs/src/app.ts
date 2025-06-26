@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const dotenv = require('dotenv');
 const { UserController } = require('./controllers/user.controller');
+const { ActivityController } = require('./controllers/activity.controller');
 const { authMiddleware, refreshTokenMiddleware } = require('./middleware/auth.middleware');
 
 dotenv.config();
@@ -15,8 +16,9 @@ app.use(express.json());
 app.use(cors());
 app.use(helmet());
 
-// Routes
+// Controllers
 const userController = new UserController();
+const activityController = new ActivityController();
 
 // Public routes
 app.post('/api/users/register', userController.register);
@@ -27,6 +29,9 @@ app.post('/api/users/refresh-token', refreshTokenMiddleware, userController.refr
 app.post('/api/users/logout', authMiddleware, userController.logout);
 app.post('/api/users/change-password', authMiddleware, userController.changePassword);
 app.patch('/api/users/profile', authMiddleware, userController.updateProfile);
+
+// Activity routes
+app.get('/api/activities', authMiddleware, activityController.getActivities);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
