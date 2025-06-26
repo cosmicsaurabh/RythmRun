@@ -26,6 +26,7 @@ app.post('/api/users/refresh-token', refreshTokenMiddleware, userController.refr
 // Protected routes (require authentication)
 app.post('/api/users/logout', authMiddleware, userController.logout);
 app.post('/api/users/change-password', authMiddleware, userController.changePassword);
+app.patch('/api/users/profile', authMiddleware, userController.updateProfile);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

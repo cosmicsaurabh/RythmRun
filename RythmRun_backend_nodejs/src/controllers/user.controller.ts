@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { UserService } from '../services/user.service';
-import { RegisterUserDto, LoginUserDto, ChangePasswordDto } from '../models/dto/user.dto';
+import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
 
@@ -173,6 +173,43 @@ export class UserController {
             }
 
             console.error('Password change error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    updateProfile = async (req: Request, res: Response) => {
+        try {
+            // Transform request body to DTO
+            const updateProfileDto = plainToClass(UpdateProfileDto, req.body);
+
+            // Validate DTO
+            const errors = await validate(updateProfileDto);
+            if (errors.length > 0) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid input',
+                    errors: errors.map(error => ({
+                        property: error.property,
+                        constraints: error.constraints
+                    }))
+                });
+            }
+
+            // Change password
+            const result = await this.userService.updateProfile(req.user!.id, updateProfileDto);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            
+
+            console.error('Update profile error:', error);
             return res.status(500).json({
                 status: 'error',
                 message: 'Internal server error'
