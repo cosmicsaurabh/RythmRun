@@ -1,11 +1,11 @@
 import type { Request, Response } from 'express';
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const dotenv = require('dotenv');
-const { UserController } = require('./controllers/user.controller');
-const { ActivityController } = require('./controllers/activity.controller');
-const { authMiddleware, refreshTokenMiddleware } = require('./middleware/auth.middleware');
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import dotenv from 'dotenv';
+import { UserController } from './controllers/user.controller';
+import { ActivityController } from './controllers/activity.controller';
+import { authMiddleware, refreshTokenMiddleware } from './middleware/auth.middleware';
 
 dotenv.config();
 
@@ -31,7 +31,10 @@ app.post('/api/users/change-password', authMiddleware, userController.changePass
 app.patch('/api/users/profile', authMiddleware, userController.updateProfile);
 
 // Activity routes
-app.get('/api/activities', authMiddleware, activityController.getActivities);
+app.get('/api/get-activities', authMiddleware, activityController.getActivities);
+app.post('/api/add-new-activity', authMiddleware, activityController.createActivity);
+app.patch('/api/update-activity/:id', authMiddleware, activityController.updateActivity);
+app.delete('/api/delete-activity/:id', authMiddleware, activityController.deleteActivity);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
