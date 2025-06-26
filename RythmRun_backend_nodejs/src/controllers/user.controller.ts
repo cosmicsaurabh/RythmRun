@@ -96,11 +96,45 @@ export class UserController {
     };
 
     logout = async (req: Request, res: Response) => {
-        // Since we're using JWT, we don't need to do anything server-side
-        // The client should remove the token from their storage
-        return res.status(200).json({
-            status: 'success',
-            message: 'Successfully logged out'
-        });
+        try {
+            await this.userService.logout(req.user!.id);
+            return res.status(200).json({
+                status: 'success',
+                message: 'Successfully logged out'
+            });
+        } catch (error) {
+            console.error('Logout error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    refreshToken = async (req: Request, res: Response) => {
+        try {
+            const result = await this.userService.refreshToken(
+                req.user!.id,
+                req.body.refreshToken
+            );
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+        } catch (error: any) {
+            if (error?.message === 'Invalid refresh token') {
+                return res.status(401).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Token refresh error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
     };
 } 

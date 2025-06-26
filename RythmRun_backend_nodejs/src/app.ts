@@ -4,7 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const dotenv = require('dotenv');
 const { UserController } = require('./controllers/user.controller');
-const { authMiddleware } = require('./middleware/auth.middleware');
+const { authMiddleware, refreshTokenMiddleware } = require('./middleware/auth.middleware');
 
 dotenv.config();
 
@@ -21,6 +21,7 @@ const userController = new UserController();
 // Public routes
 app.post('/api/users/register', userController.register);
 app.post('/api/users/login', userController.login);
+app.post('/api/users/refresh-token', refreshTokenMiddleware, userController.refreshToken);
 
 // Protected routes (require authentication)
 app.post('/api/users/logout', authMiddleware, userController.logout);
