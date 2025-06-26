@@ -1,5 +1,5 @@
 import { PrismaClient } from '../../generated/prisma';
-import { RegisterUserDto, LoginUserDto, ChangePasswordDto } from '../models/dto/user.dto';
+import { RegisterUserDto, LoginUserDto, ChangePasswordDto ,UpdateProfileDto} from '../models/dto/user.dto';
 import * as bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -190,5 +190,29 @@ export class UserService {
         });
 
         return { message: 'Password changed successfully' };
+    }
+
+    async updateProfile(userId: number, dto: UpdateProfileDto) {
+        // Find user
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        // Update user profile
+        const updatedUser = await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+                firstname: dto.firstname !== undefined ? dto.firstname : user.firstname,
+                lastname: dto.lastname !== undefined ? dto.lastname : user.lastname
+            }
+        });
+
+        // Remove password from response
+        const { password, ...userWithoutPassword } = updatedUser;
+        return { user: userWithoutPassword };
     }
 } 

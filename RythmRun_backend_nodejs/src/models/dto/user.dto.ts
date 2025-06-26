@@ -48,3 +48,15 @@ export class ChangePasswordDto {
     @MaxLength(50)
     newPassword!: string;
 } 
+
+export class UpdateProfileDto {
+    @IsString()
+    @IsOptional()
+    @MaxLength(50)
+    firstname?: string;
+
+    @IsString()
+    @IsOptional()
+    @MaxLength(50)
+    lastname?: string;
+}
