@@ -1,5 +1,5 @@
 import { PrismaClient } from '../../generated/prisma';
-import { RegisterUserDto, LoginUserDto } from '../models/dto/user.dto';
+import { RegisterUserDto, LoginUserDto, ChangePasswordDto } from '../models/dto/user.dto';
 import * as bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -150,5 +150,45 @@ export class UserService {
         }).catch(() => {
             // Ignore error if token doesn't exist
         });
+    }
+
+    async changePassword(userId: number, dto: ChangePasswordDto) {
+        // Find user
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        // Verify current password
+        const isPasswordValid = await bcrypt.compare(dto.currentPassword, user.password);
+        if (!isPasswordValid) {
+            throw new Error('Current password is incorrect');
+        }
+
+        // Check if new password is different from current
+        if (dto.currentPassword === dto.newPassword) {
+            throw new Error('New password must be different from current password');
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(dto.newPassword, this.SALT_ROUNDS);
+
+        // Update password
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword }
+        });
+
+        // Delete refresh tokens for security
+        await this.prisma.refreshToken.delete({
+            where: { userId }
+        }).catch(() => {
+            // Ignore error if token doesn't exist
+        });
+
+        return { message: 'Password changed successfully' };
     }
 } 
