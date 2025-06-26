@@ -32,6 +32,7 @@ app.patch('/api/users/profile', authMiddleware, userController.updateProfile);
 
 // Activity routes
 app.get('/api/get-activities', authMiddleware, activityController.getActivities);
+app.get('/api/get-activity/:id', authMiddleware, activityController.getActivityById);
 app.post('/api/add-new-activity', authMiddleware, activityController.createActivity);
 app.patch('/api/update-activity/:id', authMiddleware, activityController.updateActivity);
 app.delete('/api/delete-activity/:id', authMiddleware, activityController.deleteActivity);

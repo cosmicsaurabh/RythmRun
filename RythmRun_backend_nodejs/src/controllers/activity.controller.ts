@@ -215,4 +215,38 @@ export class ActivityController {
             });
         }
     };
+
+    getActivityById = async (req: Request, res: Response) => {
+        try {
+            const activityId = parseInt(req.params.id);
+            if (isNaN(activityId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid activity ID'
+                });
+            }
+
+            // Get activity
+            const result = await this.activityService.getActivityById(req.user!.id, activityId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'Activity not found or access denied') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Get activity by ID error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
 } 
