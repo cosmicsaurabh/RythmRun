@@ -5,16 +5,28 @@ import jwt from 'jsonwebtoken';
 
 export class UserService {
     private prisma: PrismaClient;
+    private readonly SALT_ROUNDS = 10;
+    private readonly JWT_EXPIRATION = '1h';
+    private readonly REFRESH_EXPIRATION = '7d';
+    private readonly REFRESH_EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
     constructor() {
         this.prisma = new PrismaClient();
     }
 
-    private generateToken(user: { id: number; username: string }) {
+    private generateToken(user: { id: number }) {
         return jwt.sign(
-            { id: user.id, username: user.username },
+            { id: user.id },
             process.env.JWT_SECRET || 'your-secret-key',
-            { expiresIn: '24h' }
+            { expiresIn: this.JWT_EXPIRATION }
+        );
+    }
+
+    private generateRefreshToken(user: { id: number }) {
+        return jwt.sign(
+            { id: user.id },
+            process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key',
+            { expiresIn: this.REFRESH_EXPIRATION }
         );
     }
 
@@ -29,7 +41,7 @@ export class UserService {
         }
 
         // Hash password
-        const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+        const hashedPassword = await bcrypt.hash(registerDto.password, this.SALT_ROUNDS);
 
         // Create user
         const user = await this.prisma.user.create({
@@ -41,12 +53,22 @@ export class UserService {
             }
         });
 
-        // Generate token
+        // Generate tokens
         const token = this.generateToken(user);
+        const refreshToken = this.generateRefreshToken(user);
+
+        // Store refresh token
+        await this.prisma.refreshToken.create({
+            data: {
+                userId: user.id,
+                token: refreshToken,
+                expiryDate: new Date(Date.now() + this.REFRESH_EXPIRATION_MS)
+            }
+        });
 
         // Remove password from response
         const { password, ...userWithoutPassword } = user;
-        return { user: userWithoutPassword, token };
+        return { user: userWithoutPassword, token, refreshToken };
     }
 
     async login(loginDto: LoginUserDto) {
@@ -65,11 +87,68 @@ export class UserService {
             throw new Error('Invalid username or password');
         }
 
-        // Generate token
+        // Generate tokens
         const token = this.generateToken(user);
+        const refreshToken = this.generateRefreshToken(user);
+
+        // Update or create refresh token
+        await this.prisma.refreshToken.upsert({
+            where: { userId: user.id },
+            update: {
+                token: refreshToken,
+                expiryDate: new Date(Date.now() + this.REFRESH_EXPIRATION_MS)
+            },
+            create: {
+                userId: user.id,
+                token: refreshToken,
+                expiryDate: new Date(Date.now() + this.REFRESH_EXPIRATION_MS)
+            }
+        });
 
         // Remove password from response
         const { password, ...userWithoutPassword } = user;
-        return { user: userWithoutPassword, token };
+        return { user: userWithoutPassword, token, refreshToken };
+    }
+
+    async refreshToken(userId: number, oldRefreshToken: string) {
+        // Verify old refresh token exists and matches
+        const storedToken = await this.prisma.refreshToken.findFirst({
+            where: {
+                userId,
+                token: oldRefreshToken,
+                expiryDate: {
+                    gt: new Date()
+                }
+            }
+        });
+
+        if (!storedToken) {
+            throw new Error('Invalid refresh token');
+        }
+
+        // Generate new tokens
+        const user = { id: userId };
+        const token = this.generateToken(user);
+        const refreshToken = this.generateRefreshToken(user);
+
+        // Update refresh token
+        await this.prisma.refreshToken.update({
+            where: { userId },
+            data: {
+                token: refreshToken,
+                expiryDate: new Date(Date.now() + this.REFRESH_EXPIRATION_MS)
+            }
+        });
+
+        return { token, refreshToken };
+    }
+
+    async logout(userId: number) {
+        // Delete refresh token
+        await this.prisma.refreshToken.delete({
+            where: { userId }
+        }).catch(() => {
+            // Ignore error if token doesn't exist
+        });
     }
 } 
