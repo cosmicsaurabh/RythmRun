@@ -1,5 +1,5 @@
 import { PrismaClient } from '../../generated/prisma';
-import { GetActivitiesQueryDto, CreateActivityDto } from '../models/dto/activity.dto';
+import { GetActivitiesQueryDto, CreateActivityDto, UpdateActivityDto } from '../models/dto/activity.dto';
 
 export class ActivityService {
     private prisma: PrismaClient;
@@ -123,5 +123,95 @@ export class ActivityService {
                 requestedLimit: query.limit || this.DEFAULT_LIMIT // Add this to show what was requested
             }
         };
+    }
+
+    async updateActivity(userId: number, activityId: number, dto: UpdateActivityDto) {
+        // First check if activity exists and belongs to user
+        const existingActivity = await this.prisma.activity.findFirst({
+            where: {
+                id: activityId,
+                userId
+            }
+        });
+
+        if (!existingActivity) {
+            throw new Error('Activity not found or unauthorized');
+        }
+
+        // Update activity with its locations in a transaction
+        return await this.prisma.$transaction(async (tx) => {
+            // Update the activity
+            const activity = await tx.activity.update({
+                where: { id: activityId },
+                data: {
+                    type: dto.type,
+                    startTime: dto.startTime ? new Date(dto.startTime) : undefined,
+                    endTime: dto.endTime ? new Date(dto.endTime) : undefined,
+                    distance: dto.distance,
+                    duration: dto.duration,
+                    avgSpeed: dto.avgSpeed,
+                    maxSpeed: dto.maxSpeed,
+                    calories: dto.calories,
+                    description: dto.description,
+                    isPublic: dto.isPublic
+                }
+            });
+
+            // If locations are provided, update them
+            if (dto.locations && dto.locations.length > 0) {
+                // Delete existing locations
+                await tx.location.deleteMany({
+                    where: { activityId }
+                });
+
+                // Create new locations
+                await tx.location.createMany({
+                    data: dto.locations.map(loc => ({
+                        activityId,
+                        latitude: loc.latitude,
+                        longitude: loc.longitude,
+                        altitude: loc.altitude,
+                        timestamp: new Date(loc.timestamp),
+                        accuracy: loc.accuracy,
+                        speed: loc.speed
+                    }))
+                });
+            }
+
+            // Return updated activity with its locations
+            return await tx.activity.findUnique({
+                where: { id: activityId },
+                include: {
+                    locations: true,
+                    _count: {
+                        select: {
+                            comments: true,
+                            likes: true
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    async deleteActivity(userId: number, activityId: number) {
+        // Check if activity exists and belongs to user
+        const activity = await this.prisma.activity.findFirst({
+            where: {
+                id: activityId,
+                userId
+            }
+        });
+
+        if (!activity) {
+            throw new Error('Activity not found or unauthorized');
+        }
+
+        // Delete activity (this will cascade delete locations due to our schema)
+        await this.prisma.activity.delete({
+            where: { id: activityId }
+        });
+
+        return { message: 'Activity deleted successfully' };
     }
 } 
