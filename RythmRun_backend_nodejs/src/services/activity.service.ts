@@ -214,4 +214,42 @@ export class ActivityService {
 
         return { message: 'Activity deleted successfully' };
     }
+
+    async getActivityById(userId: number, activityId: number) {
+        // Find activity and check if it belongs to user or is public
+        const activity = await this.prisma.activity.findFirst({
+            where: {
+                id: activityId,
+                OR: [
+                    { userId },        // User's own activity
+                    { isPublic: true } // Public activity
+                ]
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                },
+                locations: true,
+                _count: {
+                    select: {
+                        comments: true,
+                        likes: true
+                    }
+                }
+            }
+        });
+
+        if (!activity) {
+            throw new Error('Activity not found or access denied');
+        }
+
+        return activity;
+    }
 } 
