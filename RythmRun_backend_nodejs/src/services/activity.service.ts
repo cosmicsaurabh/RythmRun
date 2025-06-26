@@ -1,5 +1,5 @@
 import { PrismaClient } from '../../generated/prisma';
-import { GetActivitiesQueryDto } from '../models/dto/activity.dto';
+import { GetActivitiesQueryDto, CreateActivityDto } from '../models/dto/activity.dto';
 
 export class ActivityService {
     private prisma: PrismaClient;
@@ -9,6 +9,57 @@ export class ActivityService {
 
     constructor() {
         this.prisma = new PrismaClient();
+    }
+
+    async createActivity(userId: number, dto: CreateActivityDto) {
+        // Create activity with its locations in a transaction
+        return await this.prisma.$transaction(async (tx) => {
+            // Create the activity
+            const activity = await tx.activity.create({
+                data: {
+                    userId,
+                    type: dto.type,
+                    startTime: new Date(dto.startTime),
+                    endTime: new Date(dto.endTime),
+                    distance: dto.distance,
+                    duration: dto.duration,
+                    avgSpeed: dto.avgSpeed,
+                    maxSpeed: dto.maxSpeed,
+                    calories: dto.calories,
+                    description: dto.description,
+                    isPublic: dto.isPublic ?? true, // Default to true if not provided
+                }
+            });
+
+            // Create all locations for this activity
+            if (dto.locations && dto.locations.length > 0) {
+                await tx.location.createMany({
+                    data: dto.locations.map(loc => ({
+                        activityId: activity.id,
+                        latitude: loc.latitude,
+                        longitude: loc.longitude,
+                        altitude: loc.altitude,
+                        timestamp: new Date(loc.timestamp),
+                        accuracy: loc.accuracy,
+                        speed: loc.speed
+                    }))
+                });
+            }
+
+            // Return activity with its locations
+            return await tx.activity.findUnique({
+                where: { id: activity.id },
+                include: {
+                    locations: true,
+                    _count: {
+                        select: {
+                            comments: true,
+                            likes: true
+                        }
+                    }
+                }
+            });
+        });
     }
 
     async getActivities(userId: number, query: GetActivitiesQueryDto) {

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { ActivityService } from '../services/activity.service';
-import { GetActivitiesQueryDto } from '../models/dto/activity.dto';
+import { GetActivitiesQueryDto, CreateActivityDto } from '../models/dto/activity.dto';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
 
@@ -10,6 +10,61 @@ export class ActivityController {
     constructor() {
         this.activityService = new ActivityService();
     }
+
+    createActivity = async (req: Request, res: Response) => {
+        try {
+            // Transform and validate request body
+            const createDto = plainToClass(CreateActivityDto, req.body);
+            const errors = await validate(createDto, {
+                forbidUnknownValues: true,
+                whitelist: true
+            });
+
+            if (errors.length > 0) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid input',
+                    errors: errors.map(error => ({
+                        property: error.property,
+                        constraints: error.constraints
+                    }))
+                });
+            }
+
+            // Validate timestamps
+            const startTime = new Date(createDto.startTime);
+            const endTime = new Date(createDto.endTime);
+            
+            if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid date format'
+                });
+            }
+
+            if (endTime <= startTime) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'End time must be after start time'
+                });
+            }
+
+            // Create activity
+            const result = await this.activityService.createActivity(req.user!.id, createDto);
+
+            return res.status(201).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error) {
+            console.error('Create activity error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
 
     getActivities = async (req: Request, res: Response) => {
         try {
