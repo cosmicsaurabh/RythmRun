@@ -7,6 +7,7 @@ import { UserController } from './controllers/user.controller';
 import { ActivityController } from './controllers/activity.controller';
 import { CommentController } from './controllers/comment.controller';
 import { LikeController } from './controllers/like.controller';
+import { FriendController } from './controllers/friend.controller';
 import { authMiddleware, refreshTokenMiddleware } from './middleware/auth.middleware';
 
 dotenv.config();
@@ -23,6 +24,7 @@ const userController = new UserController();
 const activityController = new ActivityController();
 const commentController = new CommentController();
 const likeController = new LikeController();
+const friendController = new FriendController();
 
 // Public routes
 app.post('/api/users/register', userController.register);
@@ -49,6 +51,9 @@ app.delete('/api/activities/:id/like', authMiddleware, likeController.unlikeActi
 app.post('/api/activities/:id/comments', authMiddleware, commentController.createComment);
 app.patch('/api/comments/:id', authMiddleware, commentController.updateComment);
 app.delete('/api/comments/:id', authMiddleware, commentController.deleteComment);
+
+// Friend routes
+app.post('/api/friends/request', authMiddleware, friendController.sendFriendRequest);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
