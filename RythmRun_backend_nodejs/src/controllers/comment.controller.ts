@@ -62,4 +62,90 @@ export class CommentController {
             });
         }
     };
+
+    updateComment = async (req: Request, res: Response) => {
+        try {
+            const commentId = parseInt(req.params.id);
+            if (isNaN(commentId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid comment ID'
+                });
+            }
+
+            // Transform and validate request body
+            const updateDto = plainToClass(CreateCommentDto, req.body);
+            const errors = await validate(updateDto, {
+                forbidUnknownValues: true,
+                whitelist: true
+            });
+
+            if (errors.length > 0) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid input',
+                    errors: errors.map(error => ({
+                        property: error.property,
+                        constraints: error.constraints
+                    }))
+                });
+            }
+
+            // Update comment
+            const result = await this.commentService.updateComment(req.user!.id, commentId, updateDto);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'Comment not found or unauthorized') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Update comment error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    deleteComment = async (req: Request, res: Response) => {
+        try {
+            const commentId = parseInt(req.params.id);
+            if (isNaN(commentId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid comment ID'
+                });
+            }
+
+            // Delete comment
+            const result = await this.commentService.deleteComment(req.user!.id, commentId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'Comment not found or unauthorized') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Delete comment error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
 } 
