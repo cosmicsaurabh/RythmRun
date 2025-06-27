@@ -1,0 +1,83 @@
+import { PrismaClient } from '../../generated/prisma';
+import { SendFriendRequestDto } from '../models/dto/friend.dto';
+
+export class FriendService {
+    private prisma: PrismaClient;
+
+    constructor() {
+        this.prisma = new PrismaClient();
+    }
+
+    async sendFriendRequest(userId: number, dto: SendFriendRequestDto) {
+        // Check if target user exists
+        const targetUser = await this.prisma.user.findUnique({
+            where: { id: dto.targetUserId }
+        });
+
+        if (!targetUser) {
+            throw new Error('Target user not found');
+        }
+
+        // Check if user is trying to send request to themselves
+        if (userId === dto.targetUserId) {
+            throw new Error('Cannot send friend request to yourself');
+        }
+
+        // Check if friend request already exists in either direction
+        const existingRequest = await this.prisma.friend.findFirst({
+            where: {
+                OR: [
+                    {
+                        user1Id: userId,
+                        user2Id: dto.targetUserId
+                    },
+                    {
+                        user1Id: dto.targetUserId,
+                        user2Id: userId
+                    }
+                ]
+            }
+        });
+
+        if (existingRequest) {
+            if (existingRequest.status === 'PENDING') {
+                throw new Error('Friend request already pending');
+            } else if (existingRequest.status === 'ACCEPTED') {
+                throw new Error('Already friends with this user');
+            }
+        }
+
+        // Create friend request
+        const friendRequest = await this.prisma.friend.create({
+            data: {
+                user1Id: userId,          // sender
+                user2Id: dto.targetUserId, // receiver
+                status: 'PENDING'
+            },
+            include: {
+                user1: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                },
+                user2: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            }
+        });
+
+        return friendRequest;
+    }
+} 
