@@ -11,6 +11,83 @@ export class ActivityController {
         this.activityService = new ActivityService();
     }
 
+    listActivities = async (req: Request, res: Response) => {
+        try {
+            // Convert string query parameters to numbers where needed
+            const query = {
+                ...req.query,
+                page: req.query.page ? parseInt(req.query.page as string) : undefined,
+                limit: req.query.limit ? parseInt(req.query.limit as string) : undefined
+            };
+
+            // Transform and validate query parameters
+            const queryDto = plainToClass(GetActivitiesQueryDto, query);
+            const errors = await validate(queryDto, { 
+                forbidUnknownValues: true,
+                whitelist: true 
+            });
+            
+            if (errors.length > 0) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid query parameters',
+                    errors: errors.map(error => ({
+                        property: error.property,
+                        constraints: error.constraints
+                    }))
+                });
+            }
+
+            // Get activities
+            const result = await this.activityService.getActivities(req.user!.id, queryDto);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error) {
+            console.error('Get activities error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    getActivity = async (req: Request, res: Response) => {
+        try {
+            const activityId = parseInt(req.params.activityId);
+            if (isNaN(activityId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid activity ID'
+                });
+            }
+
+            const result = await this.activityService.getActivityById(req.user!.id, activityId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'Activity not found or access denied') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Get activity error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
     createActivity = async (req: Request, res: Response) => {
         try {
             // Transform and validate request body
@@ -66,53 +143,9 @@ export class ActivityController {
         }
     };
 
-    getActivities = async (req: Request, res: Response) => {
-        try {
-            // Convert string query parameters to numbers where needed
-            const query = {
-                ...req.query,
-                page: req.query.page ? parseInt(req.query.page as string) : undefined,
-                limit: req.query.limit ? parseInt(req.query.limit as string) : undefined
-            };
-
-            // Transform and validate query parameters
-            const queryDto = plainToClass(GetActivitiesQueryDto, query);
-            const errors = await validate(queryDto, { 
-                forbidUnknownValues: true,
-                whitelist: true 
-            });
-            
-            if (errors.length > 0) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Invalid query parameters',
-                    errors: errors.map(error => ({
-                        property: error.property,
-                        constraints: error.constraints
-                    }))
-                });
-            }
-
-            // Get activities
-            const result = await this.activityService.getActivities(req.user!.id, queryDto);
-
-            return res.status(200).json({
-                status: 'success',
-                data: result
-            });
-
-        } catch (error) {
-            console.error('Get activities error:', error);
-            return res.status(500).json({
-                status: 'error',
-                message: 'Internal server error'
-            });
-        }
-    };
-
     updateActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.id);
+            const activityId = parseInt(req.params.activityId);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -184,7 +217,7 @@ export class ActivityController {
 
     deleteActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.id);
+            const activityId = parseInt(req.params.activityId);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -209,40 +242,6 @@ export class ActivityController {
             }
 
             console.error('Delete activity error:', error);
-            return res.status(500).json({
-                status: 'error',
-                message: 'Internal server error'
-            });
-        }
-    };
-
-    getActivityById = async (req: Request, res: Response) => {
-        try {
-            const activityId = parseInt(req.params.id);
-            if (isNaN(activityId)) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Invalid activity ID'
-                });
-            }
-
-            // Get activity
-            const result = await this.activityService.getActivityById(req.user!.id, activityId);
-
-            return res.status(200).json({
-                status: 'success',
-                data: result
-            });
-
-        } catch (error: any) {
-            if (error?.message === 'Activity not found or access denied') {
-                return res.status(404).json({
-                    status: 'error',
-                    message: error.message
-                });
-            }
-
-            console.error('Get activity by ID error:', error);
             return res.status(500).json({
                 status: 'error',
                 message: 'Internal server error'

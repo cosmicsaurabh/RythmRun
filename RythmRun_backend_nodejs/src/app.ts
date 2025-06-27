@@ -37,11 +37,11 @@ app.post('/api/users/change-password', authMiddleware, userController.changePass
 app.patch('/api/users/profile', authMiddleware, userController.updateProfile);
 
 // Activity routes
-app.get('/api/get-activities', authMiddleware, activityController.getActivities);
-app.get('/api/get-activity/:id', authMiddleware, activityController.getActivityById);
-app.post('/api/add-new-activity', authMiddleware, activityController.createActivity);
-app.patch('/api/update-activity/:id', authMiddleware, activityController.updateActivity);
-app.delete('/api/delete-activity/:id', authMiddleware, activityController.deleteActivity);
+app.get('/api/activities', authMiddleware, activityController.listActivities);
+app.get('/api/activities/:activityId', authMiddleware, activityController.getActivity);
+app.post('/api/activities', authMiddleware, activityController.createActivity);
+app.patch('/api/activities/:activityId', authMiddleware, activityController.updateActivity);
+app.delete('/api/activities/:activityId', authMiddleware, activityController.deleteActivity);
 
 // Like routes
 app.post('/api/activities/:id/like', authMiddleware, likeController.likeActivity);
