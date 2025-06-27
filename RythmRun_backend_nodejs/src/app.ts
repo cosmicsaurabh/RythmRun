@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { UserController } from './controllers/user.controller';
 import { ActivityController } from './controllers/activity.controller';
 import { CommentController } from './controllers/comment.controller';
+import { LikeController } from './controllers/like.controller';
 import { authMiddleware, refreshTokenMiddleware } from './middleware/auth.middleware';
 
 dotenv.config();
@@ -21,6 +22,7 @@ app.use(helmet());
 const userController = new UserController();
 const activityController = new ActivityController();
 const commentController = new CommentController();
+const likeController = new LikeController();
 
 // Public routes
 app.post('/api/users/register', userController.register);
@@ -39,9 +41,9 @@ app.post('/api/add-new-activity', authMiddleware, activityController.createActiv
 app.patch('/api/update-activity/:id', authMiddleware, activityController.updateActivity);
 app.delete('/api/delete-activity/:id', authMiddleware, activityController.deleteActivity);
 
-// Like/Unlike routes
-app.post('/api/activities/:id/like', authMiddleware, activityController.likeActivity);
-app.delete('/api/activities/:id/like', authMiddleware, activityController.unlikeActivity);
+// Like routes
+app.post('/api/activities/:id/like', authMiddleware, likeController.likeActivity);
+app.delete('/api/activities/:id/like', authMiddleware, likeController.unlikeActivity);
 
 // Comment routes
 app.post('/api/activities/:id/comments', authMiddleware, commentController.createComment);
