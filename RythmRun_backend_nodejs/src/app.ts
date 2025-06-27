@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import type { Request, Response } from 'express';
 import express from 'express';
 import cors from 'cors';
@@ -9,6 +10,7 @@ import { CommentController } from './controllers/comment.controller';
 import { LikeController } from './controllers/like.controller';
 import { FriendController } from './controllers/friend.controller';
 import { authMiddleware, refreshTokenMiddleware } from './middleware/auth.middleware';
+import { container } from './config/container';
 
 dotenv.config();
 
@@ -20,11 +22,11 @@ app.use(cors());
 app.use(helmet());
 
 // Controllers
-const userController = new UserController();
-const activityController = new ActivityController();
-const commentController = new CommentController();
-const likeController = new LikeController();
-const friendController = new FriendController();
+const userController = container.resolve(UserController);
+const activityController = container.resolve(ActivityController);
+const commentController = container.resolve(CommentController);
+const likeController = container.resolve(LikeController);
+const friendController = container.resolve(FriendController);
 
 // Public routes
 app.post('/api/users/register', userController.register);

@@ -1,18 +1,19 @@
 import { PrismaClient } from '../../generated/prisma';
-import { RegisterUserDto, LoginUserDto, ChangePasswordDto ,UpdateProfileDto} from '../models/dto/user.dto';
+import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto';
 import * as bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { injectable, inject } from "tsyringe";
 
+@injectable()
 export class UserService {
-    private prisma: PrismaClient;
     private readonly SALT_ROUNDS = 10;
     private readonly JWT_EXPIRATION = '1h';
     private readonly REFRESH_EXPIRATION = '7d';
     private readonly REFRESH_EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
-    constructor() {
-        this.prisma = new PrismaClient();
-    }
+    constructor(
+        @inject("PrismaClient") private prisma: PrismaClient
+    ) {}
 
     private generateToken(user: { id: number }) {
         return jwt.sign(

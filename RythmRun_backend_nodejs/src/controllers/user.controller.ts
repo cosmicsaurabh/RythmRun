@@ -3,13 +3,13 @@ import { UserService } from '../services/user.service';
 import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
+import { injectable, inject } from "tsyringe";
 
+@injectable()
 export class UserController {
-    private userService: UserService;
-
-    constructor() {
-        this.userService = new UserService();
-    }
+    constructor(
+        @inject("UserService") private userService: UserService
+    ) {}
 
     register = async (req: Request, res: Response) => {
         try {
