@@ -1,12 +1,10 @@
-import { IsString, IsOptional, MinLength, MaxLength, Matches } from 'class-validator';
+import { IsString, IsOptional, MinLength, MaxLength, IsEmail } from 'class-validator';
 
 export class RegisterUserDto {
     @IsString()
+    @IsEmail()
     @MinLength(3)
-    @MaxLength(30)
-    @Matches(/^[a-zA-Z0-9_]+$/, {
-        message: 'Username can only contain letters, numbers and underscore'
-    })
+    @MaxLength(255)
     username!: string;
 
     @IsString()
@@ -27,8 +25,9 @@ export class RegisterUserDto {
 
 export class LoginUserDto {
     @IsString()
+    @IsEmail()
     @MinLength(3)
-    @MaxLength(30)
+    @MaxLength(255)
     username!: string;
 
     @IsString()
