@@ -54,6 +54,7 @@ app.delete('/api/comments/:id', authMiddleware, commentController.deleteComment)
 
 // Friend routes
 app.post('/api/friends/request', authMiddleware, friendController.sendFriendRequest);
+app.delete('/api/friends/request/:userId', authMiddleware, friendController.cancelFriendRequest);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

@@ -80,4 +80,30 @@ export class FriendService {
 
         return friendRequest;
     }
+
+    async cancelFriendRequest(userId: number, targetUserId: number) {
+        // Find pending friend request sent by the user
+        const pendingRequest = await this.prisma.friend.findFirst({
+            where: {
+                user1Id: userId,          // user must be the sender
+                user2Id: targetUserId,
+                status: 'PENDING'
+            }
+        });
+
+        if (!pendingRequest) {
+            throw new Error('No pending friend request found');
+        }
+
+        // Delete the friend request
+        await this.prisma.friend.delete({
+            where: {
+                id: pendingRequest.id
+            }
+        });
+
+        return {
+            message: 'Friend request cancelled successfully'
+        };
+    }
 } 

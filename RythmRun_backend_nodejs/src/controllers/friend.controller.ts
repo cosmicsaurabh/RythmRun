@@ -63,4 +63,37 @@ export class FriendController {
             });
         }
     };
+
+    cancelFriendRequest = async (req: Request, res: Response) => {
+        try {
+            const targetUserId = parseInt(req.params.userId);
+            if (isNaN(targetUserId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid target user ID'
+                });
+            }
+
+            const result = await this.friendService.cancelFriendRequest(req.user!.id, targetUserId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'No pending friend request found') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Cancel friend request error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
 } 
