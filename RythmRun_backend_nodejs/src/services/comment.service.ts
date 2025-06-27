@@ -8,8 +8,7 @@ export class CommentService {
         this.prisma = new PrismaClient();
     }
 
-    async createComment(userId: number, activityId: number, dto: CreateCommentDto) {
-        // Check if activity exists and is accessible to the user
+    private async verifyActivityAccess(userId: number, activityId: number) {
         const activity = await this.prisma.activity.findFirst({
             where: {
                 id: activityId,
@@ -23,6 +22,73 @@ export class CommentService {
         if (!activity) {
             throw new Error('Activity not found or access denied');
         }
+
+        return activity;
+    }
+
+    async getComments(userId: number, activityId: number) {
+        // Verify activity access
+        await this.verifyActivityAccess(userId, activityId);
+
+        // Get all comments for the activity
+        const comments = await this.prisma.comment.findMany({
+            where: {
+                activityId
+            },
+            orderBy: {
+                createdAt: 'desc'
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            }
+        });
+
+        return comments;
+    }
+
+    async getComment(userId: number, activityId: number, commentId: number) {
+        // Verify activity access
+        await this.verifyActivityAccess(userId, activityId);
+
+        // Get the specific comment
+        const comment = await this.prisma.comment.findFirst({
+            where: {
+                id: commentId,
+                activityId
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            }
+        });
+
+        if (!comment) {
+            throw new Error('Comment not found');
+        }
+
+        return comment;
+    }
+
+    async createComment(userId: number, activityId: number, dto: CreateCommentDto) {
+        // Verify activity access
+        await this.verifyActivityAccess(userId, activityId);
 
         // Create the comment
         const comment = await this.prisma.comment.create({
@@ -48,11 +114,15 @@ export class CommentService {
         return comment;
     }
 
-    async updateComment(userId: number, commentId: number, dto: CreateCommentDto) {
+    async updateComment(userId: number, activityId: number, commentId: number, dto: CreateCommentDto) {
+        // Verify activity access
+        await this.verifyActivityAccess(userId, activityId);
+
         // Check if comment exists and belongs to the user
         const existingComment = await this.prisma.comment.findFirst({
             where: {
                 id: commentId,
+                activityId,
                 userId
             }
         });
@@ -86,11 +156,15 @@ export class CommentService {
         return updatedComment;
     }
 
-    async deleteComment(userId: number, commentId: number) {
+    async deleteComment(userId: number, activityId: number, commentId: number) {
+        // Verify activity access
+        await this.verifyActivityAccess(userId, activityId);
+
         // Check if comment exists and belongs to the user
         const existingComment = await this.prisma.comment.findFirst({
             where: {
                 id: commentId,
+                activityId,
                 userId
             }
         });

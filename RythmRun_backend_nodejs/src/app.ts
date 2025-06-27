@@ -48,17 +48,19 @@ app.post('/api/activities/:id/like', authMiddleware, likeController.likeActivity
 app.delete('/api/activities/:id/like', authMiddleware, likeController.unlikeActivity);
 
 // Comment routes
-app.post('/api/activities/:id/comments', authMiddleware, commentController.createComment);
-app.patch('/api/comments/:id', authMiddleware, commentController.updateComment);
-app.delete('/api/comments/:id', authMiddleware, commentController.deleteComment);
+app.get('/api/activities/:activityId/comments', authMiddleware, commentController.getComments);
+app.get('/api/activities/:activityId/comments/:commentId', authMiddleware, commentController.getComment);
+app.post('/api/activities/:activityId/comments', authMiddleware, commentController.createComment);
+app.patch('/api/activities/:activityId/comments/:commentId', authMiddleware, commentController.updateComment);
+app.delete('/api/activities/:activityId/comments/:commentId', authMiddleware, commentController.deleteComment);
 
 // Friend routes
-app.post('/api/friends/request', authMiddleware, friendController.sendFriendRequest);
-app.delete('/api/friends/request/:userId', authMiddleware, friendController.cancelFriendRequest);
-app.post('/api/friends/request/:id/accept', authMiddleware, friendController.acceptFriendRequest);
-app.post('/api/friends/request/:id/reject', authMiddleware, friendController.rejectFriendRequest);
+app.post('/api/friends/requests', authMiddleware, friendController.createFriendRequest);
+app.delete('/api/friends/requests/:requestId', authMiddleware, friendController.deleteFriendRequest);
+app.post('/api/friends/requests/:requestId/accept', authMiddleware, friendController.acceptFriendRequest);
+app.post('/api/friends/requests/:requestId/reject', authMiddleware, friendController.rejectFriendRequest);
 app.get('/api/friends/requests/pending', authMiddleware, friendController.getPendingFriendRequests);
-app.get('/api/friends/request/status/:userId', authMiddleware, friendController.getFriendRequestStatus);
+app.get('/api/friends/status/:userId', authMiddleware, friendController.getFriendshipStatus);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
