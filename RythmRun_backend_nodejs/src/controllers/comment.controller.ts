@@ -11,9 +11,83 @@ export class CommentController {
         this.commentService = new CommentService();
     }
 
+    getComments = async (req: Request, res: Response) => {
+        try {
+            const activityId = parseInt(req.params.activityId);
+            if (isNaN(activityId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid activity ID'
+                });
+            }
+
+            const result = await this.commentService.getComments(req.user!.id, activityId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'Activity not found or access denied') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Get comments error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    getComment = async (req: Request, res: Response) => {
+        try {
+            const activityId = parseInt(req.params.activityId);
+            const commentId = parseInt(req.params.commentId);
+            if (isNaN(activityId) || isNaN(commentId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid activity ID or comment ID'
+                });
+            }
+
+            const result = await this.commentService.getComment(req.user!.id, activityId, commentId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'Activity not found or access denied') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            if (error?.message === 'Comment not found') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Get comment error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
     createComment = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.id);
+            const activityId = parseInt(req.params.activityId);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -65,11 +139,12 @@ export class CommentController {
 
     updateComment = async (req: Request, res: Response) => {
         try {
-            const commentId = parseInt(req.params.id);
-            if (isNaN(commentId)) {
+            const activityId = parseInt(req.params.activityId);
+            const commentId = parseInt(req.params.commentId);
+            if (isNaN(activityId) || isNaN(commentId)) {
                 return res.status(400).json({
                     status: 'error',
-                    message: 'Invalid comment ID'
+                    message: 'Invalid activity ID or comment ID'
                 });
             }
 
@@ -92,7 +167,7 @@ export class CommentController {
             }
 
             // Update comment
-            const result = await this.commentService.updateComment(req.user!.id, commentId, updateDto);
+            const result = await this.commentService.updateComment(req.user!.id, activityId, commentId, updateDto);
 
             return res.status(200).json({
                 status: 'success',
@@ -100,6 +175,13 @@ export class CommentController {
             });
 
         } catch (error: any) {
+            if (error?.message === 'Activity not found or access denied') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
             if (error?.message === 'Comment not found or unauthorized') {
                 return res.status(404).json({
                     status: 'error',
@@ -117,16 +199,17 @@ export class CommentController {
 
     deleteComment = async (req: Request, res: Response) => {
         try {
-            const commentId = parseInt(req.params.id);
-            if (isNaN(commentId)) {
+            const activityId = parseInt(req.params.activityId);
+            const commentId = parseInt(req.params.commentId);
+            if (isNaN(activityId) || isNaN(commentId)) {
                 return res.status(400).json({
                     status: 'error',
-                    message: 'Invalid comment ID'
+                    message: 'Invalid activity ID or comment ID'
                 });
             }
 
             // Delete comment
-            const result = await this.commentService.deleteComment(req.user!.id, commentId);
+            const result = await this.commentService.deleteComment(req.user!.id, activityId, commentId);
 
             return res.status(200).json({
                 status: 'success',
@@ -134,6 +217,13 @@ export class CommentController {
             });
 
         } catch (error: any) {
+            if (error?.message === 'Activity not found or access denied') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
             if (error?.message === 'Comment not found or unauthorized') {
                 return res.status(404).json({
                     status: 'error',

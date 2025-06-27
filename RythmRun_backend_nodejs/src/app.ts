@@ -48,9 +48,11 @@ app.post('/api/activities/:id/like', authMiddleware, likeController.likeActivity
 app.delete('/api/activities/:id/like', authMiddleware, likeController.unlikeActivity);
 
 // Comment routes
-app.post('/api/activities/:id/comments', authMiddleware, commentController.createComment);
-app.patch('/api/comments/:id', authMiddleware, commentController.updateComment);
-app.delete('/api/comments/:id', authMiddleware, commentController.deleteComment);
+app.get('/api/activities/:activityId/comments', authMiddleware, commentController.getComments);
+app.get('/api/activities/:activityId/comments/:commentId', authMiddleware, commentController.getComment);
+app.post('/api/activities/:activityId/comments', authMiddleware, commentController.createComment);
+app.patch('/api/activities/:activityId/comments/:commentId', authMiddleware, commentController.updateComment);
+app.delete('/api/activities/:activityId/comments/:commentId', authMiddleware, commentController.deleteComment);
 
 // Friend routes
 app.post('/api/friends/requests', authMiddleware, friendController.createFriendRequest);
