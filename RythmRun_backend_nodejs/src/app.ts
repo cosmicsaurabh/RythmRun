@@ -37,6 +37,10 @@ app.post('/api/add-new-activity', authMiddleware, activityController.createActiv
 app.patch('/api/update-activity/:id', authMiddleware, activityController.updateActivity);
 app.delete('/api/delete-activity/:id', authMiddleware, activityController.deleteActivity);
 
+// Like/Unlike routes
+app.post('/api/activities/:id/like', authMiddleware, activityController.likeActivity);
+app.delete('/api/activities/:id/like', authMiddleware, activityController.unlikeActivity);
+
 // Health check
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

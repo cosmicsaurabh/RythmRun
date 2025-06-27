@@ -32,6 +32,7 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
 
         // Add user info to request
         req.user = { id: decoded.id };
+        console.log(`Received ${req.method} request for: ${req.url}`);
         next();
     } catch (error) {
         return res.status(401).json({
