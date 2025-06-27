@@ -3,13 +3,13 @@ import { ActivityService } from '../services/activity.service';
 import { GetActivitiesQueryDto, CreateActivityDto, UpdateActivityDto } from '../models/dto/activity.dto';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
+import { injectable, inject } from "tsyringe";
 
+@injectable()
 export class ActivityController {
-    private activityService: ActivityService;
-
-    constructor() {
-        this.activityService = new ActivityService();
-    }
+    constructor(
+        @inject("ActivityService") private activityService: ActivityService
+    ) {}
 
     listActivities = async (req: Request, res: Response) => {
         try {

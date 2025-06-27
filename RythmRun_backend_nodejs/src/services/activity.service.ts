@@ -1,15 +1,16 @@
 import { PrismaClient } from '../../generated/prisma';
 import { GetActivitiesQueryDto, CreateActivityDto, UpdateActivityDto } from '../models/dto/activity.dto';
+import { injectable, inject } from "tsyringe";
 
+@injectable()
 export class ActivityService {
-    private prisma: PrismaClient;
     private readonly DEFAULT_PAGE = 1;
     private readonly DEFAULT_LIMIT = 10;
     private readonly MAX_LIMIT = 50; // Add maximum limit to prevent large queries
 
-    constructor() {
-        this.prisma = new PrismaClient();
-    }
+    constructor(
+        @inject("PrismaClient") private prisma: PrismaClient
+    ) {}
 
     async createActivity(userId: number, dto: CreateActivityDto) {
         // Create activity with its locations in a transaction
