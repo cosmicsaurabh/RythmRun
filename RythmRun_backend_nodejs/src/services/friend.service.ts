@@ -81,12 +81,12 @@ export class FriendService {
         return friendRequest;
     }
 
-    async cancelFriendRequest(userId: number, targetUserId: number) {
+    async cancelFriendRequest(userId: number, requestId: number) {
         // Find pending friend request sent by the user
         const pendingRequest = await this.prisma.friend.findFirst({
             where: {
+                id: requestId,
                 user1Id: userId,          // user must be the sender
-                user2Id: targetUserId,
                 status: 'PENDING'
             }
         });
