@@ -106,4 +106,192 @@ export class FriendService {
             message: 'Friend request cancelled successfully'
         };
     }
+
+    async acceptFriendRequest(userId: number, requestId: number) {
+        // Find pending friend request where user is the receiver
+        const pendingRequest = await this.prisma.friend.findFirst({
+            where: {
+                id: requestId,
+                user2Id: userId,    // user must be the receiver
+                status: 'PENDING'
+            },
+            include: {
+                user1: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                },
+                user2: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            }
+        });
+
+        if (!pendingRequest) {
+            throw new Error('No pending friend request found');
+        }
+
+        // Update the friend request status to ACCEPTED
+        const acceptedRequest = await this.prisma.friend.update({
+            where: {
+                id: requestId
+            },
+            data: {
+                status: 'ACCEPTED',
+                updatedAt: new Date()
+            },
+            include: {
+                user1: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                },
+                user2: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            }
+        });
+
+        return acceptedRequest;
+    }
+
+    async rejectFriendRequest(userId: number, requestId: number) {
+        // Find pending friend request where user is the receiver
+        const pendingRequest = await this.prisma.friend.findFirst({
+            where: {
+                id: requestId,
+                user2Id: userId,    // user must be the receiver
+                status: 'PENDING'
+            }
+        });
+
+        if (!pendingRequest) {
+            throw new Error('No pending friend request found');
+        }
+
+        // Update the friend request status to REJECTED
+        const rejectedRequest = await this.prisma.friend.update({
+            where: {
+                id: requestId
+            },
+            data: {
+                status: 'REJECTED',
+                updatedAt: new Date()
+            }
+        });
+
+        return {
+            message: 'Friend request rejected successfully'
+        };
+    }
+
+    async getPendingFriendRequests(userId: number) {
+        // Get all pending friend requests where user is the receiver
+        const pendingRequests = await this.prisma.friend.findMany({
+            where: {
+                user2Id: userId,    // user is the receiver
+                status: 'PENDING'
+            },
+            include: {
+                user1: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        return pendingRequests;
+    }
+
+    async getFriendRequestStatus(userId: number, otherUserId: number) {
+        // Check if friend request exists in either direction
+        const friendRequest = await this.prisma.friend.findFirst({
+            where: {
+                OR: [
+                    {
+                        user1Id: userId,
+                        user2Id: otherUserId
+                    },
+                    {
+                        user1Id: otherUserId,
+                        user2Id: userId
+                    }
+                ]
+            },
+            include: {
+                user1: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                },
+                user2: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            }
+        });
+
+        if (!friendRequest) {
+            return {
+                status: 'NONE',
+                message: 'No friend request exists'
+            };
+        }
+
+        // Determine the direction and status of the request
+        let requestDirection = '';
+        if (friendRequest.status === 'PENDING') {
+            requestDirection = friendRequest.user1Id === userId ? 'SENT' : 'RECEIVED';
+        }
+
+        return {
+            status: friendRequest.status,
+            direction: requestDirection,
+            request: friendRequest
+        };
+    }
 } 

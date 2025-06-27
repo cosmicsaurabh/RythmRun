@@ -96,4 +96,122 @@ export class FriendController {
             });
         }
     };
+
+    acceptFriendRequest = async (req: Request, res: Response) => {
+        try {
+            const requestId = parseInt(req.params.id);
+            if (isNaN(requestId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid friend request ID'
+                });
+            }
+
+            const result = await this.friendService.acceptFriendRequest(req.user!.id, requestId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'No pending friend request found') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Accept friend request error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    rejectFriendRequest = async (req: Request, res: Response) => {
+        try {
+            const requestId = parseInt(req.params.id);
+            if (isNaN(requestId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid friend request ID'
+                });
+            }
+
+            const result = await this.friendService.rejectFriendRequest(req.user!.id, requestId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'No pending friend request found') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Reject friend request error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    getPendingFriendRequests = async (req: Request, res: Response) => {
+        try {
+            const result = await this.friendService.getPendingFriendRequests(req.user!.id);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            console.error('Get pending friend requests error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
+    getFriendRequestStatus = async (req: Request, res: Response) => {
+        try {
+            const otherUserId = parseInt(req.params.userId);
+            if (isNaN(otherUserId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid user ID'
+                });
+            }
+
+            // Check if trying to get status with self
+            if (otherUserId === req.user!.id) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Cannot check friend request status with yourself'
+                });
+            }
+
+            const result = await this.friendService.getFriendRequestStatus(req.user!.id, otherUserId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            console.error('Get friend request status error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
 } 
