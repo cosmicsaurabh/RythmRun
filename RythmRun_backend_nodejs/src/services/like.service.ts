@@ -7,8 +7,7 @@ export class LikeService {
         this.prisma = new PrismaClient();
     }
 
-    async likeActivity(userId: number, activityId: number) {
-        // Check if activity exists and is accessible to the user
+    private async verifyActivityAccess(userId: number, activityId: number) {
         const activity = await this.prisma.activity.findFirst({
             where: {
                 id: activityId,
@@ -22,6 +21,37 @@ export class LikeService {
         if (!activity) {
             throw new Error('Activity not found or access denied');
         }
+
+        return activity;
+    }
+
+    async getLikeStatus(userId: number, activityId: number) {
+        // Verify activity access
+        await this.verifyActivityAccess(userId, activityId);
+
+        // Check if user has liked the activity
+        const existingLike = await this.prisma.like.findUnique({
+            where: {
+                activityId_userId: {
+                    activityId,
+                    userId
+                }
+            }
+        });
+
+        const likeCount = await this.prisma.like.count({
+            where: { activityId }
+        });
+
+        return {
+            isLiked: !!existingLike,
+            likeCount
+        };
+    }
+
+    async likeActivity(userId: number, activityId: number) {
+        // Verify activity access
+        await this.verifyActivityAccess(userId, activityId);
 
         // Check if user has already liked the activity
         const existingLike = await this.prisma.like.findUnique({
@@ -57,6 +87,9 @@ export class LikeService {
     }
 
     async unlikeActivity(userId: number, activityId: number) {
+        // Verify activity access
+        await this.verifyActivityAccess(userId, activityId);
+
         // Check if like exists
         const existingLike = await this.prisma.like.findUnique({
             where: {
@@ -68,7 +101,7 @@ export class LikeService {
         });
 
         if (!existingLike) {
-            throw new Error('Like not found');
+            throw new Error('Like not found or unauthorized');
         }
 
         // Delete the like

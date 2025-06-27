@@ -44,8 +44,9 @@ app.patch('/api/activities/:activityId', authMiddleware, activityController.upda
 app.delete('/api/activities/:activityId', authMiddleware, activityController.deleteActivity);
 
 // Like routes
-app.post('/api/activities/:id/like', authMiddleware, likeController.likeActivity);
-app.delete('/api/activities/:id/like', authMiddleware, likeController.unlikeActivity);
+app.get('/api/activities/:activityId/like', authMiddleware, likeController.getLikeStatus);
+app.post('/api/activities/:activityId/like', authMiddleware, likeController.likeActivity);
+app.delete('/api/activities/:activityId/like', authMiddleware, likeController.unlikeActivity);
 
 // Comment routes
 app.get('/api/activities/:activityId/comments', authMiddleware, commentController.getComments);
