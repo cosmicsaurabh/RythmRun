@@ -8,9 +8,42 @@ export class LikeController {
         this.likeService = new LikeService();
     }
 
+    getLikeStatus = async (req: Request, res: Response) => {
+        try {
+            const activityId = parseInt(req.params.activityId);
+            if (isNaN(activityId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid activity ID'
+                });
+            }
+
+            const result = await this.likeService.getLikeStatus(req.user!.id, activityId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result
+            });
+
+        } catch (error: any) {
+            if (error?.message === 'Activity not found or access denied') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            console.error('Get like status error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error'
+            });
+        }
+    };
+
     likeActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.id);
+            const activityId = parseInt(req.params.activityId);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -50,7 +83,7 @@ export class LikeController {
 
     unlikeActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.id);
+            const activityId = parseInt(req.params.activityId);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -66,7 +99,14 @@ export class LikeController {
             });
 
         } catch (error: any) {
-            if (error?.message === 'Like not found') {
+            if (error?.message === 'Activity not found or access denied') {
+                return res.status(404).json({
+                    status: 'error',
+                    message: error.message
+                });
+            }
+
+            if (error?.message === 'Like not found or unauthorized') {
                 return res.status(404).json({
                     status: 'error',
                     message: error.message
