@@ -47,6 +47,8 @@ app.delete('/api/activities/:id/like', authMiddleware, likeController.unlikeActi
 
 // Comment routes
 app.post('/api/activities/:id/comments', authMiddleware, commentController.createComment);
+app.patch('/api/comments/:id', authMiddleware, commentController.updateComment);
+app.delete('/api/comments/:id', authMiddleware, commentController.deleteComment);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

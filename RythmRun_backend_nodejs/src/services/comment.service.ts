@@ -47,4 +47,67 @@ export class CommentService {
 
         return comment;
     }
+
+    async updateComment(userId: number, commentId: number, dto: CreateCommentDto) {
+        // Check if comment exists and belongs to the user
+        const existingComment = await this.prisma.comment.findFirst({
+            where: {
+                id: commentId,
+                userId
+            }
+        });
+
+        if (!existingComment) {
+            throw new Error('Comment not found or unauthorized');
+        }
+
+        // Update the comment
+        const updatedComment = await this.prisma.comment.update({
+            where: {
+                id: commentId
+            },
+            data: {
+                content: dto.content
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            }
+        });
+
+        return updatedComment;
+    }
+
+    async deleteComment(userId: number, commentId: number) {
+        // Check if comment exists and belongs to the user
+        const existingComment = await this.prisma.comment.findFirst({
+            where: {
+                id: commentId,
+                userId
+            }
+        });
+
+        if (!existingComment) {
+            throw new Error('Comment not found or unauthorized');
+        }
+
+        // Delete the comment
+        await this.prisma.comment.delete({
+            where: {
+                id: commentId
+            }
+        });
+
+        return {
+            message: 'Comment deleted successfully'
+        };
+    }
 } 
