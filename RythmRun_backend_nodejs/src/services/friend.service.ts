@@ -106,4 +106,106 @@ export class FriendService {
             message: 'Friend request cancelled successfully'
         };
     }
+
+    async acceptFriendRequest(userId: number, requestId: number) {
+        // Find pending friend request where user is the receiver
+        const pendingRequest = await this.prisma.friend.findFirst({
+            where: {
+                id: requestId,
+                user2Id: userId,    // user must be the receiver
+                status: 'PENDING'
+            },
+            include: {
+                user1: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                },
+                user2: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            }
+        });
+
+        if (!pendingRequest) {
+            throw new Error('No pending friend request found');
+        }
+
+        // Update the friend request status to ACCEPTED
+        const acceptedRequest = await this.prisma.friend.update({
+            where: {
+                id: requestId
+            },
+            data: {
+                status: 'ACCEPTED',
+                updatedAt: new Date()
+            },
+            include: {
+                user1: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                },
+                user2: {
+                    select: {
+                        id: true,
+                        username: true,
+                        firstname: true,
+                        lastname: true,
+                        profilePicture: true,
+                        profilePictureType: true
+                    }
+                }
+            }
+        });
+
+        return acceptedRequest;
+    }
+
+    async rejectFriendRequest(userId: number, requestId: number) {
+        // Find pending friend request where user is the receiver
+        const pendingRequest = await this.prisma.friend.findFirst({
+            where: {
+                id: requestId,
+                user2Id: userId,    // user must be the receiver
+                status: 'PENDING'
+            }
+        });
+
+        if (!pendingRequest) {
+            throw new Error('No pending friend request found');
+        }
+
+        // Update the friend request status to REJECTED
+        const rejectedRequest = await this.prisma.friend.update({
+            where: {
+                id: requestId
+            },
+            data: {
+                status: 'REJECTED',
+                updatedAt: new Date()
+            }
+        });
+
+        return {
+            message: 'Friend request rejected successfully'
+        };
+    }
 } 
