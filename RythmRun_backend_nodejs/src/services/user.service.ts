@@ -87,12 +87,7 @@ export class UserService {
         });
 
         return {
-            id: user.id,
-            username: user.username,
-            firstname: user.firstname,
-            lastname: user.lastname,
-            accessToken,
-            refreshToken
+            ...this.getUserResponseData(user, accessToken, refreshToken)
         };
     }
 

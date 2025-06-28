@@ -18,7 +18,7 @@ export class FriendResponseDto {
         username: string;
         firstname?: string;
         lastname?: string;
-        profilePicture?: Buffer;
+        profilePicturePath?: string;
         profilePictureType?: string;
     };
     user2?: {
@@ -26,7 +26,7 @@ export class FriendResponseDto {
         username: string;
         firstname?: string;
         lastname?: string;
-        profilePicture?: Buffer;
+        profilePicturePath?: string;
         profilePictureType?: string;
     };
 } 
