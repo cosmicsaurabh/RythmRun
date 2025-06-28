@@ -4,13 +4,13 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { UserController } from './controllers/user.controller';
 import { ActivityController } from './controllers/activity.controller';
 import { CommentController } from './controllers/comment.controller';
 import { LikeController } from './controllers/like.controller';
 import { FriendController } from './controllers/friend.controller';
-import { authMiddleware, refreshTokenMiddleware } from './middleware/auth.middleware';
+import { authMiddleware } from './middleware/auth.middleware';
 import { container } from './config/container';
+import userRoutes from './routes/user.routes';
 
 dotenv.config();
 
@@ -22,21 +22,13 @@ app.use(cors());
 app.use(helmet());
 
 // Controllers
-const userController = container.resolve(UserController);
 const activityController = container.resolve(ActivityController);
 const commentController = container.resolve(CommentController);
 const likeController = container.resolve(LikeController);
 const friendController = container.resolve(FriendController);
 
-// Public routes
-app.post('/api/users/register', userController.register);
-app.post('/api/users/login', userController.login);
-app.post('/api/users/refresh-token', refreshTokenMiddleware, userController.refreshToken);
-
-// Protected routes (require authentication)
-app.post('/api/users/logout', authMiddleware, userController.logout);
-app.post('/api/users/change-password', authMiddleware, userController.changePassword);
-app.patch('/api/users/profile', authMiddleware, userController.updateProfile);
+// Routes
+app.use('/api/users', userRoutes);
 
 // Activity routes
 app.get('/api/activities', authMiddleware, activityController.listActivities);

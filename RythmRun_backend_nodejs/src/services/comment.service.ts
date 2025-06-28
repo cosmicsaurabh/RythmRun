@@ -8,6 +8,15 @@ export class CommentService {
         this.prisma = new PrismaClient();
     }
 
+    private readonly userSelect = {
+        id: true,
+        username: true,
+        firstname: true,
+        lastname: true,
+        profilePicturePath: true,
+        profilePictureType: true
+    };
+
     private async verifyActivityAccess(userId: number, activityId: number) {
         const activity = await this.prisma.activity.findFirst({
             where: {
@@ -40,14 +49,7 @@ export class CommentService {
             },
             include: {
                 user: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 }
             }
         });
@@ -67,14 +69,7 @@ export class CommentService {
             },
             include: {
                 user: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 }
             }
         });
@@ -99,14 +94,7 @@ export class CommentService {
             },
             include: {
                 user: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 }
             }
         });
@@ -141,14 +129,7 @@ export class CommentService {
             },
             include: {
                 user: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 }
             }
         });

@@ -1,8 +1,13 @@
-import { PrismaClient } from '../../generated/prisma';
+import { PrismaClient, User } from '../../generated/prisma';
 import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto';
 import * as bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { injectable, inject } from "tsyringe";
+
+interface ProfilePictureUpdate {
+    profilePicturePath: string;
+    profilePictureType: string;
+}
 
 @injectable()
 export class UserService {
@@ -14,22 +19,6 @@ export class UserService {
     constructor(
         @inject("PrismaClient") private prisma: PrismaClient
     ) {}
-
-    private generateToken(user: { id: number }) {
-        return jwt.sign(
-            { id: user.id },
-            process.env.JWT_SECRET || 'your-secret-key',
-            { expiresIn: this.JWT_EXPIRATION }
-        );
-    }
-
-    private generateRefreshToken(user: { id: number }) {
-        return jwt.sign(
-            { id: user.id },
-            process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key',
-            { expiresIn: this.REFRESH_EXPIRATION }
-        );
-    }
 
     async register(registerDto: RegisterUserDto) {
         // Check if username already exists
@@ -47,33 +36,22 @@ export class UserService {
         // Create user
         const user = await this.prisma.user.create({
             data: {
-                username: registerDto.username,
-                password: hashedPassword,
-                firstname: registerDto.firstname,
-                lastname: registerDto.lastname
+                ...registerDto,
+                password: hashedPassword
             }
         });
 
         // Generate tokens
-        const token = this.generateToken(user);
-        const refreshToken = this.generateRefreshToken(user);
+        const accessToken = this.generateAccessToken(user.id);
+        const refreshToken = this.generateRefreshToken(user.id);
 
-        // Store refresh token
-        await this.prisma.refreshToken.create({
-            data: {
-                userId: user.id,
-                token: refreshToken,
-                expiryDate: new Date(Date.now() + this.REFRESH_EXPIRATION_MS)
-            }
-        });
-
-        // Remove password from response
-        const { password, ...userWithoutPassword } = user;
-        return { user: userWithoutPassword, token, refreshToken };
+        return {
+            ...this.getUserResponseData(user, accessToken, refreshToken)
+        };
     }
 
     async login(loginDto: LoginUserDto) {
-        // Find user by username
+        // Find user
         const user = await this.prisma.user.findUnique({
             where: { username: loginDto.username }
         });
@@ -89,12 +67,14 @@ export class UserService {
         }
 
         // Generate tokens
-        const token = this.generateToken(user);
-        const refreshToken = this.generateRefreshToken(user);
+        const accessToken = this.generateAccessToken(user.id);
+        const refreshToken = this.generateRefreshToken(user.id);
 
-        // Update or create refresh token
+        // Store refresh token in database
         await this.prisma.refreshToken.upsert({
-            where: { userId: user.id },
+            where: {
+                userId: user.id
+            },
             update: {
                 token: refreshToken,
                 expiryDate: new Date(Date.now() + this.REFRESH_EXPIRATION_MS)
@@ -106,54 +86,17 @@ export class UserService {
             }
         });
 
-        // Remove password from response
-        const { password, ...userWithoutPassword } = user;
-        return { user: userWithoutPassword, token, refreshToken };
+        return {
+            id: user.id,
+            username: user.username,
+            firstname: user.firstname,
+            lastname: user.lastname,
+            accessToken,
+            refreshToken
+        };
     }
 
-    async refreshToken(userId: number, oldRefreshToken: string) {
-        // Verify old refresh token exists and matches
-        const storedToken = await this.prisma.refreshToken.findFirst({
-            where: {
-                userId,
-                token: oldRefreshToken,
-                expiryDate: {
-                    gt: new Date()
-                }
-            }
-        });
-
-        if (!storedToken) {
-            throw new Error('Invalid refresh token');
-        }
-
-        // Generate new tokens
-        const user = { id: userId };
-        const token = this.generateToken(user);
-        const refreshToken = this.generateRefreshToken(user);
-
-        // Update refresh token
-        await this.prisma.refreshToken.update({
-            where: { userId },
-            data: {
-                token: refreshToken,
-                expiryDate: new Date(Date.now() + this.REFRESH_EXPIRATION_MS)
-            }
-        });
-
-        return { token, refreshToken };
-    }
-
-    async logout(userId: number) {
-        // Delete refresh token
-        await this.prisma.refreshToken.delete({
-            where: { userId }
-        }).catch(() => {
-            // Ignore error if token doesn't exist
-        });
-    }
-
-    async changePassword(userId: number, dto: ChangePasswordDto) {
+    async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
         // Find user
         const user = await this.prisma.user.findUnique({
             where: { id: userId }
@@ -164,36 +107,22 @@ export class UserService {
         }
 
         // Verify current password
-        const isPasswordValid = await bcrypt.compare(dto.currentPassword, user.password);
+        const isPasswordValid = await bcrypt.compare(changePasswordDto.currentPassword, user.password);
         if (!isPasswordValid) {
             throw new Error('Current password is incorrect');
         }
 
-        // Check if new password is different from current
-        if (dto.currentPassword === dto.newPassword) {
-            throw new Error('New password must be different from current password');
-        }
-
         // Hash new password
-        const hashedPassword = await bcrypt.hash(dto.newPassword, this.SALT_ROUNDS);
+        const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, this.SALT_ROUNDS);
 
         // Update password
         await this.prisma.user.update({
             where: { id: userId },
             data: { password: hashedPassword }
         });
-
-        // Delete refresh tokens for security
-        await this.prisma.refreshToken.delete({
-            where: { userId }
-        }).catch(() => {
-            // Ignore error if token doesn't exist
-        });
-
-        return { message: 'Password changed successfully' };
     }
 
-    async updateProfile(userId: number, dto: UpdateProfileDto) {
+    async updateProfile(userId: number, updateProfileDto: UpdateProfileDto) {
         // Find user
         const user = await this.prisma.user.findUnique({
             where: { id: userId }
@@ -203,17 +132,126 @@ export class UserService {
             throw new Error('User not found');
         }
 
-        // Update user profile
-        const updatedUser = await this.prisma.user.update({
+        // Update profile
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: updateProfileDto
+        });
+    }
+
+    async findById(userId: number) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        return user;
+    }
+
+    async updateProfilePicture(userId: number, update: ProfilePictureUpdate) {
+        // Find user
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        // Update profile picture path
+        await this.prisma.user.update({
             where: { id: userId },
             data: {
-                firstname: dto.firstname !== undefined ? dto.firstname : user.firstname,
-                lastname: dto.lastname !== undefined ? dto.lastname : user.lastname
+                profilePicturePath: update.profilePicturePath,
+                profilePictureType: update.profilePictureType
+            }
+        });
+    }
+
+    private getUserResponseData(user: User, accessToken: string, refreshToken: string) {
+
+        return {
+            id: user.id,
+            username: user.username,
+            firstname: user.firstname,
+            lastname: user.lastname,
+            profilePicturePath: user.profilePicturePath,
+            profilePictureType: user.profilePictureType,
+            accessToken,
+            refreshToken
+        };
+    }
+
+    private generateAccessToken(userId: number): string {
+        return jwt.sign(
+            { userId },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: this.JWT_EXPIRATION }
+        );
+    }
+
+    private generateRefreshToken(userId: number): string {
+        return jwt.sign(
+            { userId },
+            process.env.REFRESH_TOKEN_SECRET || 'your-refresh-secret-key',
+            { expiresIn: this.REFRESH_EXPIRATION }
+        );
+    }
+
+    async logout(userId: number): Promise<void> {
+        // Delete the refresh token for this user
+        await this.prisma.refreshToken.deleteMany({
+            where: {
+                userId: userId
+            }
+        });
+    }
+
+    async refreshToken(userId: number, refreshToken: string) {
+        // Find the refresh token in the database
+        const storedToken = await this.prisma.refreshToken.findFirst({
+            where: {
+                userId: userId,
+                token: refreshToken
             }
         });
 
-        // Remove password from response
-        const { password, ...userWithoutPassword } = updatedUser;
-        return { user: userWithoutPassword };
+        if (!storedToken) {
+            throw new Error('Invalid refresh token');
+        }
+
+        // Check if the token has expired
+        if (new Date() > storedToken.expiryDate) {
+            // Delete the expired token
+            await this.prisma.refreshToken.delete({
+                where: {
+                    id: storedToken.id
+                }
+            });
+            throw new Error('Refresh token has expired');
+        }
+
+        // Generate new tokens
+        const newAccessToken = this.generateAccessToken(userId);
+        const newRefreshToken = this.generateRefreshToken(userId);
+
+        // Update the refresh token in the database
+        await this.prisma.refreshToken.update({
+            where: {
+                id: storedToken.id
+            },
+            data: {
+                token: newRefreshToken,
+                expiryDate: new Date(Date.now() + this.REFRESH_EXPIRATION_MS)
+            }
+        });
+
+        return {
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken
+        };
     }
 } 
