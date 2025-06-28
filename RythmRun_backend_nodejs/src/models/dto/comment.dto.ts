@@ -19,7 +19,7 @@ export class CommentResponseDto {
         username: string;
         firstname?: string;
         lastname?: string;
-        profilePicture?: Buffer;
+        profilePicturePath?: string;
         profilePictureType?: string;
     };
 } 
