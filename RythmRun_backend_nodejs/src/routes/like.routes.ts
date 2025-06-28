@@ -3,7 +3,7 @@ import { container } from '../config/container';
 import { LikeController } from '../controllers/like.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 const likeController = container.resolve(LikeController);
 
 /**
@@ -14,7 +14,7 @@ const likeController = container.resolve(LikeController);
  * @param {number} activityId - Activity ID
  * @returns {Object} Like status and count
  */
-router.get('/:activityId', authMiddleware, likeController.getLikeStatus);
+router.get('/', authMiddleware, likeController.getLikeStatus);
 
 /**
  * @route POST /api/activities/:activityId/likes
@@ -23,7 +23,7 @@ router.get('/:activityId', authMiddleware, likeController.getLikeStatus);
  * @param {number} activityId - Activity ID
  * @returns {Object} Updated like status
  */
-router.post('/:activityId', authMiddleware, likeController.likeActivity);
+router.post('/', authMiddleware, likeController.likeActivity);
 
 /**
  * @route DELETE /api/activities/:activityId/likes
@@ -32,6 +32,6 @@ router.post('/:activityId', authMiddleware, likeController.likeActivity);
  * @param {number} activityId - Activity ID
  * @returns {Object} Updated like status
  */
-router.delete('/:activityId', authMiddleware, likeController.unlikeActivity);
+router.delete('/', authMiddleware, likeController.unlikeActivity);
 
 export default router; 

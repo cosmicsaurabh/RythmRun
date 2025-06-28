@@ -22,10 +22,14 @@ app.use(helmet());
 
 // Routes
 app.use('/api/users', userRoutes);
-app.use('/api/activities', activityRoutes);
-app.use('/api/activities/:activityId/comments', commentRoutes);
-app.use('/api/activities/:activityId/likes', likeRoutes);
 app.use('/api/friends', friendRoutes);
+
+// Activity routes with nested resources
+const activityRouter = express.Router();
+activityRouter.use('/', activityRoutes);
+activityRouter.use('/:activityId/comments', commentRoutes);
+activityRouter.use('/:activityId/likes', likeRoutes);
+app.use('/api/activities', activityRouter);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

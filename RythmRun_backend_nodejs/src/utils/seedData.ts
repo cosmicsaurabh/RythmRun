@@ -16,7 +16,7 @@ async function main() {
   // Create users
   const user1 = await prisma.user.create({
     data: {
-      username: 'john_runner',
+      username: 'john.runner@example.com',
       password: await bcrypt.hash('password123', 10),
       firstname: 'John',
       lastname: 'Doe'
@@ -25,7 +25,7 @@ async function main() {
 
   const user2 = await prisma.user.create({
     data: {
-      username: 'sarah_fitness',
+      username: 'sarah.fitness@example.com',
       password: await bcrypt.hash('password123', 10),
       firstname: 'Sarah',
       lastname: 'Smith'

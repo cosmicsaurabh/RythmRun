@@ -3,7 +3,7 @@ import { container } from '../config/container';
 import { CommentController } from '../controllers/comment.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 const commentController = container.resolve(CommentController);
 
 /**
@@ -14,7 +14,7 @@ const commentController = container.resolve(CommentController);
  * @param {number} activityId - Activity ID
  * @returns {Object[]} List of comments with user info
  */
-router.get('/:activityId', authMiddleware, commentController.getComments);
+router.get('/', authMiddleware, commentController.getComments);
 
 /**
  * @route GET /api/activities/:activityId/comments/:commentId
@@ -24,7 +24,7 @@ router.get('/:activityId', authMiddleware, commentController.getComments);
  * @param {number} commentId - Comment ID
  * @returns {Object} Comment details with user info
  */
-router.get('/:activityId/:commentId', authMiddleware, commentController.getComment);
+router.get('/:commentId', authMiddleware, commentController.getComment);
 
 /**
  * @route POST /api/activities/:activityId/comments
@@ -34,7 +34,7 @@ router.get('/:activityId/:commentId', authMiddleware, commentController.getComme
  * @body {CreateCommentDto} Comment data
  * @returns {Object} Created comment data
  */
-router.post('/:activityId', authMiddleware, commentController.createComment);
+router.post('/', authMiddleware, commentController.createComment);
 
 /**
  * @route PATCH /api/activities/:activityId/comments/:commentId
@@ -45,7 +45,7 @@ router.post('/:activityId', authMiddleware, commentController.createComment);
  * @body {CreateCommentDto} Updated comment data
  * @returns {Object} Updated comment data
  */
-router.patch('/:activityId/:commentId', authMiddleware, commentController.updateComment);
+router.patch('/:commentId', authMiddleware, commentController.updateComment);
 
 /**
  * @route DELETE /api/activities/:activityId/comments/:commentId
@@ -55,6 +55,6 @@ router.patch('/:activityId/:commentId', authMiddleware, commentController.update
  * @param {number} commentId - Comment ID
  * @returns {Object} Success message
  */
-router.delete('/:activityId/:commentId', authMiddleware, commentController.deleteComment);
+router.delete('/:commentId', authMiddleware, commentController.deleteComment);
 
 export default router; 
