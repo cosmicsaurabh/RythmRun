@@ -8,6 +8,15 @@ export class FriendService {
         this.prisma = new PrismaClient();
     }
 
+    private readonly userSelect = {
+        id: true,
+        username: true,
+        firstname: true,
+        lastname: true,
+        profilePicturePath: true,
+        profilePictureType: true
+    };
+
     async sendFriendRequest(userId: number, dto: SendFriendRequestDto) {
         // Check if target user exists
         const targetUser = await this.prisma.user.findUnique({
@@ -56,24 +65,10 @@ export class FriendService {
             },
             include: {
                 user1: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 },
                 user2: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 }
             }
         });
@@ -117,24 +112,10 @@ export class FriendService {
             },
             include: {
                 user1: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 },
                 user2: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 }
             }
         });
@@ -154,24 +135,10 @@ export class FriendService {
             },
             include: {
                 user1: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 },
                 user2: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 }
             }
         });
@@ -218,14 +185,7 @@ export class FriendService {
             },
             include: {
                 user1: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 }
             },
             orderBy: {
@@ -253,24 +213,10 @@ export class FriendService {
             },
             include: {
                 user1: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 },
                 user2: {
-                    select: {
-                        id: true,
-                        username: true,
-                        firstname: true,
-                        lastname: true,
-                        profilePicture: true,
-                        profilePictureType: true
-                    }
+                    select: this.userSelect
                 }
             }
         });
