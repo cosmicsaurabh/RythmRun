@@ -233,7 +233,7 @@ export class ActivityService {
                         username: true,
                         firstname: true,
                         lastname: true,
-                        profilePicture: true,
+                        profilePicturePath: true,
                         profilePictureType: true
                     }
                 },
