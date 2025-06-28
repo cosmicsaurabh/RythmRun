@@ -3,13 +3,13 @@ import { CommentService } from '../services/comment.service';
 import { CreateCommentDto } from '../models/dto/comment.dto';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
+import { injectable, inject } from "tsyringe";
 
+@injectable()
 export class CommentController {
-    private commentService: CommentService;
-
-    constructor() {
-        this.commentService = new CommentService();
-    }
+    constructor(
+        @inject("CommentService") private commentService: CommentService
+    ) {}
 
     getComments = async (req: Request, res: Response) => {
         try {

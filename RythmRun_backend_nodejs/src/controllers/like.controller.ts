@@ -1,12 +1,12 @@
 import { Request, Response } from 'express';
 import { LikeService } from '../services/like.service';
+import { injectable, inject } from "tsyringe";
 
+@injectable()
 export class LikeController {
-    private likeService: LikeService;
-
-    constructor() {
-        this.likeService = new LikeService();
-    }
+    constructor(
+        @inject("LikeService") private likeService: LikeService
+    ) {}
 
     getLikeStatus = async (req: Request, res: Response) => {
         try {

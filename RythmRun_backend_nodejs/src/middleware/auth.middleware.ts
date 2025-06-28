@@ -27,11 +27,11 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
         
         // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as {
-            id: number;
+            userId: number;
         };
 
         // Add user info to request
-        req.user = { id: decoded.id };
+        req.user = { id: decoded.userId };
         console.log(`Received ${req.method} request for: ${req.url}`);
         next();
     } catch (error) {
