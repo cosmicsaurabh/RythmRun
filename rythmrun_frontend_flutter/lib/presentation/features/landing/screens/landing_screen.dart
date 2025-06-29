@@ -43,12 +43,8 @@ class LandingScreen extends StatelessWidget {
                 // Sign In Button (placeholder)
                 ElevatedButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Login screen not implemented yet'),
-                      ),
-                    );
-                  },
+                    Navigator.pushNamed(context, '/login');
+                  },  
                   child: const Text('Sign In'),
                 ),
                 const SizedBox(height: 16),

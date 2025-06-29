@@ -299,7 +299,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                 // Login Link
                 Center(
                   child: GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
+                    onTap: () => Navigator.pushReplacementNamed(context, '/login'),
                     child: RichText(
                       text: TextSpan(
                         style: Theme.of(context).textTheme.bodyMedium,
