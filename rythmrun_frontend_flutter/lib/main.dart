@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/landing_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/login/screens/login_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/registration/screens/registration_screen.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/home/screens/home_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -24,6 +25,7 @@ class RythmRunApp extends StatelessWidget {
       routes: {
         '/registration': (context) => const RegistrationScreen(),
         '/login': (context) => const LoginScreen(),
+        '/home': (context) => const HomeScreen(),
       },
     );
   }

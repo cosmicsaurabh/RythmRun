@@ -4,6 +4,7 @@ import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/utils/validation_helper.dart';
 import '../../../widgets/password_strength_indicator.dart';
+import '../../../widgets/error_display_widget.dart';
 import '../providers/registration_provider.dart';
 
 class RegistrationScreen extends ConsumerStatefulWidget {
@@ -246,30 +247,15 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
 
                 // Error Message
                 if (registrationState.errorMessage != null)
-                  Container(
-                    padding: const EdgeInsets.all(spacingMd),
-                    decoration: BoxDecoration(
-                      color: CustomAppColors.statusDanger.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(radiusSm),
-                      border: Border.all(color: CustomAppColors.statusDanger),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          color: CustomAppColors.statusDanger,
-                          size: iconSizeSm,
-                        ),
-                        const SizedBox(width: spacingSm),
-                        Expanded(
-                          child: Text(
-                            registrationState.errorMessage!,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: CustomAppColors.statusDanger),
-                          ),
-                        ),
-                      ],
-                    ),
+                  ErrorDisplayWidget(
+                    errorMessage: registrationState.errorMessage!,
+                    onRetry: () {
+                      // Clear the error first
+                      ref.read(registrationProvider.notifier).clearError();
+                      // Then retry the registration
+                      _handleSubmit();
+                    },
+                    isRetryEnabled: !registrationState.isLoading,
                   ),
                 const SizedBox(height: spacingLg),
 
@@ -299,7 +285,8 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                 // Login Link
                 Center(
                   child: GestureDetector(
-                    onTap: () => Navigator.pushReplacementNamed(context, '/login'),
+                    onTap:
+                        () => Navigator.pushReplacementNamed(context, '/login'),
                     child: RichText(
                       text: TextSpan(
                         style: Theme.of(context).textTheme.bodyMedium,

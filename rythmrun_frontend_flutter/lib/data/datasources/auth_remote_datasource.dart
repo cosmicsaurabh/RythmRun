@@ -36,30 +36,39 @@ class AuthRemoteDataSource {
   }
 
   Future<UserModel> loginUser(String email, String password) async {
-    final response = await client.post(
-      Uri.parse('$baseUrl/users/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode({'username': email, 'password': password}),
-    );
+    try {
+      final response = await client.post(
+        Uri.parse('$baseUrl/users/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'username': email, 'password': password}),
+      );
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> jsonResponse = json.decode(response.body);
-      return UserModel.fromJson(jsonResponse); // Data is directly in response
-    } else if (response.statusCode == 401) {
-      throw Exception('Invalid credentials');
-    } else {
-      throw Exception('Login failed');
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = json.decode(response.body);
+        return UserModel.fromJson(jsonResponse); // Data is directly in response
+      } else if (response.statusCode == 401) {
+        final Map<String, dynamic> jsonResponse = json.decode(response.body);
+        throw Exception(jsonResponse['message'] ?? 'Invalid credentials');
+      } else {
+        throw Exception('Login failed');
+      }
+    } catch (e) {
+      throw Exception(e.toString());
     }
   }
 
   Future<void> logoutUser() async {
-    final response = await client.post(
-      Uri.parse('$baseUrl/users/logout'),
-      headers: {'Content-Type': 'application/json'},
-    );
+    try {
+      final response = await client.post(
+        Uri.parse('$baseUrl/users/logout'),
+        headers: {'Content-Type': 'application/json'},
+      );
 
-    if (response.statusCode != 200) {
-      throw Exception('Logout failed');
+      if (response.statusCode != 200) {
+        throw Exception('Logout failed');
+      }
+    } catch (e) {
+      throw Exception(e.toString());
     }
   }
 
