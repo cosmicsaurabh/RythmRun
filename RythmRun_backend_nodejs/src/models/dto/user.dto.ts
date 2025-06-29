@@ -26,13 +26,13 @@ export class RegisterUserDto {
 export class LoginUserDto {
     @IsString()
     @IsEmail()
-    @MinLength(3)
-    @MaxLength(255)
+    // @MinLength(3)
+    // @MaxLength(255)
     username!: string;
 
     @IsString()
-    @MinLength(8)
-    @MaxLength(50)
+    // @MinLength(8)
+    // @MaxLength(50)
     password!: string;
 }
 
