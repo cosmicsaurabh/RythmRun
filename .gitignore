@@ -6,9 +6,9 @@
 
 # ALLOWED: Requirements and documentation files
 # !nodejs-backend-requirements.md
-!nodejs-backend-requirements-detailed.md
+nodejs-backend-requirements-detailed.md
 # !flutter-frontend-requirements.md
-!flutter-frontend-requirements-detailed.md
+flutter-frontend-requirements-detailed.md
 !README.md
 
 # ALLOWED: Node.js backend directory and its contents
@@ -28,9 +28,7 @@
 # ALLOWED: This gitignore file
 !.gitignore
 
-# IGNORED: Everything else (Spring Boot backend, Flutter frontend, legacy)
-RythmRun_backend/
-RythmRun_frontend/
+
 legacy/
 node_modules/
 
