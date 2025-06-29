@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/utils/validation_helper.dart';
+import '../../../widgets/error_display_widget.dart';
 import '../providers/login_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -131,11 +132,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         Checkbox(
                           value: loginState.rememberMe,
-                          onChanged: (value) => loginNotifier.toggleRememberMe(value ?? false),
+                          onChanged:
+                              (value) => loginNotifier.toggleRememberMe(
+                                value ?? false,
+                              ),
                           activeColor: Theme.of(context).colorScheme.secondary,
                         ),
                         GestureDetector(
-                          onTap: () => loginNotifier.toggleRememberMe(!loginState.rememberMe),
+                          onTap:
+                              () => loginNotifier.toggleRememberMe(
+                                !loginState.rememberMe,
+                              ),
                           child: Text(
                             'Remember me',
                             style: Theme.of(context).textTheme.bodyMedium,
@@ -150,7 +157,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         // TODO: Navigate to forgot password screen
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Forgot password feature coming soon!'),
+                            content: Text(
+                              'Forgot password feature coming soon!',
+                            ),
                           ),
                         );
                       },
@@ -168,30 +177,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 // Error Message
                 if (loginState.errorMessage != null)
-                  Container(
-                    padding: const EdgeInsets.all(spacingMd),
-                    decoration: BoxDecoration(
-                      color: CustomAppColors.statusDanger.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(radiusSm),
-                      border: Border.all(color: CustomAppColors.statusDanger),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          color: CustomAppColors.statusDanger,
-                          size: iconSizeSm,
-                        ),
-                        const SizedBox(width: spacingSm),
-                        Expanded(
-                          child: Text(
-                            loginState.errorMessage!,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: CustomAppColors.statusDanger),
-                          ),
-                        ),
-                      ],
-                    ),
+                  ErrorDisplayWidget(
+                    errorMessage: loginState.errorMessage!,
+                    onRetry: () {
+                      // Clear the error first
+                      ref.read(loginProvider.notifier).clearError();
+                      // Then retry the login
+                      _handleSubmit();
+                    },
+                    isRetryEnabled: !loginState.isLoading,
                   ),
                 const SizedBox(height: spacingLg),
 
@@ -200,18 +194,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: loginState.isLoading ? null : _handleSubmit,
-                    child: loginState.isLoading
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Theme.of(context).colorScheme.secondary,
+                    child:
+                        loginState.isLoading
+                            ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).colorScheme.secondary,
+                                ),
                               ),
-                            ),
-                          )
-                        : const Text('Sign In'),
+                            )
+                            : const Text('Sign In'),
                   ),
                 ),
                 const SizedBox(height: spacingLg),
@@ -221,12 +216,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: GestureDetector(
                     onTap: () {
                       // Navigate to registration screen
-                      try{
-                        Navigator.of(context).pushReplacementNamed('/registration');
-                      }catch(e){
+                      try {
+                        Navigator.of(
+                          context,
+                        ).pushReplacementNamed('/registration');
+                      } catch (e) {
                         print(e);
                       }
-
                     },
                     child: RichText(
                       text: TextSpan(
@@ -271,9 +267,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: prefixIcon != null 
-          ? Icon(prefixIcon, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7))
-          : null,
+        prefixIcon:
+            prefixIcon != null
+                ? Icon(
+                  prefixIcon,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withOpacity(0.7),
+                )
+                : null,
         suffixIcon: suffixIcon,
       ),
       style: Theme.of(context).textTheme.bodyMedium,
@@ -284,57 +286,58 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusLg),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(spacingLg),
-              decoration: BoxDecoration(
-                color: CustomAppColors.statusSuccess.withOpacity(0.1),
-                shape: BoxShape.circle,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(radiusLg),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(spacingLg),
+                  decoration: BoxDecoration(
+                    color: CustomAppColors.statusSuccess.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.check_circle,
+                    color: CustomAppColors.statusSuccess,
+                    size: 48,
+                  ),
+                ),
+                const SizedBox(height: spacingLg),
+                Text(
+                  'Welcome Back!',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: spacingSm),
+                Text(
+                  'You have successfully signed in to RythmRun.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: CustomAppColors.secondaryText,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+            actions: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (Navigator.canPop(context)) {
+                      Navigator.of(context).pop(); // Close dialog
+                    }
+                    // TODO: Navigate to main app (home screen)
+                    Navigator.of(context).pushReplacementNamed('/home');
+                  },
+                  child: const Text('Continue'),
+                ),
               ),
-              child: Icon(
-                Icons.check_circle,
-                color: CustomAppColors.statusSuccess,
-                size: 48,
-              ),
-            ),
-            const SizedBox(height: spacingLg),
-            Text(
-              'Welcome Back!',
-              style: Theme.of(context).textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: spacingSm),
-            Text(
-              'You have successfully signed in to RythmRun.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: CustomAppColors.secondaryText,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                if (Navigator.canPop(context)) {
-                  Navigator.of(context).pop(); // Close dialog
-                }
-                // TODO: Navigate to main app (home screen)
-                Navigator.of(context).pushReplacementNamed('/home');
-              },
-              child: const Text('Continue'),
-            ),
+            ],
           ),
-        ],
-      ),
     );
   }
-} 
+}
