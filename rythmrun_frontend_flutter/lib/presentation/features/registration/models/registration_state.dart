@@ -82,21 +82,7 @@ class RegistrationState {
           obscureConfirmPassword == other.obscureConfirmPassword &&
           passwordStrength == other.passwordStrength;
 
-  @override
-  int get hashCode =>
-      firstName.hashCode ^
-      lastName.hashCode ^
-      email.hashCode ^
-      password.hashCode ^
-      confirmPassword.hashCode ^
-      acceptedTerms.hashCode ^
-      isLoading.hashCode ^
-      errorMessage.hashCode ^
-      isSuccess.hashCode ^
-      obscurePassword.hashCode ^
-      obscureConfirmPassword.hashCode ^
-      passwordStrength.hashCode;
-
+  
   @override
   String toString() {
     return 'RegistrationState{firstName: $firstName, lastName: $lastName, email: $email, acceptedTerms: $acceptedTerms, isLoading: $isLoading, errorMessage: $errorMessage, isSuccess: $isSuccess, passwordStrength: $passwordStrength}';

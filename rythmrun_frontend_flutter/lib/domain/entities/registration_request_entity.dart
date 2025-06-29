@@ -24,14 +24,7 @@ class RegistrationRequestEntity {
           password == other.password &&
           acceptedTerms == other.acceptedTerms;
 
-  @override
-  int get hashCode =>
-      firstName.hashCode ^
-      lastName.hashCode ^
-      email.hashCode ^
-      password.hashCode ^
-      acceptedTerms.hashCode;
-
+  
   @override
   String toString() {
     return 'RegistrationRequestEntity{firstName: $firstName, lastName: $lastName, email: $email, acceptedTerms: $acceptedTerms}';

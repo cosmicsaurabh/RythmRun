@@ -4,6 +4,7 @@ import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/usecases/register_user_usecase.dart';
+import '../../domain/usecases/login_user_usecase.dart';
 
 // HTTP Client Provider
 final httpClientProvider = Provider<http.Client>((ref) {
@@ -26,4 +27,9 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 final registerUserUsecaseProvider = Provider<RegisterUserUsecase>((ref) {
   final repository = ref.watch(authRepositoryProvider);
   return RegisterUserUsecase(repository);
+});
+
+final loginUserUsecaseProvider = Provider<LoginUserUsecase>((ref) {
+  final repository = ref.watch(authRepositoryProvider);
+  return LoginUserUsecase(repository);
 });
