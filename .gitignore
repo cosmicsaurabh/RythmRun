@@ -1,19 +1,20 @@
-# Track ONLY Node.js backend and requirements files
-# Everything else is ignored
+
 
 # Ignore all files and directories by default
 *
 
 # ALLOWED: Requirements and documentation files
 # !nodejs-backend-requirements.md
-nodejs-backend-requirements-detailed.md
+backend.md
 # !flutter-frontend-requirements.md
-flutter-frontend-requirements-detailed.md
+frontend.md
 !README.md
 
 # ALLOWED: Node.js backend directory and its contents
 !RythmRun_backend_nodejs/
 !RythmRun_backend_nodejs/**
+!rythmrun_frontend_flutter/
+!rythmrun_frontend_flutter/**
 
 # # But ignore Node.js specific files within backend
 # RythmRun_backend_nodejs/node_modules/
