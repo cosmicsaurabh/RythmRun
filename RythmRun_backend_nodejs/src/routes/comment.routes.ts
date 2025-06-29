@@ -3,7 +3,8 @@ import { container } from '../config/container';
 import { CommentController } from '../controllers/comment.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
-const router = Router({ mergeParams: true });
+// Simple router without mergeParams
+const router = Router();
 const commentController = container.resolve(CommentController);
 
 /**
