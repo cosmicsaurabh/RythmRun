@@ -3,7 +3,8 @@ import { container } from '../config/container';
 import { LikeController } from '../controllers/like.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
-const router = Router({ mergeParams: true });
+// Simple router without mergeParams
+const router = Router();
 const likeController = container.resolve(LikeController);
 
 /**
