@@ -4,29 +4,100 @@ import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/
 import 'package:rythmrun_frontend_flutter/presentation/features/login/screens/login_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/registration/screens/registration_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/home/screens/home_screen.dart';
+import 'package:rythmrun_frontend_flutter/presentation/providers/session_provider.dart';
 import 'theme/app_theme.dart';
 
 void main() {
   runApp(const ProviderScope(child: RythmRunApp()));
 }
 
-class RythmRunApp extends StatelessWidget {
+class RythmRunApp extends ConsumerWidget {
   const RythmRunApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
       title: 'RythmRun',
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: ThemeMode.system,
-      home: const LandingScreen(),
+      home: const AuthWrapper(),
       routes: {
         '/registration': (context) => const RegistrationScreen(),
         '/login': (context) => const LoginScreen(),
         '/home': (context) => const HomeScreen(),
+        '/landing': (context) => const LandingScreen(),
       },
+    );
+  }
+}
+
+/// Wrapper widget that handles authentication state
+class AuthWrapper extends ConsumerWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sessionData = ref.watch(sessionProvider);
+
+    switch (sessionData.state) {
+      case SessionState.initial:
+      case SessionState.checking:
+      case SessionState.refreshing:
+        return const SplashScreen();
+
+      case SessionState.authenticated:
+        return const HomeScreen();
+
+      case SessionState.unauthenticated:
+        return const LandingScreen();
+    }
+  }
+}
+
+/// Simple splash screen shown while checking authentication
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // App logo or icon
+            Icon(
+              Icons.fitness_center,
+              size: 80,
+              color: Theme.of(context).primaryColor,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'RythmRun',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+            const SizedBox(height: 48),
+            // Loading indicator
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).primaryColor,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Loading...',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

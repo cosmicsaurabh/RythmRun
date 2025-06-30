@@ -330,8 +330,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     if (Navigator.canPop(context)) {
                       Navigator.of(context).pop(); // Close dialog
                     }
-                    // TODO: Navigate to main app (home screen)
-                    Navigator.of(context).pushReplacementNamed('/home');
+                    // Navigation will happen automatically via session provider
                   },
                   child: const Text('Continue'),
                 ),

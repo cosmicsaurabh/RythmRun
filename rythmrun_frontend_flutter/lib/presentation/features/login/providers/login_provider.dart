@@ -3,25 +3,22 @@ import '../../../../core/di/injection_container.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../domain/entities/login_request_entity.dart';
 import '../../../../domain/usecases/login_user_usecase.dart';
+import '../../../providers/session_provider.dart';
 import '../models/login_state.dart';
 
 class LoginNotifier extends StateNotifier<LoginState> {
   final LoginUserUsecase _loginUserUsecase;
+  final Ref _ref;
 
-  LoginNotifier(this._loginUserUsecase)
-    : super(const LoginState());
+  LoginNotifier(this._loginUserUsecase, this._ref) : super(const LoginState());
 
   void updateEmail(String email) {
     state = state.copyWith(email: email, errorMessage: null);
   }
 
   void updatePassword(String password) {
-    state = state.copyWith(
-      password: password,
-      errorMessage: null,
-    );
+    state = state.copyWith(password: password, errorMessage: null);
   }
-
 
   void toggleRememberMe(bool rememberMe) {
     state = state.copyWith(rememberMe: rememberMe, errorMessage: null);
@@ -48,7 +45,11 @@ class LoginNotifier extends StateNotifier<LoginState> {
     );
 
     try {
-      await _loginUserUsecase(request);
+      final user = await _loginUserUsecase(request);
+
+      // Notify session provider about successful login
+      _ref.read(sessionProvider.notifier).onLoginSuccess(user);
+
       state = state.copyWith(
         isLoading: false,
         isSuccess: true,
@@ -57,14 +58,13 @@ class LoginNotifier extends StateNotifier<LoginState> {
     } catch (e) {
       // Use centralized error handler for all error formatting
       String errorMessage = ErrorHandler.getErrorMessage(e);
-      
+
       state = state.copyWith(isLoading: false, errorMessage: errorMessage);
     }
   }
 }
 
-final loginProvider =
-    StateNotifierProvider<LoginNotifier, LoginState>((ref) {
-      final loginUserUsecase = ref.watch(loginUserUsecaseProvider);
-      return LoginNotifier(loginUserUsecase);
-    });
+final loginProvider = StateNotifierProvider<LoginNotifier, LoginState>((ref) {
+  final loginUserUsecase = ref.watch(loginUserUsecaseProvider);
+  return LoginNotifier(loginUserUsecase, ref);
+});
