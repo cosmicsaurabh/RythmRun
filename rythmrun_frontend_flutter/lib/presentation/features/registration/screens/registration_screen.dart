@@ -49,6 +49,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
             'Please accept the terms and conditions',
             style: TextStyle(color: CustomAppColors.white),
           ),
+          behavior: SnackBarBehavior.floating,
         ),
       );
       return;
