@@ -4,6 +4,7 @@ import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/models/app_settings.dart';
 import '../../../providers/settings_provider.dart';
+import '../providers/change_password_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -84,7 +85,7 @@ class SettingsScreen extends ConsumerWidget {
                 'Change Password',
                 'Update your account password',
                 Icons.lock,
-                () => _showChangePasswordDialog(context),
+                () => _showChangePasswordDialog(context, ref),
               ),
             ]),
             const SizedBox(height: spacingLg),
@@ -345,64 +346,145 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showChangePasswordDialog(BuildContext context) {
+  void _showChangePasswordDialog(BuildContext context, WidgetRef ref) {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
 
+    // Reset provider state when dialog opens
+    ref.read(changePasswordProvider.notifier).reset();
+
     showDialog(
       context: context,
+      barrierDismissible: false, // Prevent dismissing during loading
       builder:
-          (context) => AlertDialog(
-            title: const Text('Change Password'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: currentPasswordController,
-                  decoration: InputDecoration(
-                    labelText: 'Current Password',
-                    prefixIcon: Icon(
-                      Icons.lock_outline,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  obscureText: true,
-                ),
-                const SizedBox(height: spacingLg),
-                TextField(
-                  controller: newPasswordController,
-                  decoration: InputDecoration(
-                    labelText: 'New Password',
-                    prefixIcon: Icon(
-                      Icons.lock,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  obscureText: true,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text(
-                        'Password change feature coming soon!',
+          (context) => Consumer(
+            builder: (context, ref, child) {
+              final state = ref.watch(changePasswordProvider);
+
+              return AlertDialog(
+                title: const Text('Change Password'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Error display
+                    if (state.errorMessage != null)
+                      Container(
+                        padding: const EdgeInsets.all(spacingSm),
+                        margin: const EdgeInsets.only(bottom: spacingLg),
+                        decoration: BoxDecoration(
+                          color: CustomAppColors.statusError.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(radiusSm),
+                          border: Border.all(
+                            color: CustomAppColors.statusError,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              color: CustomAppColors.statusError,
+                            ),
+                            const SizedBox(width: spacingSm),
+                            Expanded(
+                              child: Text(
+                                state.errorMessage!,
+                                style: TextStyle(
+                                  color: CustomAppColors.statusError,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      backgroundColor: CustomAppColors.statusInfo,
-                      behavior: SnackBarBehavior.floating,
+
+                    // Current Password field
+                    TextField(
+                      controller: currentPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'Current Password',
+                        prefixIcon: Icon(
+                          Icons.lock_outline,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      obscureText: true,
+                      enabled: !state.isLoading,
                     ),
-                  );
-                },
-                child: const Text('Change'),
-              ),
-            ],
+                    const SizedBox(height: spacingLg),
+
+                    // New Password field
+                    TextField(
+                      controller: newPasswordController,
+                      decoration: InputDecoration(
+                        labelText: 'New Password',
+                        prefixIcon: Icon(
+                          Icons.lock,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      obscureText: true,
+                      enabled: !state.isLoading,
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed:
+                        state.isLoading
+                            ? null
+                            : () {
+                              ref.read(changePasswordProvider.notifier).reset();
+                              Navigator.pop(context);
+                            },
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed:
+                        state.isLoading
+                            ? null
+                            : () async {
+                              final currentPassword =
+                                  currentPasswordController.text;
+                              final newPassword = newPasswordController.text;
+
+                              final successMessage = await ref
+                                  .read(changePasswordProvider.notifier)
+                                  .changePassword(currentPassword, newPassword);
+
+                              if (successMessage != null) {
+                                // Success - close dialog and show success snackbar
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(successMessage),
+                                    backgroundColor:
+                                        CustomAppColors.statusSuccess,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                                ref
+                                    .read(changePasswordProvider.notifier)
+                                    .reset();
+                              }
+                              // Errors are displayed in the dialog automatically
+                            },
+                    child:
+                        state.isLoading
+                            ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).colorScheme.onPrimary,
+                                ),
+                              ),
+                            )
+                            : const Text('Change'),
+                  ),
+                ],
+              );
+            },
           ),
     );
   }

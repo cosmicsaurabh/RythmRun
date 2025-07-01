@@ -1,5 +1,7 @@
 import 'dart:developer';
 
+import 'package:rythmrun_frontend_flutter/data/models/change_password_response_model.dart';
+
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/entities/login_request_entity.dart';
@@ -73,6 +75,29 @@ class AuthRepositoryImpl implements AuthRepository {
     } finally {
       // 3. Always clear local data
       await _localDataSource.clearAuthData();
+    }
+  }
+
+  @override
+  Future<ChangePasswordResponseModel> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    try {
+      // Get auth headers for the request
+      final authHeaders = await _localDataSource.getAuthHeaders();
+      if (authHeaders == null) {
+        throw Exception('Not authenticated');
+      }
+
+      final response = await _remoteDataSource.changePassword(
+        currentPassword,
+        newPassword,
+        authHeaders,
+      );
+      return response;
+    } catch (e) {
+      rethrow;
     }
   }
 

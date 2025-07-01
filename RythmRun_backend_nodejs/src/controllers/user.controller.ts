@@ -91,11 +91,16 @@ export class UserController {
 
     changePassword = async (req: Request, res: Response) => {
         try {
-            const userId = (req as any).user.userId;
+            const userId = req.user!.id;
             const changePasswordDto = await validateDto(ChangePasswordDto, req.body);
             await this.userService.changePassword(userId, changePasswordDto);
-            res.status(200).json({ message: 'Password changed successfully' });
+            res.status(200).json({ 
+                message: 'Password changed successfully',
+                statusCode: 200,
+                timestamp: new Date().toISOString()
+            });
         } catch (error: any) {
+            console.error('Password change error:', error);
             res.status(400).json({
                 error: 'PASSWORD_CHANGE_FAILED',
                 message: error.message,
@@ -107,7 +112,7 @@ export class UserController {
 
     updateProfile = async (req: Request, res: Response) => {
         try {
-            const userId = (req as any).user.userId;
+            const userId = req.user!.id;
             const updateProfileDto = await validateDto(UpdateProfileDto, req.body);
             await this.userService.updateProfile(userId, updateProfileDto);
             res.status(200).json({ message: 'Profile updated successfully' });
@@ -123,7 +128,7 @@ export class UserController {
 
     uploadProfilePicture = async (req: Request, res: Response) => {
         try {
-            const userId = (req as any).user.userId;
+            const userId = req.user!.id;
             if (!req.file) {
                 return res.status(400).json({
                     error: 'FILE_REQUIRED',

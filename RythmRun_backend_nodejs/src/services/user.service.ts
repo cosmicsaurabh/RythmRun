@@ -98,12 +98,14 @@ export class UserService {
         });
 
         if (!user) {
+            console.error('User not found');
             throw new Error('User not found');
         }
 
         // Verify current password
         const isPasswordValid = await bcrypt.compare(changePasswordDto.currentPassword, user.password);
         if (!isPasswordValid) {
+            console.error('Current password is incorrect');
             throw new Error('Current password is incorrect');
         }
 
