@@ -1,3 +1,5 @@
+import 'package:rythmrun_frontend_flutter/data/models/change_password_response_model.dart';
+
 import '../entities/user_entity.dart';
 import '../entities/login_request_entity.dart';
 import '../entities/registration_request_entity.dart';
@@ -13,6 +15,12 @@ abstract class AuthRepository {
 
   /// Logout current user
   Future<void> logout();
+
+  /// Change password
+  Future<ChangePasswordResponseModel> changePassword(
+    String currentPassword,
+    String newPassword,
+  );
 
   /// Refresh access token using refresh token
   Future<UserEntity> refreshToken();

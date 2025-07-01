@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:rythmrun_frontend_flutter/data/models/change_password_response_model.dart';
+
 import '../../core/config/app_config.dart';
 import '../../core/config/api_endpoints.dart';
 import '../../core/network/http_client.dart';
@@ -75,6 +77,33 @@ class AuthRemoteDataSource {
 
       final Map<String, dynamic> jsonResponse = json.decode(response.body);
       return AuthResponseModel.fromJson(jsonResponse);
+    } catch (e) {
+      throw Exception(e.toString());
+    }
+  }
+
+  Future<ChangePasswordResponseModel> changePassword(
+    String currentPassword,
+    String newPassword,
+    Map<String, String> authHeaders,
+  ) async {
+    try {
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      };
+
+      final response = await _httpClient.put(
+        AppConfig.getUrl(ApiEndpoints.changePassword),
+        headers: headers,
+        body: json.encode({
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+        }),
+      );
+
+      final Map<String, dynamic> jsonResponse = json.decode(response.body);
+      return ChangePasswordResponseModel.fromJson(jsonResponse);
     } catch (e) {
       throw Exception(e.toString());
     }

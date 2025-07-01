@@ -8,6 +8,7 @@ import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/settings_repository.dart';
 import '../../domain/usecases/login_user_usecase.dart';
 import '../../domain/usecases/register_user_usecase.dart';
+import '../../domain/usecases/change_password_usecase.dart';
 
 // HTTP Client Provider
 final httpClientProvider = Provider<AppHttpClient>((ref) {
@@ -44,4 +45,9 @@ final loginUserUsecaseProvider = Provider<LoginUserUsecase>((ref) {
 final registerUserUsecaseProvider = Provider<RegisterUserUsecase>((ref) {
   final repository = ref.watch(authRepositoryProvider);
   return RegisterUserUsecase(repository);
+});
+
+final changePasswordUsecaseProvider = Provider<ChangePasswordUsecase>((ref) {
+  final repository = ref.watch(authRepositoryProvider);
+  return ChangePasswordUsecase(repository);
 });

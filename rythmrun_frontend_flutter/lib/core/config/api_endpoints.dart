@@ -6,4 +6,5 @@ class ApiEndpoints {
   static const String logout = '/users/logout';
   static const String refreshToken = '/users/refresh-token';
   static const String profile = '/users/profile';
+  static const String changePassword = '/users/change-password';
 }
