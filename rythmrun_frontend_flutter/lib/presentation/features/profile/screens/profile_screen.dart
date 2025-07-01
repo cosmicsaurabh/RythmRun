@@ -6,41 +6,143 @@ import '../../../providers/session_provider.dart';
 import '../../../widgets/profile_stat_card.dart';
 import '../../../widgets/profile_menu_item.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with TickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+      ),
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.2, 1.0, curve: Curves.elasticOut),
+      ),
+    );
+
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final sessionData = ref.watch(sessionProvider);
     final user = sessionData.user;
 
     return Scaffold(
-      body: SafeArea(
-        child:
-            user == null
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                  padding: const EdgeInsets.all(spacingLg),
-                  child: Column(
-                    children: [
-                      // Profile Header
-                      _buildProfileHeader(context, user),
-                      const SizedBox(height: spacing2xl),
+      body:
+          user == null
+              ? const Center(child: CircularProgressIndicator())
+              : AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          CustomAppColors.primary.withOpacity(0.1),
+                          CustomAppColors.secondary.withOpacity(0.05),
+                          Theme.of(context).scaffoldBackgroundColor,
+                        ],
+                        stops: const [0.0, 0.3, 1.0],
+                      ),
+                    ),
+                    child: SafeArea(
+                      child: FadeTransition(
+                        opacity: _fadeAnimation,
+                        child: SlideTransition(
+                          position: _slideAnimation,
+                          child: CustomScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            slivers: [
+                              // Custom App Bar
+                              SliverAppBar(
+                                expandedHeight: 280,
+                                floating: false,
+                                pinned: false,
+                                backgroundColor: Colors.transparent,
+                                elevation: 0,
+                                flexibleSpace: FlexibleSpaceBar(
+                                  background: _buildProfileHeader(
+                                    context,
+                                    user,
+                                  ),
+                                ),
+                              ),
 
-                      // Statistics Cards
-                      _buildStatsSection(context),
-                      const SizedBox(height: spacing2xl),
+                              // Content
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  spacingLg,
+                                  0,
+                                  spacingLg,
+                                  spacingLg,
+                                ),
+                                sliver: SliverList(
+                                  delegate: SliverChildListDelegate([
+                                    const SizedBox(height: spacingLg),
 
-                      // Menu Section
-                      _buildMenuSection(context, ref),
-                      const SizedBox(height: spacingLg),
+                                    // Achievement Banner
+                                    _buildAchievementBanner(context),
+                                    const SizedBox(height: spacing2xl),
 
-                      // Logout Button
-                      _buildLogoutSection(context, ref),
-                    ],
-                  ),
-                ),
-      ),
+                                    // Statistics Cards
+                                    _buildStatsSection(context),
+                                    const SizedBox(height: spacing2xl),
+
+                                    // Quick Actions
+                                    _buildQuickActions(context),
+                                    const SizedBox(height: spacing2xl),
+
+                                    // Menu Section
+                                    _buildMenuSection(context, ref),
+                                    const SizedBox(height: spacingLg),
+
+                                    // Logout Button
+                                    _buildLogoutSection(context, ref),
+                                    const SizedBox(height: spacing2xl),
+                                  ]),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
     );
   }
 
@@ -52,62 +154,192 @@ class ProfileScreen extends ConsumerWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Theme.of(context).colorScheme.primary,
-            Theme.of(context).colorScheme.secondary,
+            CustomAppColors.primary,
+            CustomAppColors.secondary,
+            CustomAppColors.accent.withOpacity(0.8),
           ],
         ),
-        borderRadius: BorderRadius.circular(radiusXl),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(radiusXl * 2),
+          bottomRight: Radius.circular(radiusXl * 2),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+            color: CustomAppColors.primary.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Profile Picture
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: CustomAppColors.white, width: 4),
-              color: CustomAppColors.white.withOpacity(0.2),
+          // Profile Picture with Glow Effect
+          Hero(
+            tag: 'profile-avatar',
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: CustomAppColors.white, width: 4),
+                boxShadow: [
+                  BoxShadow(
+                    color: CustomAppColors.white.withOpacity(0.3),
+                    blurRadius: 20,
+                    spreadRadius: 5,
+                  ),
+                ],
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    CustomAppColors.white.withOpacity(0.3),
+                    CustomAppColors.white.withOpacity(0.1),
+                  ],
+                ),
+              ),
+              child: const Icon(
+                Icons.person,
+                size: 60,
+                color: CustomAppColors.white,
+              ),
             ),
-            child: Icon(Icons.person, size: 50, color: CustomAppColors.white),
           ),
           const SizedBox(height: spacingLg),
 
-          // User Name
+          // User Name with Shadow
           Text(
             '${user.firstName} ${user.lastName}',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
               color: CustomAppColors.white,
               fontWeight: FontWeight.bold,
+              shadows: [
+                const Shadow(
+                  color: Colors.black26,
+                  offset: Offset(0, 2),
+                  blurRadius: 4,
+                ),
+              ],
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: spacingSm),
 
-          // Email
-          Text(
-            user.email,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: CustomAppColors.white.withOpacity(0.9),
-            ),
-            textAlign: TextAlign.center,
+          // Email with Icon
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.email_outlined,
+                color: CustomAppColors.white,
+                size: 16,
+              ),
+              const SizedBox(width: spacingSm),
+              Text(
+                user.email,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: CustomAppColors.white.withOpacity(0.9),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
           const SizedBox(height: spacingSm),
 
-          // Member Since
-          Text(
-            'Member since ${_formatDate(user.createdAt)}',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: CustomAppColors.white.withOpacity(0.8),
+          // Member Since with Badge
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: spacingLg,
+              vertical: spacingSm,
             ),
-            textAlign: TextAlign.center,
+            decoration: BoxDecoration(
+              color: CustomAppColors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(radiusXl),
+              border: Border.all(
+                color: CustomAppColors.white.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.calendar_today,
+                  color: CustomAppColors.white,
+                  size: 14,
+                ),
+                const SizedBox(width: spacingSm),
+                Text(
+                  'Member since ${_formatDate(user.createdAt)}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: CustomAppColors.white.withOpacity(0.9),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAchievementBanner(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(spacingLg),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            CustomAppColors.statusSuccess.withOpacity(0.1),
+            CustomAppColors.statusInfo.withOpacity(0.1),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(radiusLg),
+        border: Border.all(
+          color: CustomAppColors.statusSuccess.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(spacingSm),
+            decoration: BoxDecoration(
+              color: CustomAppColors.statusSuccess.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(radiusSm),
+            ),
+            child: const Icon(
+              Icons.emoji_events,
+              color: CustomAppColors.statusSuccess,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: spacingLg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Weekly Goal Achieved! 🎉',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: CustomAppColors.statusSuccess,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'You\'ve completed 5 workouts this week',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.color?.withOpacity(0.7),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -118,31 +350,92 @@ class ProfileScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Your Stats',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: spacingLg),
         Row(
           children: [
-            Expanded(
-              child: ProfileStatCard(
-                title: 'Activities',
-                value: '12',
-                icon: Icons.directions_run,
-                color: CustomAppColors.statusSuccess,
+            Container(
+              width: 4,
+              height: 24,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [CustomAppColors.primary, CustomAppColors.secondary],
+                ),
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const SizedBox(width: spacingLg),
-            Expanded(
-              child: ProfileStatCard(
-                title: 'Distance',
-                value: '45.2 km',
-                icon: Icons.route,
-                color: CustomAppColors.primary,
+            const SizedBox(width: spacingSm),
+            Text(
+              'Your Stats',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: spacingLg),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: spacingLg,
+          mainAxisSpacing: spacingLg,
+          childAspectRatio: 1.28,
+          children: [
+            ProfileStatCard(
+              title: 'Activities',
+              value: '12',
+              icon: Icons.directions_run,
+              color: CustomAppColors.statusSuccess,
+            ),
+            ProfileStatCard(
+              title: 'Distance',
+              value: '45.2 km',
+              icon: Icons.route,
+              color: CustomAppColors.primary,
+            ),
+            ProfileStatCard(
+              title: 'Time',
+              value: '8h 23m',
+              icon: Icons.timer,
+              color: CustomAppColors.secondary,
+            ),
+            ProfileStatCard(
+              title: 'Friends',
+              value: '24',
+              icon: Icons.people,
+              color: CustomAppColors.accent,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActions(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 4,
+              height: 24,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [CustomAppColors.accent, CustomAppColors.primary],
+                ),
+                borderRadius: BorderRadius.circular(2),
               ),
+            ),
+            const SizedBox(width: spacingSm),
+            Text(
+              'Quick Actions',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -150,20 +443,22 @@ class ProfileScreen extends ConsumerWidget {
         Row(
           children: [
             Expanded(
-              child: ProfileStatCard(
-                title: 'Time',
-                value: '8h 23m',
-                icon: Icons.timer,
-                color: CustomAppColors.secondary,
+              child: _buildQuickActionCard(
+                context,
+                'Share Profile',
+                Icons.share,
+                CustomAppColors.statusInfo,
+                () => _shareProfile(context),
               ),
             ),
             const SizedBox(width: spacingLg),
             Expanded(
-              child: ProfileStatCard(
-                title: 'Friends',
-                value: '24',
-                icon: Icons.people,
-                color: CustomAppColors.accent,
+              child: _buildQuickActionCard(
+                context,
+                'Export Data',
+                Icons.download,
+                CustomAppColors.secondary,
+                () => _exportData(context),
               ),
             ),
           ],
@@ -172,15 +467,77 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  Widget _buildQuickActionCard(
+    BuildContext context,
+    String title,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(radiusLg),
+        child: Container(
+          padding: const EdgeInsets.all(spacingLg),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(radiusLg),
+            border: Border.all(color: color.withOpacity(0.3), width: 1),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(spacingSm),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(radiusSm),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: spacingSm),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMenuSection(BuildContext context, WidgetRef ref) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Settings',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+        Row(
+          children: [
+            Container(
+              width: 4,
+              height: 24,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [CustomAppColors.secondary, CustomAppColors.accent],
+                ),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: spacingSm),
+            Text(
+              'Settings',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
         const SizedBox(height: spacingLg),
         Container(
@@ -190,8 +547,8 @@ class ProfileScreen extends ConsumerWidget {
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -239,18 +596,48 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   Widget _buildLogoutSection(BuildContext context, WidgetRef ref) {
-    return SizedBox(
+    return Container(
       width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () => _logout(context, ref),
-        icon: const Icon(Icons.logout),
-        label: const Text('Logout'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: CustomAppColors.statusError,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: spacingLg),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusLg),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            CustomAppColors.statusError,
+            CustomAppColors.statusError.withOpacity(0.8),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(radiusLg),
+        boxShadow: [
+          BoxShadow(
+            color: CustomAppColors.statusError.withOpacity(0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _logout(context, ref),
+          borderRadius: BorderRadius.circular(radiusLg),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: spacingLg),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.logout, color: CustomAppColors.white),
+                SizedBox(width: spacingSm),
+                Text(
+                  'Logout',
+                  style: TextStyle(
+                    color: CustomAppColors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -278,42 +665,62 @@ class ProfileScreen extends ConsumerWidget {
     return '${months[date.month - 1]} ${date.year}';
   }
 
+  void _shareProfile(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Profile sharing - Coming Soon!'),
+        backgroundColor: CustomAppColors.statusInfo,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _exportData(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Data export - Coming Soon!'),
+        backgroundColor: CustomAppColors.secondary,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   void _editProfile(BuildContext context) {
-    // TODO: Navigate to edit profile screen
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Edit Profile - Coming Soon!'),
         backgroundColor: CustomAppColors.statusError,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
   void _openNotifications(BuildContext context) {
-    // TODO: Navigate to notifications settings
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Notifications Settings - Coming Soon!'),
         backgroundColor: CustomAppColors.statusError,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
   void _openPrivacySettings(BuildContext context) {
-    // TODO: Navigate to privacy settings
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Privacy Settings - Coming Soon!'),
         backgroundColor: CustomAppColors.statusError,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
   void _openHelp(BuildContext context) {
-    // TODO: Navigate to help screen
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Help & Support - Coming Soon!'),
         backgroundColor: CustomAppColors.statusError,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -323,22 +730,39 @@ class ProfileScreen extends ConsumerWidget {
       context: context,
       applicationName: 'RythmRun',
       applicationVersion: '1.0.0',
-      applicationIcon: const Icon(Icons.fitness_center, size: 40),
+      applicationIcon: Container(
+        padding: const EdgeInsets.all(spacingSm),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [CustomAppColors.primary, CustomAppColors.secondary],
+          ),
+          borderRadius: BorderRadius.circular(radiusSm),
+        ),
+        child: const Icon(
+          Icons.fitness_center,
+          size: 40,
+          color: CustomAppColors.white,
+        ),
+      ),
       children: [
         const Text(
           'Your fitness companion for tracking workouts and connecting with friends.',
         ),
       ],
-      barrierDismissible: true,
-      barrierColor: CustomAppColors.black.withOpacity(0.5),
     );
   }
 
   void _logout(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder:
           (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(radiusLg),
+            ),
             title: const Text('Logout'),
             content: const Text('Are you sure you want to logout?'),
             actions: [

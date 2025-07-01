@@ -171,6 +171,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             content: Text(
                               'Forgot password feature coming soon!',
                             ),
+                            backgroundColor: CustomAppColors.statusInfo,
+                            behavior: SnackBarBehavior.floating,
                           ),
                         );
                       },
@@ -302,6 +304,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             color: CustomAppColors.statusSuccess,
           ),
         ),
+        behavior: SnackBarBehavior.floating,
         backgroundColor: CustomAppColors.statusSuccess.withOpacity(0.1),
       ),
     );
