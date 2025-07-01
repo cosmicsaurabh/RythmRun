@@ -1,8 +1,9 @@
+import 'dart:developer';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/services/auth_persistence_service.dart';
-import '../../core/di/injection_container.dart';
+import '../../domain/repositories/auth_repository.dart';
 import '../../domain/entities/user_entity.dart';
-import '../../data/datasources/auth_remote_datasource.dart';
+import '../../core/di/injection_container.dart';
 
 enum SessionState {
   initial,
@@ -33,9 +34,9 @@ class SessionData {
 }
 
 class SessionNotifier extends StateNotifier<SessionData> {
-  final AuthRemoteDataSource _authDataSource;
+  final AuthRepository _authRepository;
 
-  SessionNotifier(this._authDataSource)
+  SessionNotifier(this._authRepository)
     : super(const SessionData(state: SessionState.initial)) {
     _initializeSession();
   }
@@ -45,15 +46,9 @@ class SessionNotifier extends StateNotifier<SessionData> {
     state = state.copyWith(state: SessionState.checking);
 
     try {
-      // Check if session has exceeded maximum duration
-      if (await AuthPersistenceService.isSessionExpired()) {
-        await _clearSession();
-        return;
-      }
-
-      // Check if we have a valid session
-      if (await AuthPersistenceService.hasValidSession()) {
-        final userData = await AuthPersistenceService.getUserData();
+      // Check if user is authenticated
+      if (await _authRepository.isAuthenticated()) {
+        final userData = await _authRepository.getCurrentUser();
         if (userData != null) {
           state = state.copyWith(
             state: SessionState.authenticated,
@@ -65,7 +60,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
       }
 
       // Check if we need to refresh tokens
-      if (await AuthPersistenceService.needsTokenRefresh()) {
+      if (await _authRepository.needsTokenRefresh()) {
         await _refreshToken();
         return;
       }
@@ -83,11 +78,11 @@ class SessionNotifier extends StateNotifier<SessionData> {
     try {
       state = state.copyWith(state: SessionState.refreshing);
 
-      final authResponse = await _authDataSource.refreshToken();
+      final user = await _authRepository.refreshToken();
 
       state = state.copyWith(
         state: SessionState.authenticated,
-        user: authResponse.toUserEntity(),
+        user: user,
         errorMessage: null,
       );
     } catch (e) {
@@ -98,7 +93,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
 
   /// Clear session data and set to unauthenticated
   Future<void> _clearSession() async {
-    await AuthPersistenceService.clearAuthData();
+    await _authRepository.clearAuthData();
     state = state.copyWith(
       state: SessionState.unauthenticated,
       user: null,
@@ -108,22 +103,46 @@ class SessionNotifier extends StateNotifier<SessionData> {
 
   /// Called after successful login
   void onLoginSuccess(UserEntity user) {
+    // Validate user data
+    if (user.email.isEmpty) {
+      log('SessionProvider: Invalid user data received');
+      return;
+    }
+
+    // Ensure we're not already authenticated
+    if (state.state == SessionState.authenticated) {
+      log('SessionProvider: Already authenticated, updating user data');
+    }
+
     state = state.copyWith(
       state: SessionState.authenticated,
       user: user,
       errorMessage: null,
     );
+
+    // Validate state change
+    if (state.state != SessionState.authenticated) {
+      log('SessionProvider: State change failed, retrying...');
+      // Retry once
+      Future.microtask(() {
+        state = state.copyWith(
+          state: SessionState.authenticated,
+          user: user,
+          errorMessage: null,
+        );
+      });
+    }
   }
 
   /// Called to logout user
   Future<void> logout() async {
     try {
-      await _authDataSource.logoutUser();
+      await _authRepository.logout();
     } catch (e) {
       // Even if server logout fails, we still clear local session
+    } finally {
+      await _clearSession();
     }
-
-    await _clearSession();
   }
 
   /// Check if user is authenticated
@@ -139,19 +158,23 @@ class SessionNotifier extends StateNotifier<SessionData> {
     await _initializeSession();
   }
 
+  /// Force clear and reinitialize session (useful for debugging)
+  Future<void> forceReinitialize() async {
+    log('SessionProvider: Force reinitializing session');
+    await _authRepository.clearAuthData();
+    state = const SessionData(state: SessionState.initial);
+    await _initializeSession();
+  }
+
   /// Validate current session (can be called periodically)
   Future<void> validateSession() async {
     if (!isAuthenticated) return;
 
     try {
-      // Check if token is still valid
-      if (!await AuthPersistenceService.hasValidSession()) {
-        // Try to refresh
-        if (await AuthPersistenceService.needsTokenRefresh()) {
-          await _refreshToken();
-        } else {
-          await _clearSession();
-        }
+      // Use repository to validate session
+      final isValid = await _authRepository.validateSession();
+      if (!isValid) {
+        await _clearSession();
       }
     } catch (e) {
       await _clearSession();
@@ -162,8 +185,8 @@ class SessionNotifier extends StateNotifier<SessionData> {
 final sessionProvider = StateNotifierProvider<SessionNotifier, SessionData>((
   ref,
 ) {
-  final authDataSource = ref.watch(authRemoteDataSourceProvider);
-  return SessionNotifier(authDataSource);
+  final authRepository = ref.watch(authRepositoryProvider);
+  return SessionNotifier(authRepository);
 });
 
 // Convenience providers
