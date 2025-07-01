@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
+import '../network/http_client.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/datasources/auth_local_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
@@ -8,14 +8,14 @@ import '../../domain/usecases/login_user_usecase.dart';
 import '../../domain/usecases/register_user_usecase.dart';
 
 // HTTP Client Provider
-final httpClientProvider = Provider<http.Client>((ref) {
-  return http.Client();
+final httpClientProvider = Provider<AppHttpClient>((ref) {
+  return AppHttpClient();
 });
 
 // Data Sources
 final authRemoteDataSourceProvider = Provider<AuthRemoteDataSource>((ref) {
-  final client = ref.watch(httpClientProvider);
-  return AuthRemoteDataSource(client: client);
+  final httpClient = ref.watch(httpClientProvider);
+  return AuthRemoteDataSource(httpClient: httpClient);
 });
 
 final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {

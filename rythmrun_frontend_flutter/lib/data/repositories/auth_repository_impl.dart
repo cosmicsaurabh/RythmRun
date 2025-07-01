@@ -68,7 +68,7 @@ class AuthRepositoryImpl implements AuthRepository {
       await _remoteDataSource.logoutUser(authHeaders);
     } catch (e) {
       // Log error but continue with local cleanup
-      // TODO: Replace with proper logging
+
       log('Remote logout failed: $e');
     } finally {
       // 3. Always clear local data
