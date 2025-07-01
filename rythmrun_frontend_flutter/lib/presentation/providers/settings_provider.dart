@@ -1,15 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/app_settings.dart';
-import '../../core/services/settings_service.dart';
+import '../../domain/repositories/settings_repository.dart';
+import '../../core/di/injection_container.dart';
 
 class SettingsNotifier extends StateNotifier<AppSettings> {
-  SettingsNotifier() : super(const AppSettings()) {
+  final SettingsRepository _settingsRepository;
+
+  SettingsNotifier(this._settingsRepository) : super(const AppSettings()) {
     loadSettings();
   }
 
   Future<void> loadSettings() async {
     try {
-      final settings = await SettingsService.getSettings();
+      final settings = await _settingsRepository.getSettings();
       state = settings;
     } catch (e) {
       // If loading fails, keep default settings
@@ -19,7 +22,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 
   Future<void> updateThemeMode(AppThemeMode themeMode) async {
     try {
-      await SettingsService.updateThemeMode(themeMode);
+      await _settingsRepository.updateThemeMode(themeMode);
       state = state.copyWith(themeMode: themeMode);
     } catch (e) {
       print('Error updating theme mode: $e');
@@ -28,7 +31,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 
   Future<void> updateMeasurementUnit(MeasurementUnit unit) async {
     try {
-      await SettingsService.updateMeasurementUnit(unit);
+      await _settingsRepository.updateMeasurementUnit(unit);
       state = state.copyWith(measurementUnit: unit);
     } catch (e) {
       print('Error updating measurement unit: $e');
@@ -37,7 +40,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 
   Future<void> resetSettings() async {
     try {
-      await SettingsService.clearSettings();
+      await _settingsRepository.clearSettings();
       state = const AppSettings();
     } catch (e) {
       print('Error resetting settings: $e');
@@ -48,7 +51,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((
   ref,
 ) {
-  return SettingsNotifier();
+  final settingsRepository = ref.watch(settingsRepositoryProvider);
+  return SettingsNotifier(settingsRepository);
 });
 
 // Convenience providers
