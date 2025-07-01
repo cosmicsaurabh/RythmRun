@@ -5,6 +5,11 @@ class CustomAppColors {
   static const white = Color(0xFFFFFFFF);
   static const black = Color(0xFF000000);
 
+  // Brand colors
+  static const primary = Color(0xFF6C63FF);
+  static const secondary = Color(0xFF4ECDC4);
+  static const accent = Color(0xFFFF6B6B);
+
   // Backgrounds / Surfaces
   static const surfaceBackgroundLight = Color(0xFFF7F7F7);
   static const surfaceBackgroundDark = Color(0xFF0D0B10);
@@ -39,6 +44,7 @@ class CustomAppColors {
   // Status indicators
   static const statusWarning = Color(0xFFE68E4A);
   static const statusDanger = Color(0xFFE6624A);
+  static const statusError = Color(0xFFE6624A); // Same as statusDanger
   static const statusSuccess = Color(0xFFB1CF5C);
   static const statusInfo = Color(0xFF73A7E0);
 
