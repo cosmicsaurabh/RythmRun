@@ -5,6 +5,7 @@ import '../../../../const/custom_app_colors.dart';
 import '../../../providers/session_provider.dart';
 import '../../../widgets/profile_stat_card.dart';
 import '../../../widgets/profile_menu_item.dart';
+import '../../settings/screens/settings_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -559,6 +560,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               ),
               const Divider(height: 1),
               ProfileMenuItem(
+                icon: Icons.settings,
+                title: 'Settings',
+                subtitle: 'Theme, units, and app preferences',
+                onTap: () => _openSettings(context),
+              ),
+              const Divider(height: 1),
+              ProfileMenuItem(
                 icon: Icons.notifications,
                 title: 'Notifications',
                 subtitle: 'Manage your notification preferences',
@@ -689,6 +697,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         backgroundColor: CustomAppColors.statusError,
         behavior: SnackBarBehavior.floating,
       ),
+    );
+  }
+
+  void _openSettings(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const SettingsScreen()),
     );
   }
 
