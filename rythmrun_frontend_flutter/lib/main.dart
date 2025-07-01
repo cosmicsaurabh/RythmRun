@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/landing_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/login/screens/login_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/registration/screens/registration_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/home/screens/home_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/providers/session_provider.dart';
+import 'package:rythmrun_frontend_flutter/presentation/providers/settings_provider.dart';
 import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
+import 'package:rythmrun_frontend_flutter/core/services/settings_service.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize services
+  await SettingsService.initialize();
+
   // Print configuration on app startup
   AppConfig.printConfig();
 
@@ -21,12 +27,14 @@ class RythmRunApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+
     return MaterialApp(
       title: 'RythmRun',
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: settings.flutterThemeMode,
       home: const AuthWrapper(),
       routes: {
         '/registration': (context) => const RegistrationScreen(),

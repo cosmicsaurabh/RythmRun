@@ -5,6 +5,7 @@ import '../../../../const/custom_app_colors.dart';
 import '../../../providers/session_provider.dart';
 import '../../../widgets/profile_stat_card.dart';
 import '../../../widgets/profile_menu_item.dart';
+import '../../settings/screens/settings_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -88,7 +89,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                             slivers: [
                               // Custom App Bar
                               SliverAppBar(
-                                expandedHeight: 280,
+                                expandedHeight: 284,
                                 floating: false,
                                 pinned: false,
                                 backgroundColor: Colors.transparent,
@@ -159,17 +160,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             CustomAppColors.accent.withOpacity(0.8),
           ],
         ),
-        borderRadius: const BorderRadius.only(
+        borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(radiusXl * 2),
           bottomRight: Radius.circular(radiusXl * 2),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: CustomAppColors.primary.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -210,7 +204,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
           // User Name with Shadow
           Text(
-            '${user.firstName} ${user.lastName}',
+            (user.firstName == null && user.lastName == null) ||
+                    (user.firstName.trim().isEmpty &&
+                        user.lastName.trim().isEmpty)
+                ? 'User'
+                : '${user.firstName} ${user.lastName}',
             style: Theme.of(context).textTheme.headlineLarge?.copyWith(
               color: CustomAppColors.white,
               fontWeight: FontWeight.bold,
@@ -562,6 +560,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               ),
               const Divider(height: 1),
               ProfileMenuItem(
+                icon: Icons.settings,
+                title: 'Settings',
+                subtitle: 'Theme, units, and app preferences',
+                onTap: () => _openSettings(context),
+              ),
+              const Divider(height: 1),
+              ProfileMenuItem(
                 icon: Icons.notifications,
                 title: 'Notifications',
                 subtitle: 'Manage your notification preferences',
@@ -692,6 +697,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         backgroundColor: CustomAppColors.statusError,
         behavior: SnackBarBehavior.floating,
       ),
+    );
+  }
+
+  void _openSettings(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const SettingsScreen()),
     );
   }
 
