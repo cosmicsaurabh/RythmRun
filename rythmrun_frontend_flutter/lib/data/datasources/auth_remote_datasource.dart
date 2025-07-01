@@ -12,7 +12,7 @@ class AuthRemoteDataSource {
   AuthRemoteDataSource({
     required this.client,
     this.baseUrl =
-        'http://192.168.1.82:8080/api', // Android emulator can access host v
+        'http://192.168.1.51:8080/api', // Android emulator can access host v
   });
 
   Future<AuthResponseModel> registerUser(

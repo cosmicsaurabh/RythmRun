@@ -121,7 +121,6 @@ class SessionNotifier extends StateNotifier<SessionData> {
       await _authDataSource.logoutUser();
     } catch (e) {
       // Even if server logout fails, we still clear local session
-      print('Server logout failed: $e');
     }
 
     await _clearSession();

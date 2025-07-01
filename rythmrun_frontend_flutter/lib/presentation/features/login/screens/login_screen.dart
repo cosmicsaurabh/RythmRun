@@ -46,7 +46,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       next,
     ) {
       if (next) {
-        _showSuccessDialog();
+        _showSuccessMessage();
         loginNotifier.resetForm();
       }
     });
@@ -282,61 +282,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder:
-          (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(radiusLg),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(spacingLg),
-                  decoration: BoxDecoration(
-                    color: CustomAppColors.statusSuccess.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.check_circle,
-                    color: CustomAppColors.statusSuccess,
-                    size: 48,
-                  ),
-                ),
-                const SizedBox(height: spacingLg),
-                Text(
-                  'Welcome Back!',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: spacingSm),
-                Text(
-                  'You have successfully signed in to RythmRun.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: CustomAppColors.secondaryText,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-            actions: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (Navigator.canPop(context)) {
-                      Navigator.of(context).pop(); // Close dialog
-                    }
-                    // Navigation will happen automatically via session provider
-                  },
-                  child: const Text('Continue'),
-                ),
-              ),
-            ],
+  void _showSuccessMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Welcome Back!',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: CustomAppColors.statusSuccess,
           ),
+        ),
+        backgroundColor: CustomAppColors.statusSuccess.withOpacity(0.1),
+      ),
     );
   }
 }
