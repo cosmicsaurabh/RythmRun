@@ -9,6 +9,6 @@ class RegisterUserUsecase {
 
   Future<UserEntity> call(RegistrationRequestEntity request) async {
     // Simply call register - backend will handle email existence check
-    return await authRepository.registerUser(request);
+    return await authRepository.register(request);
   }
 }

@@ -48,6 +48,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (next) {
         _showSuccessMessage();
         loginNotifier.resetForm();
+
+        // Add a small delay to ensure state propagation
+        Future.delayed(const Duration(milliseconds: 250), () {
+          if (mounted) {
+            // Check if we're still on the login screen
+            if (ModalRoute.of(context)?.settings.name == '/login') {
+              // Force navigation as fallback
+              Navigator.of(context).pushReplacementNamed('/home');
+            }
+          }
+        });
       }
     });
 

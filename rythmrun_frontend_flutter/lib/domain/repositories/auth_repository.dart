@@ -1,9 +1,34 @@
 import '../entities/user_entity.dart';
+import '../entities/login_request_entity.dart';
 import '../entities/registration_request_entity.dart';
 
+/// Domain repository interface for authentication operations
+/// This defines the contract that the data layer must implement
 abstract class AuthRepository {
-  Future<UserEntity> registerUser(RegistrationRequestEntity request);
-  Future<UserEntity> loginUser(String email, String password);
-  Future<void> logoutUser();
+  /// Login user with email and password
+  Future<UserEntity> login(LoginRequestEntity request);
+
+  /// Register new user
+  Future<UserEntity> register(RegistrationRequestEntity request);
+
+  /// Logout current user
+  Future<void> logout();
+
+  /// Refresh access token using refresh token
+  Future<UserEntity> refreshToken();
+
+  /// Get current authenticated user
   Future<UserEntity?> getCurrentUser();
+
+  /// Check if user is currently authenticated
+  Future<bool> isAuthenticated();
+
+  /// Check if session needs token refresh
+  Future<bool> needsTokenRefresh();
+
+  /// Validate current session
+  Future<bool> validateSession();
+
+  /// Clear all authentication data
+  Future<void> clearAuthData();
 }

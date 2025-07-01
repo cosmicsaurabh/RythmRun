@@ -3,7 +3,6 @@ import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 import '../models/auth_response_model.dart';
 import '../models/registration_request_model.dart';
-import '../../core/services/auth_persistence_service.dart';
 
 class AuthRemoteDataSource {
   final http.Client client;
@@ -27,12 +26,7 @@ class AuthRemoteDataSource {
 
       if (response.statusCode == 201) {
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
-        final authResponse = AuthResponseModel.fromJson(jsonResponse);
-
-        // Save tokens to secure storage
-        await AuthPersistenceService.saveAuthData(authResponse);
-
-        return authResponse;
+        return AuthResponseModel.fromJson(jsonResponse);
       } else if (response.statusCode == 400) {
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
         throw Exception(jsonResponse['message'] ?? 'Registration failed');
@@ -54,12 +48,7 @@ class AuthRemoteDataSource {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
-        final authResponse = AuthResponseModel.fromJson(jsonResponse);
-
-        // Save tokens to secure storage
-        await AuthPersistenceService.saveAuthData(authResponse);
-
-        return authResponse;
+        return AuthResponseModel.fromJson(jsonResponse);
       } else if (response.statusCode == 401) {
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
         throw Exception(jsonResponse['message'] ?? 'Invalid credentials');
@@ -71,56 +60,34 @@ class AuthRemoteDataSource {
     }
   }
 
-  Future<void> logoutUser() async {
+  Future<void> logoutUser(Map<String, String>? authHeaders) async {
     try {
-      // Get auth headers for the logout request
-      final headers = await AuthPersistenceService.getAuthHeaders();
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        ...?authHeaders,
+      };
 
       final response = await client.post(
         Uri.parse('$baseUrl/users/logout'),
-        headers: headers ?? {'Content-Type': 'application/json'},
+        headers: headers,
       );
 
-      // Clear stored data regardless of server response
-      // (in case server is down, we still want to log out locally)
-      await AuthPersistenceService.clearAuthData();
-
       if (response.statusCode != 200) {
-        // Don't throw here since we've already cleared local data
-        print('Server logout failed, but local logout successful');
+        throw Exception('Logout failed');
       }
     } catch (e) {
-      // Even if network fails, clear local data
-      await AuthPersistenceService.clearAuthData();
       throw Exception(e.toString());
     }
   }
 
   Future<UserModel?> getCurrentUser() async {
-    // Try to get user from stored data first
-    final userData = await AuthPersistenceService.getUserData();
-    if (userData != null) {
-      return UserModel(
-        id: userData.id,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        email: userData.email,
-        createdAt: userData.createdAt,
-      );
-    }
-
     // TODO: Implement API call when profile endpoint is available in backend
     return null;
   }
 
-  /// Refresh access token using the stored refresh token
-  Future<AuthResponseModel> refreshToken() async {
+  /// Refresh access token using the provided refresh token
+  Future<AuthResponseModel> refreshToken(String refreshToken) async {
     try {
-      final refreshToken = await AuthPersistenceService.getRefreshToken();
-      if (refreshToken == null) {
-        throw Exception('No refresh token available');
-      }
-
       final response = await client.post(
         Uri.parse('$baseUrl/users/refresh-token'),
         headers: {'Content-Type': 'application/json'},
@@ -129,33 +96,7 @@ class AuthRemoteDataSource {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
-        final data = jsonResponse['data'] as Map<String, dynamic>;
-
-        // Update tokens in storage
-        await AuthPersistenceService.updateTokens(
-          data['accessToken'] as String,
-          data['refreshToken'] as String,
-        );
-
-        // Return the updated auth response with existing user data
-        final userData = await AuthPersistenceService.getUserData();
-        if (userData != null) {
-          final userModel = UserModel(
-            id: userData.id,
-            firstName: userData.firstName,
-            lastName: userData.lastName,
-            email: userData.email,
-            createdAt: userData.createdAt,
-          );
-
-          return AuthResponseModel(
-            user: userModel,
-            accessToken: data['accessToken'] as String,
-            refreshToken: data['refreshToken'] as String,
-          );
-        } else {
-          throw Exception('User data not found after token refresh');
-        }
+        return AuthResponseModel.fromJson(jsonResponse);
       } else {
         throw Exception('Token refresh failed');
       }

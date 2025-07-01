@@ -8,7 +8,6 @@ class LoginUserUsecase {
   LoginUserUsecase(this.repository);
 
   Future<UserEntity> call(LoginRequestEntity request) async {
-    return await repository.loginUser(request.email, request.password);
+    return await repository.login(request);
   }
-} 
-
+}
