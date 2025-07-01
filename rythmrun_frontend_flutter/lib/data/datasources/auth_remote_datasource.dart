@@ -1,38 +1,29 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import '../../core/config/app_config.dart';
+import '../../core/config/api_endpoints.dart';
+import '../../core/network/http_client.dart';
 import '../models/user_model.dart';
 import '../models/auth_response_model.dart';
 import '../models/registration_request_model.dart';
 
 class AuthRemoteDataSource {
-  final http.Client client;
-  final String baseUrl;
+  final AppHttpClient _httpClient;
 
-  AuthRemoteDataSource({
-    required this.client,
-    this.baseUrl =
-        'http://192.168.1.51:8080/api', // Android emulator can access host v
-  });
+  AuthRemoteDataSource({AppHttpClient? httpClient})
+    : _httpClient = httpClient ?? AppHttpClient();
 
   Future<AuthResponseModel> registerUser(
     RegistrationRequestModel request,
   ) async {
     try {
-      final response = await client.post(
-        Uri.parse('$baseUrl/users/register'),
+      final response = await _httpClient.post(
+        AppConfig.getUrl(ApiEndpoints.register),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(request.toJson()),
       );
 
-      if (response.statusCode == 201) {
-        final Map<String, dynamic> jsonResponse = json.decode(response.body);
-        return AuthResponseModel.fromJson(jsonResponse);
-      } else if (response.statusCode == 400) {
-        final Map<String, dynamic> jsonResponse = json.decode(response.body);
-        throw Exception(jsonResponse['message'] ?? 'Registration failed');
-      } else {
-        throw Exception('Registration failed');
-      }
+      final Map<String, dynamic> jsonResponse = json.decode(response.body);
+      return AuthResponseModel.fromJson(jsonResponse);
     } catch (e) {
       throw Exception(e.toString());
     }
@@ -40,21 +31,14 @@ class AuthRemoteDataSource {
 
   Future<AuthResponseModel> loginUser(String email, String password) async {
     try {
-      final response = await client.post(
-        Uri.parse('$baseUrl/users/login'),
+      final response = await _httpClient.post(
+        AppConfig.getUrl(ApiEndpoints.login),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'username': email, 'password': password}),
       );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> jsonResponse = json.decode(response.body);
-        return AuthResponseModel.fromJson(jsonResponse);
-      } else if (response.statusCode == 401) {
-        final Map<String, dynamic> jsonResponse = json.decode(response.body);
-        throw Exception(jsonResponse['message'] ?? 'Invalid credentials');
-      } else {
-        throw Exception('Login failed');
-      }
+      final Map<String, dynamic> jsonResponse = json.decode(response.body);
+      return AuthResponseModel.fromJson(jsonResponse);
     } catch (e) {
       throw Exception(e.toString());
     }
@@ -67,39 +51,30 @@ class AuthRemoteDataSource {
         ...?authHeaders,
       };
 
-      final response = await client.post(
-        Uri.parse('$baseUrl/users/logout'),
+      await _httpClient.post(
+        AppConfig.getUrl(ApiEndpoints.logout),
         headers: headers,
       );
-
-      if (response.statusCode != 200) {
-        throw Exception('Logout failed');
-      }
     } catch (e) {
       throw Exception(e.toString());
     }
   }
 
   Future<UserModel?> getCurrentUser() async {
-    // TODO: Implement API call when profile endpoint is available in backend
     return null;
   }
 
   /// Refresh access token using the provided refresh token
   Future<AuthResponseModel> refreshToken(String refreshToken) async {
     try {
-      final response = await client.post(
-        Uri.parse('$baseUrl/users/refresh-token'),
+      final response = await _httpClient.post(
+        AppConfig.getUrl(ApiEndpoints.refreshToken),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'refreshToken': refreshToken}),
       );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> jsonResponse = json.decode(response.body);
-        return AuthResponseModel.fromJson(jsonResponse);
-      } else {
-        throw Exception('Token refresh failed');
-      }
+      final Map<String, dynamic> jsonResponse = json.decode(response.body);
+      return AuthResponseModel.fromJson(jsonResponse);
     } catch (e) {
       throw Exception(e.toString());
     }

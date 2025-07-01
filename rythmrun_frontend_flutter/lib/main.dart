@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/landing_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/login/screens/login_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/registration/screens/registration_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/home/screens/home_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/providers/session_provider.dart';
+import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
 import 'theme/app_theme.dart';
 
 void main() {
+  // Print configuration on app startup
+  AppConfig.printConfig();
+
   runApp(const ProviderScope(child: RythmRunApp()));
 }
 
@@ -100,4 +105,65 @@ class SplashScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+void _showDebugMenu(BuildContext context, WidgetRef ref) {
+  showDialog(
+    context: context,
+    builder:
+        (context) => AlertDialog(
+          title: const Text('Debug Menu'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Environment Info
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Environment: ${AppConfig.environment}'),
+                    Text('Base URL: ${AppConfig.baseUrl}'),
+                    Text('Timeout: ${AppConfig.timeout.inSeconds}s'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Session Management
+              ListTile(
+                title: const Text('Force Reinitialize Session'),
+                onTap: () {
+                  ref.read(sessionProvider.notifier).forceReinitialize();
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: const Text('Clear Session'),
+                onTap: () {
+                  ref.read(sessionProvider.notifier).logout();
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: const Text('Refresh Session'),
+                onTap: () {
+                  ref.read(sessionProvider.notifier).refreshSession();
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+  );
 }
