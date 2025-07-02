@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Location permissions for GPS tracking -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>RythmRun needs location access to track your workouts and provide accurate distance, pace, and route information.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>RythmRun needs location access to track your workouts and provide accurate distance, pace, and route information.</string>
 </dict>
 </plist>

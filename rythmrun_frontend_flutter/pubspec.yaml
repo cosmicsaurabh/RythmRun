@@ -51,6 +51,17 @@ dependencies:
 
   # Settings Storage
   shared_preferences: ^2.2.2
+  
+  # GPS Tracking & Location
+  geolocator: ^13.0.1
+  permission_handler: ^11.3.1
+  
+  # Maps (optional for visual tracking)
+  google_maps_flutter: ^2.9.0
+  
+  # Local Database for tracking data
+  sqflite: ^2.3.3+2
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:
