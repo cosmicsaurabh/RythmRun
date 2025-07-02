@@ -48,17 +48,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (next) {
         _showSuccessMessage();
         loginNotifier.resetForm();
+        Navigator.of(
+          context,
+        ).pop(); //needed to remove the login screen from the stack so that the authwrapper can handle the navigation
 
-        // Add a small delay to ensure state propagation
-        Future.delayed(const Duration(milliseconds: 250), () {
-          if (mounted) {
-            // Check if we're still on the login screen
-            if (ModalRoute.of(context)?.settings.name == '/login') {
-              // Force navigation as fallback
-              Navigator.of(context).pushReplacementNamed('/home');
-            }
-          }
-        });
+        // // Add a small delay to ensure state propagation
+        // Future.delayed(const Duration(milliseconds: 250), () {
+        //   if (mounted) {
+        //     // Check if we're still on the login screen
+        //     if (ModalRoute.of(context)?.settings.name == '/login') {
+        //       // Force navigation as fallback
+        //       Navigator.of(context).pushReplacementNamed('/home');
+        //     }
+        //   }
+        // });
       }
     });
 

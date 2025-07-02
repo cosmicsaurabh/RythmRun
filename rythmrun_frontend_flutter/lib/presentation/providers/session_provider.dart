@@ -119,19 +119,6 @@ class SessionNotifier extends StateNotifier<SessionData> {
       user: user,
       errorMessage: null,
     );
-
-    // Validate state change
-    if (state.state != SessionState.authenticated) {
-      log('SessionProvider: State change failed, retrying...');
-      // Retry once
-      Future.microtask(() {
-        state = state.copyWith(
-          state: SessionState.authenticated,
-          user: user,
-          errorMessage: null,
-        );
-      });
-    }
   }
 
   /// Called to logout user

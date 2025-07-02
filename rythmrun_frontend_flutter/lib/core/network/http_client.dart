@@ -81,19 +81,28 @@ class AppHttpClient {
         }
 
         // Handle specific error status codes
+        // Try to get error message from response body
+        String errorMessage;
+        try {
+          final Map<String, dynamic> errorBody = json.decode(response.body);
+          errorMessage =
+              errorBody['message'] ?? errorBody['error'] ?? 'Unknown error';
+        } catch (e) {
+          // Fallback if response body isn't JSON
+          errorMessage = response.reasonPhrase ?? 'Unknown error';
+        }
+
         switch (response.statusCode) {
           case 401:
-            throw UnauthorizedException('Authentication required');
+            throw UnauthorizedException(errorMessage);
           case 403:
-            throw ForbiddenException('Access denied');
+            throw ForbiddenException(errorMessage);
           case 404:
-            throw NotFoundException('Resource not found');
+            throw NotFoundException(errorMessage);
           case 500:
-            throw ServerException('Internal server error');
+            throw ServerException(errorMessage);
           default:
-            throw HttpException(
-              'HTTP ${response.statusCode}: ${response.reasonPhrase}',
-            );
+            throw HttpException('HTTP ${response.statusCode}: $errorMessage');
         }
       } on SocketException catch (e) {
         attempts++;

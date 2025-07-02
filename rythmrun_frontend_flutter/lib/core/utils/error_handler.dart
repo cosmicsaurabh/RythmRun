@@ -1,13 +1,42 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import '../network/http_client.dart';
 
 class ErrorHandler {
   /// Converts any exception to a user-friendly error message
   static String getErrorMessage(dynamic exception) {
     String message = exception.toString().replaceAll('Exception: ', '');
 
-    // Handle network connectivity errors first
+    // Handle custom HTTP client exceptions first
+    if (exception is UnauthorizedException) {
+      // If it's a specific login error message, show that
+      if (message.contains('Invalid username or password') ||
+          message.contains('Invalid credentials') ||
+          message.contains('Login failed')) {
+        return message;
+      }
+      // Otherwise show generic auth message
+      return 'Please log in to continue.';
+    }
+
+    if (exception is ForbiddenException) {
+      return 'You don\'t have permission to perform this action.';
+    }
+
+    if (exception is NotFoundException) {
+      return 'The requested resource was not found.';
+    }
+
+    if (exception is ServerException) {
+      return 'Server error occurred. Please try again later.';
+    }
+
+    if (exception is NetworkException) {
+      return 'Network error occurred. Please check your connection and try again.';
+    }
+
+    // Handle network connectivity errors
     if (exception is SocketException ||
         exception is http.ClientException ||
         message.contains('SocketException') ||
@@ -29,6 +58,11 @@ class ErrorHandler {
     }
 
     // Handle authentication errors
+    if (message.contains('UnauthorizedException') ||
+        message.contains('Authentication required')) {
+      return 'Please log in to continue.';
+    }
+
     if (message.contains('Invalid credentials') ||
         message.contains('Invalid username or password')) {
       return 'Invalid email or password. Please try again.';

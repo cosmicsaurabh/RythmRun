@@ -1,14 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 
-// --- Helper for CustomAppColors (assuming your previous class) ---
-// If you updated CustomAppColors with the suggestions, use those names.
-// For this example, I'm using the names as they were in your original
-// CustomAppColors class, but note the suggestions from our previous chat.
-
-// You might consider consolidating CustomAppColors.black/white with primaryTextLight/Dark
-// For now, I'll use them directly as they are in CustomAppColors.
-
 // ICON SIZES
 const double iconSizeSm = 20;
 const double iconSizeMd = 24;
