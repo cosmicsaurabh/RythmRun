@@ -7,9 +7,8 @@ import 'package:flutter/foundation.dart';
 class AppConfig {
   // Environment-specific configurations
   static const Map<String, String> _baseUrls = {
-    'dev': 'http://192.168.1.51:8080/api',
-    'staging': 'http://192.168.1.51:8080/api', // Same as dev for now
-    'prod': 'http://192.168.1.51:8080/api', // Same as dev for now
+    // 'dev': 'http://192.168.1.38:8080/api', //home
+    'dev': 'http://192.168.29.9:8080/api',
   };
 
   static const Map<String, int> _timeouts = {

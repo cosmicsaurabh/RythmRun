@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
 import '../network/http_client.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/datasources/auth_local_datasource.dart';
@@ -28,8 +29,13 @@ final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
   return AuthLocalDataSource();
 });
 
+final localDbServiceProvider = Provider<LocalDbService>((ref) {
+  return LocalDbService();
+});
+
 final workoutLocalDataSourceProvider = Provider<WorkoutLocalDataSource>((ref) {
-  return WorkoutLocalDataSource();
+  final localDbService = ref.watch(localDbServiceProvider);
+  return WorkoutLocalDataSource(localDbService);
 });
 
 // Repository
