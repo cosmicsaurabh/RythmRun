@@ -2,10 +2,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../network/http_client.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/datasources/auth_local_datasource.dart';
+import '../../data/datasources/workout_local_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../data/repositories/settings_repository_impl.dart';
+import '../../data/repositories/workout_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/settings_repository.dart';
+import '../../domain/repositories/workout_repository.dart';
 import '../../domain/usecases/login_user_usecase.dart';
 import '../../domain/usecases/register_user_usecase.dart';
 import '../../domain/usecases/change_password_usecase.dart';
@@ -25,11 +28,21 @@ final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
   return AuthLocalDataSource();
 });
 
+final workoutLocalDataSourceProvider = Provider<WorkoutLocalDataSource>((ref) {
+  return WorkoutLocalDataSource();
+});
+
 // Repository
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   final remoteDataSource = ref.watch(authRemoteDataSourceProvider);
   final localDataSource = ref.watch(authLocalDataSourceProvider);
   return AuthRepositoryImpl(remoteDataSource, localDataSource);
+});
+
+final workoutRepositoryProvider = Provider<WorkoutRepository>((ref) {
+  final localDataSource = ref.watch(workoutLocalDataSourceProvider);
+  final authRepository = ref.watch(authRepositoryProvider);
+  return WorkoutRepositoryImpl(localDataSource, authRepository);
 });
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
