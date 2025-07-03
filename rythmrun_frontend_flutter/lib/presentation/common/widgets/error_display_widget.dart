@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../const/custom_app_colors.dart';
-import '../../theme/app_theme.dart';
+import '../../../const/custom_app_colors.dart';
+import '../../../theme/app_theme.dart';
 
 class ErrorDisplayWidget extends StatelessWidget {
   final String errorMessage;

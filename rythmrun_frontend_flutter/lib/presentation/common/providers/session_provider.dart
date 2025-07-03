@@ -1,9 +1,9 @@
 import 'dart:developer';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../domain/repositories/auth_repository.dart';
-import '../../domain/entities/user_entity.dart';
-import '../../core/di/injection_container.dart';
+import '../../../domain/repositories/auth_repository.dart';
+import '../../../domain/entities/user_entity.dart';
+import '../../../core/di/injection_container.dart';
 
 enum SessionState {
   initial,

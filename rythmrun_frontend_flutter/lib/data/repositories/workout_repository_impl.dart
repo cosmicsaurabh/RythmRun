@@ -1,6 +1,6 @@
 import 'dart:developer';
 
-import 'package:rythmrun_frontend_flutter/const/ensure_type_helper.dart';
+import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
 
 import '../../domain/repositories/workout_repository.dart';
 import '../../domain/entities/workout_session_entity.dart';

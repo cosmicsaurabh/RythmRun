@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/models/app_settings.dart';
-import '../../../providers/settings_provider.dart';
+import '../../../common/providers/settings_provider.dart';
 import '../providers/change_password_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {

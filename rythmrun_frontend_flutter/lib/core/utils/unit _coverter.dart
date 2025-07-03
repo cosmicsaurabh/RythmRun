@@ -1,4 +1,4 @@
-import '../core/models/app_settings.dart';
+import '../models/app_settings.dart';
 
 class UnitConverter {
   final MeasurementUnit measurementUnit;
