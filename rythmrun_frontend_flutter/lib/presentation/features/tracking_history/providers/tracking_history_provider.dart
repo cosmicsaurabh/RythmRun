@@ -1,19 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../domain/repositories/workout_repository.dart';
 import '../../../../core/di/injection_container.dart';
-import '../models/workouts_list_state.dart';
+import '../models/tracking_history_state.dart';
 
 // Notifier for managing workout list state
-class WorkoutsListNotifier extends StateNotifier<WorkoutsListState> {
+class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
   final WorkoutRepository _workoutRepository;
 
-  WorkoutsListNotifier(this._workoutRepository)
-    : super(const WorkoutsListState()) {
-    loadWorkouts();
+  TrackingHistoryNotifier(this._workoutRepository)
+    : super(const TrackingHistoryState()) {
+    loadTrackingHistory();
   }
 
   /// Load all workouts from the database
-  Future<void> loadWorkouts() async {
+  Future<void> loadTrackingHistory() async {
     try {
       state = state.copyWith(isLoading: true, errorMessage: null);
 
@@ -39,7 +39,7 @@ class WorkoutsListNotifier extends StateNotifier<WorkoutsListState> {
       await _workoutRepository.deleteWorkout(id);
 
       // Reload the list
-      await loadWorkouts();
+      await loadTrackingHistory();
     } catch (e) {
       state = state.copyWith(errorMessage: 'Failed to delete workout: $e');
     }
@@ -47,26 +47,26 @@ class WorkoutsListNotifier extends StateNotifier<WorkoutsListState> {
 
   /// Refresh the workout list
   Future<void> refresh() async {
-    await loadWorkouts();
+    await loadTrackingHistory();
   }
 }
 
 // Provider for workout list
-final workoutsListProvider =
-    StateNotifierProvider<WorkoutsListNotifier, WorkoutsListState>((ref) {
+final trackingHistoryProvider =
+    StateNotifierProvider<TrackingHistoryNotifier, TrackingHistoryState>((ref) {
       final workoutRepository = ref.watch(workoutRepositoryProvider);
-      return WorkoutsListNotifier(workoutRepository);
+      return TrackingHistoryNotifier(workoutRepository);
     });
 
 // Convenience providers
 final hasWorkoutsProvider = Provider<bool>((ref) {
   return ref.watch(
-    workoutsListProvider.select((state) => state.workouts.isNotEmpty),
+    trackingHistoryProvider.select((state) => state.workouts.isNotEmpty),
   );
 });
 
 final workoutCountProvider = Provider<int>((ref) {
   return ref.watch(
-    workoutsListProvider.select((state) => state.workouts.length),
+    trackingHistoryProvider.select((state) => state.workouts.length),
   );
 });

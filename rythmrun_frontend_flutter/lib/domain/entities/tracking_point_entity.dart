@@ -17,6 +17,27 @@ class TrackingPointEntity {
     required this.timestamp,
   });
 
+  /// Create a copy of this entity with updated values
+  TrackingPointEntity copyWith({
+    double? latitude,
+    double? longitude,
+    double? altitude,
+    double? accuracy,
+    double? speed,
+    double? heading,
+    DateTime? timestamp,
+  }) {
+    return TrackingPointEntity(
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      altitude: altitude ?? this.altitude,
+      accuracy: accuracy ?? this.accuracy,
+      speed: speed ?? this.speed,
+      heading: heading ?? this.heading,
+      timestamp: timestamp ?? this.timestamp,
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
