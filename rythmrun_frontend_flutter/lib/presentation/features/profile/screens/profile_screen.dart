@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
-import '../../../providers/session_provider.dart';
-import '../../../widgets/profile_stat_card.dart';
-import '../../../widgets/profile_menu_item.dart';
+import '../../../common/providers/session_provider.dart';
+import '../../../common/widgets/profile_stat_card.dart';
+import '../../../common/widgets/profile_menu_item.dart';
 import '../../settings/screens/settings_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {

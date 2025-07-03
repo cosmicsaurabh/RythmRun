@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/models/app_settings.dart';
-import '../../domain/repositories/settings_repository.dart';
-import '../../core/di/injection_container.dart';
+import '../../../core/models/app_settings.dart';
+import '../../../domain/repositories/settings_repository.dart';
+import '../../../core/di/injection_container.dart';
 
 class SettingsNotifier extends StateNotifier<AppSettings> {
   final SettingsRepository _settingsRepository;

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../core/utils/validation_helper.dart';
-import '../../const/custom_app_colors.dart';
+import '../../../core/utils/validation_helper.dart';
+import '../../../const/custom_app_colors.dart';
 
 class PasswordStrengthIndicator extends StatelessWidget {
   final PasswordStrength strength;

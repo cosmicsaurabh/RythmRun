@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/utils/validation_helper.dart';
-import '../../../widgets/error_display_widget.dart';
+import '../../../common/widgets/error_display_widget.dart';
 import '../providers/login_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {

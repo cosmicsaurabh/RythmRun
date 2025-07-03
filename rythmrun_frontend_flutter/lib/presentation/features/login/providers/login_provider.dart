@@ -3,7 +3,7 @@ import '../../../../core/di/injection_container.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../domain/entities/login_request_entity.dart';
 import '../../../../domain/usecases/login_user_usecase.dart';
-import '../../../providers/session_provider.dart';
+import '../../../common/providers/session_provider.dart';
 import '../models/login_state.dart';
 
 class LoginNotifier extends StateNotifier<LoginState> {

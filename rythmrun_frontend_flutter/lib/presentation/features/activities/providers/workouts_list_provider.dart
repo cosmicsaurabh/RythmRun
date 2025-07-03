@@ -1,14 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../domain/entities/workout_session_entity.dart';
 import '../../../../domain/repositories/workout_repository.dart';
 import '../../../../core/di/injection_container.dart';
 import '../models/workouts_list_state.dart';
 
 // Notifier for managing workout list state
 class WorkoutsListNotifier extends StateNotifier<WorkoutsListState> {
-  final WorkoutRepository _repository;
+  final WorkoutRepository _workoutRepository;
 
-  WorkoutsListNotifier(this._repository) : super(const WorkoutsListState()) {
+  WorkoutsListNotifier(this._workoutRepository)
+    : super(const WorkoutsListState()) {
     loadWorkouts();
   }
 
@@ -17,7 +17,7 @@ class WorkoutsListNotifier extends StateNotifier<WorkoutsListState> {
     try {
       state = state.copyWith(isLoading: true, errorMessage: null);
 
-      final workouts = await _repository.getWorkouts();
+      final workouts = await _workoutRepository.getWorkouts();
 
       state = state.copyWith(workouts: workouts, isLoading: false);
     } catch (e) {
@@ -36,7 +36,7 @@ class WorkoutsListNotifier extends StateNotifier<WorkoutsListState> {
         throw Exception('Invalid workout ID');
       }
 
-      await _repository.deleteWorkout(id);
+      await _workoutRepository.deleteWorkout(id);
 
       // Reload the list
       await loadWorkouts();
@@ -54,8 +54,8 @@ class WorkoutsListNotifier extends StateNotifier<WorkoutsListState> {
 // Provider for workout list
 final workoutsListProvider =
     StateNotifierProvider<WorkoutsListNotifier, WorkoutsListState>((ref) {
-      final repository = ref.watch(workoutRepositoryProvider);
-      return WorkoutsListNotifier(repository);
+      final workoutRepository = ref.watch(workoutRepositoryProvider);
+      return WorkoutsListNotifier(workoutRepository);
     });
 
 // Convenience providers
@@ -69,12 +69,4 @@ final workoutCountProvider = Provider<int>((ref) {
   return ref.watch(
     workoutsListProvider.select((state) => state.workouts.length),
   );
-});
-
-final recentWorkoutsProvider = Provider<List<WorkoutSessionEntity>>((ref) {
-  final workouts = ref.watch(
-    workoutsListProvider.select((state) => state.workouts),
-  );
-  // Return up to 5 most recent workouts
-  return workouts.take(5).toList();
 });

@@ -4,8 +4,8 @@ import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/
 import 'package:rythmrun_frontend_flutter/presentation/features/login/screens/login_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/registration/screens/registration_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/home/screens/home_screen.dart';
-import 'package:rythmrun_frontend_flutter/presentation/providers/session_provider.dart';
-import 'package:rythmrun_frontend_flutter/presentation/providers/settings_provider.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/settings_provider.dart';
 import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
 import 'package:rythmrun_frontend_flutter/core/services/settings_service.dart';
 import 'theme/app_theme.dart';
