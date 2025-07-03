@@ -13,13 +13,11 @@ class LocalDbService {
 
   Database? _database;
 
-  /// Get database instance
   Future<Database> get database async {
     _database ??= await _initDatabase();
     return _database!;
   }
 
-  /// Initialize database
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), _databaseName);
 
@@ -30,7 +28,6 @@ class LocalDbService {
     );
   }
 
-  /// Create database tables
   Future<void> _onCreate(Database db, int version) async {
     // Create workouts table
     await db.execute('''
@@ -71,21 +68,12 @@ class LocalDbService {
         FOREIGN KEY (workout_id) REFERENCES $_workoutsTable (id) ON DELETE CASCADE
       )
     ''');
-
-    // // Create indexes for better performance
-    // await db.execute(
-    //   'CREATE INDEX idx_workout_user ON $_workoutsTable (user_id)',
-    // );
-    // await db.execute(
-    //   'CREATE INDEX idx_tracking_workout ON $_trackingPointsTable (workout_id)',
-    // );
   }
 
   /// Save a completed workout session
   Future<int> saveWorkoutInLocalDatabase(WorkoutSessionEntity workout) async {
     final db = await database;
 
-    // Start a transaction to ensure data consistency
     return await db.transaction((txn) async {
       // Insert workout
       final workoutId = await txn.insert(_workoutsTable, {
@@ -294,7 +282,7 @@ class LocalDbService {
   }
 
   /// Clear all data (useful for logout)
-  Future<void> clearAllData() async {
+  Future<void> clearAllDataFromLocalDatabase() async {
     final db = await database;
     await db.delete(_trackingPointsTable);
     await db.delete(_workoutsTable);

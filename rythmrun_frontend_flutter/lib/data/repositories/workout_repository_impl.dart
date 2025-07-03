@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:rythmrun_frontend_flutter/const/ensure_type_helper.dart';
 
 import '../../domain/repositories/workout_repository.dart';
@@ -21,12 +23,14 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   Future<int> saveWorkout(WorkoutSessionEntity workout) async {
     try {
       // Save to local database
-      final workoutId = await _localDataSource.saveWorkout(workout);
+      final workoutId = await _localDataSource.saveWorkoutInLocalDatabase(
+        workout,
+      );
 
       // TODO: Try to sync with server (fire and forget)
       // Don't wait for sync to complete
       syncWorkouts().catchError((e) {
-        print('Failed to sync workout: $e');
+        log('Failed to sync workout: $e');
       });
 
       return workoutId;
@@ -43,7 +47,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
         throw Exception('User not authenticated');
       }
 
-      return await _localDataSource.getWorkouts(userId);
+      return await _localDataSource.getWorkoutsFromLocalDatabase(userId);
     } catch (e) {
       throw Exception('Failed to get workouts: $e');
     }
@@ -52,7 +56,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<WorkoutSessionEntity?> getWorkout(int workoutId) async {
     try {
-      return await _localDataSource.getWorkout(workoutId);
+      return await _localDataSource.getWorkoutFromLocalDatabase(workoutId);
     } catch (e) {
       throw Exception('Failed to get workout: $e');
     }
@@ -61,7 +65,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<void> deleteWorkout(int workoutId) async {
     try {
-      await _localDataSource.deleteWorkout(workoutId);
+      await _localDataSource.deleteWorkoutFromLocalDatabase(workoutId);
     } catch (e) {
       throw Exception('Failed to delete workout: $e');
     }
@@ -75,7 +79,9 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
         throw Exception('User not authenticated');
       }
 
-      return await _localDataSource.getUnsyncedWorkouts(userId);
+      return await _localDataSource.getUnsyncedWorkoutsFromLocalDatabase(
+        userId,
+      );
     } catch (e) {
       throw Exception('Failed to get unsynced workouts: $e');
     }
@@ -84,7 +90,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<void> markWorkoutAsSynced(int workoutId) async {
     try {
-      await _localDataSource.markWorkoutAsSynced(workoutId);
+      await _localDataSource.markWorkoutAsSyncedInLocalDatabase(workoutId);
     } catch (e) {
       throw Exception('Failed to mark workout as synced: $e');
     }
@@ -97,6 +103,6 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
     // 1. Get unsynced workouts
     // 2. Send to server
     // 3. Mark as synced on success
-    print('Workout sync not implemented yet');
+    log('Workout sync not implemented yet');
   }
 }
