@@ -1,14 +1,44 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_action_card.dart';
-import '../../../../theme/app_theme.dart';
-import '../../../../const/custom_app_colors.dart';
-import '../../live_tracking/screens/live_tracking_screen.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/screens/live_tracking_screen.dart';
+import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
-class TrackScreen extends StatelessWidget {
+class TrackScreen extends ConsumerWidget {
   const TrackScreen({super.key});
 
+  void _startWorkoutAndNavigate(
+    BuildContext context,
+    WidgetRef ref,
+    WorkoutType workoutType,
+  ) async {
+    final liveTrackingNotifier = ref.read(liveTrackingProvider.notifier);
+
+    // Show notification that workout is starting
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Starting ${workoutType.name} workout...'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: CustomAppColors.statusSuccess,
+      ),
+    );
+
+    // Start the workout
+    await liveTrackingNotifier.startWorkout(workoutType);
+
+    // Navigate to live tracking screen
+    if (context.mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => const LiveTrackingScreen()),
+      );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Track Workouts'),
@@ -28,9 +58,10 @@ class TrackScreen extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
+                  // colors: [CustomAppColors.colorA, CustomAppColors.colorB],
                   colors: [
-                    CustomAppColors.primaryButtonLight,
-                    CustomAppColors.primaryButtonLight.withOpacity(0.6),
+                    Theme.of(context).colorScheme.primary,
+                    Theme.of(context).colorScheme.primary.withOpacity(0.6),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(radiusLg),
@@ -38,14 +69,18 @@ class TrackScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(runningIcon, size: 48, color: CustomAppColors.white),
+                  Icon(
+                    runningIcon,
+                    size: 48,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
                   const SizedBox(height: spacingMd),
-                  const Text(
+                  Text(
                     'Ready to Track?',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: CustomAppColors.white,
+                      color: Theme.of(context).colorScheme.onPrimary,
                     ),
                   ),
                   const SizedBox(height: spacingSm),
@@ -53,7 +88,7 @@ class TrackScreen extends StatelessWidget {
                     'Track your runs, walks, and bike rides with GPS precision.',
                     style: TextStyle(
                       fontSize: 16,
-                      color: CustomAppColors.white.withOpacity(0.9),
+                      color: CustomAppColors.secondaryText,
                     ),
                   ),
                   const SizedBox(height: spacingLg),
@@ -66,8 +101,8 @@ class TrackScreen extends StatelessWidget {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: CustomAppColors.white,
-                      foregroundColor: CustomAppColors.primaryButtonLight,
+                      backgroundColor: Theme.of(context).colorScheme.onPrimary,
+                      foregroundColor: Theme.of(context).colorScheme.primary,
                       padding: const EdgeInsets.symmetric(
                         horizontal: spacingXl,
                         vertical: spacingMd,
@@ -113,13 +148,12 @@ class TrackScreen extends StatelessWidget {
                     description: 'Start a run',
                     icon: runningIcon,
                     color: CustomAppColors.running,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const LiveTrackingScreen(),
+                    onTap:
+                        () => _startWorkoutAndNavigate(
+                          context,
+                          ref,
+                          WorkoutType.running,
                         ),
-                      );
-                    },
                   ),
                 ),
                 const SizedBox(width: spacingMd),
@@ -130,13 +164,12 @@ class TrackScreen extends StatelessWidget {
                     description: 'Start a walk',
                     icon: walkingIcon,
                     color: CustomAppColors.walking,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const LiveTrackingScreen(),
+                    onTap:
+                        () => _startWorkoutAndNavigate(
+                          context,
+                          ref,
+                          WorkoutType.walking,
                         ),
-                      );
-                    },
                   ),
                 ),
               ],
@@ -153,13 +186,12 @@ class TrackScreen extends StatelessWidget {
                     description: 'Start cycling',
                     icon: cyclingIcon,
                     color: CustomAppColors.cycling,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const LiveTrackingScreen(),
+                    onTap:
+                        () => _startWorkoutAndNavigate(
+                          context,
+                          ref,
+                          WorkoutType.cycling,
                         ),
-                      );
-                    },
                   ),
                 ),
                 const SizedBox(width: spacingMd),
@@ -170,13 +202,12 @@ class TrackScreen extends StatelessWidget {
                     description: 'Start hiking',
                     icon: hikingIcon,
                     color: CustomAppColors.hiking,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const LiveTrackingScreen(),
+                    onTap:
+                        () => _startWorkoutAndNavigate(
+                          context,
+                          ref,
+                          WorkoutType.hiking,
                         ),
-                      );
-                    },
                   ),
                 ),
               ],

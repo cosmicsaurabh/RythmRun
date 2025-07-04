@@ -32,12 +32,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
     final liveTrackingNotifier = ref.read(liveTrackingProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Live Tracking'),
-        backgroundColor: CustomAppColors.surfaceBackgroundDark,
-        foregroundColor: CustomAppColors.white,
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('Live Tracking'), elevation: 0),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(spacingLg),
