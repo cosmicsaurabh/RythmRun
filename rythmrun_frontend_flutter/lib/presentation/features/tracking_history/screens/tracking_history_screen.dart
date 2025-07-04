@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/models/tracking_history_state.dart';
+import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 import '../providers/tracking_history_provider.dart';
 
 class ActivitiesScreen extends ConsumerWidget {
@@ -12,7 +14,6 @@ class ActivitiesScreen extends ConsumerWidget {
     final workoutsState = ref.watch(trackingHistoryProvider);
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text(
           'Tracking History',
@@ -22,7 +23,7 @@ class ActivitiesScreen extends ConsumerWidget {
         actions: [
           if (workoutsState.workouts.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(refreshIcon),
               onPressed: () {
                 ref.read(trackingHistoryProvider.notifier).refresh();
               },
@@ -47,11 +48,15 @@ class ActivitiesScreen extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 60, color: Colors.red[300]),
+            Icon(
+              errorOutlineIcon,
+              size: 60,
+              color: CustomAppColors.statusDanger,
+            ),
             const SizedBox(height: 16),
             Text(
               state.errorMessage!,
-              style: TextStyle(color: Colors.red[600]),
+              style: TextStyle(color: CustomAppColors.statusDanger),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
@@ -90,20 +95,23 @@ class ActivitiesScreen extends ConsumerWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.directions_run, size: 80, color: Colors.grey),
+          Icon(runningIcon, size: 80, color: CustomAppColors.secondaryText),
           SizedBox(height: 16),
           Text(
             'No Activities Yet',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: Colors.grey,
+              color: CustomAppColors.secondaryText,
             ),
           ),
           SizedBox(height: 8),
           Text(
             'Start tracking your workouts to see them here',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+            style: TextStyle(
+              fontSize: 16,
+              color: CustomAppColors.secondaryText,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -172,7 +180,7 @@ class ActivitiesScreen extends ConsumerWidget {
                             _formatDate(workout.startTime),
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.grey[600],
+                              color: CustomAppColors.secondaryText,
                             ),
                           ),
                         ],
@@ -198,7 +206,11 @@ class ActivitiesScreen extends ConsumerWidget {
                             value: 'delete',
                             child: Row(
                               children: [
-                                Icon(Icons.delete, color: Colors.red, size: 20),
+                                Icon(
+                                  deleteIcon,
+                                  color: CustomAppColors.statusDanger,
+                                  size: 20,
+                                ),
                                 SizedBox(width: 8),
                                 Text('Delete'),
                               ],
@@ -214,30 +226,30 @@ class ActivitiesScreen extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   _buildMetric(
-                    icon: Icons.straighten,
+                    icon: distanceIcon,
                     label: 'Distance',
                     value: _formatDistance(workout.totalDistance),
                   ),
                   _buildMetric(
-                    icon: Icons.timer,
+                    icon: timeIcon,
                     label: 'Duration',
                     value: _formatDuration(activeDuration),
                   ),
                   _buildMetric(
-                    icon: Icons.speed,
+                    icon: speedIcon,
                     label: 'Avg Pace',
                     value: _formatPace(workout.averagePace),
                   ),
                   if (workout.elevationGain != null &&
                       workout.elevationGain! > 0)
                     _buildMetric(
-                      icon: Icons.trending_up,
+                      icon: elevationIcon,
                       label: 'Elevation',
                       value: '${workout.elevationGain!.toInt()}m',
                     )
                   else if (workout.calories != null)
                     _buildMetric(
-                      icon: Icons.local_fire_department,
+                      icon: caloriesIcon,
                       label: 'Calories',
                       value: '${workout.calories}',
                     ),
@@ -249,19 +261,23 @@ class ActivitiesScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.grey[100],
+                    color: CustomAppColors.surfaceBackgroundLight,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.note, size: 16, color: Colors.grey[600]),
+                      Icon(
+                        noteIcon,
+                        size: 16,
+                        color: CustomAppColors.secondaryText,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           workout.notes!,
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.grey[700],
+                            color: CustomAppColors.secondaryText,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -285,13 +301,16 @@ class ActivitiesScreen extends ConsumerWidget {
   }) {
     return Column(
       children: [
-        Icon(icon, size: 20, color: Colors.grey[600]),
+        Icon(icon, size: 20, color: CustomAppColors.secondaryText),
         const SizedBox(height: 4),
         Text(
           value,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, color: CustomAppColors.secondaryText),
+        ),
       ],
     );
   }
@@ -299,26 +318,26 @@ class ActivitiesScreen extends ConsumerWidget {
   IconData _getWorkoutIcon(WorkoutType type) {
     switch (type) {
       case WorkoutType.running:
-        return Icons.directions_run;
+        return runningIcon;
       case WorkoutType.walking:
-        return Icons.directions_walk;
+        return walkingIcon;
       case WorkoutType.cycling:
-        return Icons.directions_bike;
+        return cyclingIcon;
       case WorkoutType.hiking:
-        return Icons.terrain;
+        return hikingIcon;
     }
   }
 
   Color _getWorkoutColor(WorkoutType type) {
     switch (type) {
       case WorkoutType.running:
-        return Colors.orange;
+        return CustomAppColors.running;
       case WorkoutType.walking:
-        return Colors.green;
+        return CustomAppColors.walking;
       case WorkoutType.cycling:
-        return Colors.blue;
+        return CustomAppColors.cycling;
       case WorkoutType.hiking:
-        return Colors.brown;
+        return CustomAppColors.hiking;
     }
   }
 
@@ -405,7 +424,9 @@ class ActivitiesScreen extends ConsumerWidget {
                   ),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(true),
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    style: TextButton.styleFrom(
+                      foregroundColor: CustomAppColors.statusDanger,
+                    ),
                     child: const Text('Delete'),
                   ),
                 ],

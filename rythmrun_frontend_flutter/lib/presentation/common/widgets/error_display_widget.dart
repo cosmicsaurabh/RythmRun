@@ -32,7 +32,7 @@ class ErrorDisplayWidget extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                isNetworkError ? Icons.wifi_off : Icons.error_outline,
+                isNetworkError ? wifiOffIcon : errorOutlineIcon,
                 color: CustomAppColors.statusDanger,
                 size: iconSizeSm,
               ),
@@ -66,7 +66,7 @@ class ErrorDisplayWidget extends StatelessWidget {
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: onRetry,
-                icon: const Icon(Icons.refresh, size: 16),
+                icon: const Icon(refreshIcon, size: 16),
                 label: const Text('Try Again'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: CustomAppColors.statusDanger,

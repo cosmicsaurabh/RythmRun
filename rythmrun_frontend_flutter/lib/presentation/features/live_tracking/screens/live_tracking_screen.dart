@@ -96,8 +96,8 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
     final buttonText = LocationErrorHandler.getActionText(locationStatus);
     final IconData icon =
         LocationErrorHandler.isLocationServicesDisabled(locationStatus)
-            ? Icons.location_disabled
-            : Icons.location_off;
+            ? locationDisabledIcon
+            : locationOffIcon;
     final String description =
         LocationErrorHandler.isLocationServicesDisabled(locationStatus)
             ? 'Location services are turned off on your device. Please enable them in device settings to track workouts.'
@@ -160,8 +160,8 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
               },
               icon: Icon(
                 LocationErrorHandler.isLocationServicesDisabled(locationStatus)
-                    ? Icons.settings
-                    : Icons.location_on,
+                    ? settingsIcon
+                    : locationOnIcon,
               ),
               label: Text(buttonText),
               style: ElevatedButton.styleFrom(
@@ -192,25 +192,29 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
           childAspectRatio: 1.2,
           children: [
             buildWorkoutTypeCard(
-              icon: Icons.directions_run,
+              context: context,
+              icon: runningIcon,
               title: 'Running',
               type: WorkoutType.running,
               onTap: () => notifier.startWorkout(WorkoutType.running),
             ),
             buildWorkoutTypeCard(
-              icon: Icons.directions_walk,
+              context: context,
+              icon: walkingIcon,
               title: 'Walking',
               type: WorkoutType.walking,
               onTap: () => notifier.startWorkout(WorkoutType.walking),
             ),
             buildWorkoutTypeCard(
-              icon: Icons.directions_bike,
+              context: context,
+              icon: cyclingIcon,
               title: 'Cycling',
               type: WorkoutType.cycling,
               onTap: () => notifier.startWorkout(WorkoutType.cycling),
             ),
             buildWorkoutTypeCard(
-              icon: Icons.terrain,
+              context: context,
+              icon: hikingIcon,
               title: 'Hiking',
               type: WorkoutType.hiking,
               onTap: () => notifier.startWorkout(WorkoutType.hiking),
@@ -229,7 +233,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: CustomAppColors.black.withOpacity(0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -267,13 +271,13 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
               _buildMetricColumn(
                 label: 'Distance',
                 value: state.formattedDistance,
-                icon: Icons.straighten,
+                icon: distanceIcon,
               ),
               Container(width: 1, height: 40, color: CustomAppColors.border),
               _buildMetricColumn(
                 label: 'Pace',
                 value: state.formattedPace,
-                icon: Icons.speed,
+                icon: speedIcon,
               ),
             ],
           ),
@@ -322,14 +326,14 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
         // Pause/Resume Button
         if (state.isTracking)
           _buildControlButton(
-            icon: Icons.pause,
+            icon: pauseIcon,
             label: 'Pause',
             color: CustomAppColors.statusWarning,
             onPressed: () => notifier.pauseWorkout(),
           )
         else if (state.isPaused)
           _buildControlButton(
-            icon: Icons.play_arrow,
+            icon: playArrowIcon,
             label: 'Resume',
             color: CustomAppColors.statusSuccess,
             onPressed: () => notifier.resumeWorkout(),
@@ -337,7 +341,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
 
         // Stop Button
         _buildControlButton(
-          icon: Icons.stop,
+          icon: stopIcon,
           label: 'Finish',
           color: CustomAppColors.statusDanger,
           onPressed: () => _showStopConfirmation(notifier),
@@ -386,7 +390,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
         padding: const EdgeInsets.all(spacingLg),
         child: Row(
           children: [
-            const Icon(Icons.error, color: CustomAppColors.statusDanger),
+            const Icon(errorOutlineIcon, color: CustomAppColors.statusDanger),
             const SizedBox(width: spacingMd),
             Expanded(
               child: Text(
@@ -396,10 +400,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
             ),
             IconButton(
               onPressed: () => notifier.clearError(),
-              icon: const Icon(
-                Icons.close,
-                color: CustomAppColors.statusDanger,
-              ),
+              icon: const Icon(closeIcon, color: CustomAppColors.statusDanger),
             ),
           ],
         ),

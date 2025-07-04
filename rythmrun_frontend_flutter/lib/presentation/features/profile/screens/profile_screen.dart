@@ -73,8 +73,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          CustomAppColors.primary.withOpacity(0.1),
-                          CustomAppColors.secondary.withOpacity(0.05),
+                          CustomAppColors.colorA.withOpacity(0.1),
+                          CustomAppColors.colorB.withOpacity(0.05),
                           Theme.of(context).scaffoldBackgroundColor,
                         ],
                         stops: const [0.0, 0.3, 1.0],
@@ -156,9 +156,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            CustomAppColors.primary,
-            CustomAppColors.secondary,
-            CustomAppColors.accent.withOpacity(0.8),
+            CustomAppColors.colorA,
+            CustomAppColors.colorB,
+            CustomAppColors.colorC.withOpacity(0.8),
           ],
         ),
         borderRadius: BorderRadius.only(
@@ -195,7 +195,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 ),
               ),
               child: const Icon(
-                Icons.person,
+                personIcon,
                 size: 60,
                 color: CustomAppColors.white,
               ),
@@ -214,8 +214,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               color: CustomAppColors.white,
               fontWeight: FontWeight.bold,
               shadows: [
-                const Shadow(
-                  color: Colors.black26,
+                Shadow(
+                  color: CustomAppColors.black.withOpacity(0.26),
                   offset: Offset(0, 2),
                   blurRadius: 4,
                 ),
@@ -229,11 +229,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.email_outlined,
-                color: CustomAppColors.white,
-                size: 16,
-              ),
+              const Icon(emailIcon, color: CustomAppColors.white, size: 16),
               const SizedBox(width: spacingSm),
               Text(
                 user.email,
@@ -264,7 +260,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
-                  Icons.calendar_today,
+                  calendarTodayIcon,
                   color: CustomAppColors.white,
                   size: 14,
                 ),
@@ -311,7 +307,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               borderRadius: BorderRadius.circular(radiusSm),
             ),
             child: const Icon(
-              Icons.emoji_events,
+              emojiEventsIcon,
               color: CustomAppColors.statusSuccess,
               size: 24,
             ),
@@ -358,7 +354,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [CustomAppColors.primary, CustomAppColors.secondary],
+                  colors: [CustomAppColors.colorA, CustomAppColors.colorB],
                 ),
                 borderRadius: BorderRadius.circular(2),
               ),
@@ -384,26 +380,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             ProfileStatCard(
               title: 'Activities',
               value: '12',
-              icon: Icons.directions_run,
-              color: CustomAppColors.statusSuccess,
+              icon: runningIcon,
+              color: CustomAppColors.colorA,
             ),
             ProfileStatCard(
               title: 'Distance',
               value: '45.2 km',
-              icon: Icons.route,
-              color: CustomAppColors.primary,
+              icon: distanceIcon,
+              color: CustomAppColors.distance,
             ),
             ProfileStatCard(
               title: 'Time',
               value: '8h 23m',
-              icon: Icons.timer,
-              color: CustomAppColors.secondary,
+              icon: timeIcon,
+              color: CustomAppColors.time,
             ),
             ProfileStatCard(
               title: 'Friends',
               value: '24',
-              icon: Icons.people,
-              color: CustomAppColors.accent,
+              icon: friendsIcon,
+              color: CustomAppColors.colorC,
             ),
           ],
         ),
@@ -424,7 +420,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [CustomAppColors.accent, CustomAppColors.primary],
+                  colors: [CustomAppColors.colorC, CustomAppColors.colorA],
                 ),
                 borderRadius: BorderRadius.circular(2),
               ),
@@ -445,7 +441,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               child: buildQuickActionCard(
                 context: context,
                 title: 'Share Profile',
-                icon: Icons.share,
+                icon: shareIcon,
                 color: CustomAppColors.statusInfo,
                 onTap: () => _shareProfile(context),
               ),
@@ -455,8 +451,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               child: buildQuickActionCard(
                 context: context,
                 title: 'Export Data',
-                icon: Icons.download,
-                color: CustomAppColors.secondary,
+                icon: downloadIcon,
+                color: CustomAppColors.colorB,
                 onTap: () => _exportData(context),
               ),
             ),
@@ -479,7 +475,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [CustomAppColors.secondary, CustomAppColors.accent],
+                  colors: [CustomAppColors.colorB, CustomAppColors.colorC],
                 ),
                 borderRadius: BorderRadius.circular(2),
               ),
@@ -500,7 +496,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             borderRadius: BorderRadius.circular(radiusLg),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: CustomAppColors.black.withOpacity(0.05),
                 blurRadius: 20,
                 offset: const Offset(0, 4),
               ),
@@ -509,42 +505,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           child: Column(
             children: [
               ProfileMenuItem(
-                icon: Icons.person_outline,
+                icon: personOutlineIcon,
                 title: 'Edit Profile',
                 subtitle: 'Update your personal information',
                 onTap: () => _editProfile(context),
               ),
               const Divider(height: 1),
               ProfileMenuItem(
-                icon: Icons.settings,
+                icon: settingsIcon,
                 title: 'Settings',
                 subtitle: 'Theme, units, and app preferences',
                 onTap: () => _openSettings(context),
               ),
               const Divider(height: 1),
               ProfileMenuItem(
-                icon: Icons.notifications,
+                icon: notificationsIcon,
                 title: 'Notifications',
                 subtitle: 'Manage your notification preferences',
                 onTap: () => _openNotifications(context),
               ),
               const Divider(height: 1),
               ProfileMenuItem(
-                icon: Icons.security,
+                icon: securityIcon,
                 title: 'Privacy & Security',
                 subtitle: 'Control your privacy settings',
                 onTap: () => _openPrivacySettings(context),
               ),
               const Divider(height: 1),
               ProfileMenuItem(
-                icon: Icons.help_outline,
+                icon: helpOutlineIcon,
                 title: 'Help & Support',
                 subtitle: 'Get help and contact support',
                 onTap: () => _openHelp(context),
               ),
               const Divider(height: 1),
               ProfileMenuItem(
-                icon: Icons.info_outline,
+                icon: infoOutlineIcon,
                 title: 'About',
                 subtitle: 'App version and information',
                 onTap: () => _showAbout(context),
@@ -587,7 +583,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.logout, color: CustomAppColors.white),
+                Icon(logoutIcon, color: CustomAppColors.white),
                 SizedBox(width: spacingSm),
                 Text(
                   'Logout',
@@ -640,7 +636,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text('Data export - Coming Soon!'),
-        backgroundColor: CustomAppColors.secondary,
+        backgroundColor: CustomAppColors.colorB,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -704,15 +700,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [CustomAppColors.primary, CustomAppColors.secondary],
+            colors: [CustomAppColors.colorA, CustomAppColors.colorB],
           ),
           borderRadius: BorderRadius.circular(radiusSm),
         ),
-        child: const Icon(
-          Icons.fitness_center,
-          size: 40,
-          color: CustomAppColors.white,
-        ),
+        child: const Icon(fitnessIcon, size: 40, color: CustomAppColors.white),
       ),
       children: [
         const Text(

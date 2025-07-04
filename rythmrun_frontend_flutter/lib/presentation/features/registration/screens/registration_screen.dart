@@ -81,7 +81,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
         backgroundColor: CustomAppColors.border,
         leading: IconButton(
           icon: Icon(
-            Icons.arrow_back_ios,
+            arrowBackIosIcon,
             color: Theme.of(context).colorScheme.onSurface,
           ),
           onPressed: () => Navigator.of(context).pop(),
@@ -154,8 +154,8 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                   suffixIcon: IconButton(
                     icon: Icon(
                       registrationState.obscurePassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
+                          ? visibilityOffIcon
+                          : visibilityIcon,
                     ),
                     color: Theme.of(context).colorScheme.onSurface,
                     onPressed: registrationNotifier.togglePasswordVisibility,
@@ -184,8 +184,8 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                   suffixIcon: IconButton(
                     icon: Icon(
                       registrationState.obscureConfirmPassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
+                          ? visibilityOffIcon
+                          : visibilityIcon,
                     ),
                     color: Theme.of(context).colorScheme.onSurface,
                     onPressed:
@@ -352,7 +352,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    Icons.check_circle,
+                    checkCircleIcon,
                     color: CustomAppColors.statusSuccess,
                     size: 48,
                   ),

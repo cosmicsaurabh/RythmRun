@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/track/screens/track_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/screens/tracking_history_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/profile/screens/profile_screen.dart';
+import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 // Provider for managing the current tab index
 final tabIndexProvider = StateProvider<int>((ref) => 0);
@@ -29,15 +30,9 @@ class HomeScreen extends ConsumerWidget {
         },
         type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.track_changes),
-            label: 'Track',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
-            label: 'Activities',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(icon: Icon(trackChangesIcon), label: 'Track'),
+          BottomNavigationBarItem(icon: Icon(listAltIcon), label: 'Activities'),
+          BottomNavigationBarItem(icon: Icon(personIcon), label: 'Profile'),
         ],
       ),
     );

@@ -24,24 +24,24 @@ class SettingsScreen extends ConsumerWidget {
         child: Column(
           children: [
             // Theme Section
-            _buildSection(context, 'Appearance', Icons.palette, [
+            _buildSection(context, 'Appearance', appearanceIcon, [
               _buildTile(
                 context,
                 'Theme',
                 _getThemeModeText(settings.themeMode),
-                Icons.brightness_6,
+                brightness6Icon,
                 () => _showThemeSelector(context, ref),
               ),
             ]),
             const SizedBox(height: spacingLg),
 
             // Units Section
-            _buildSection(context, 'Units', Icons.straighten, [
+            _buildSection(context, 'Units', straightenIcon, [
               _buildTile(
                 context,
                 'Measurement System',
                 _getMeasurementUnitText(settings.measurementUnit),
-                Icons.speed,
+                speedIcon,
                 () => _showUnitsSelector(context, ref),
               ),
             ]),
@@ -79,12 +79,12 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: spacingLg),
 
             // Account Section
-            _buildSection(context, 'Account', Icons.person, [
+            _buildSection(context, 'Account', personIcon, [
               _buildTile(
                 context,
                 'Change Password',
                 'Update your account password',
-                Icons.lock,
+                lockIcon,
                 () => _showChangePasswordDialog(context, ref),
               ),
             ]),
@@ -94,13 +94,13 @@ class SettingsScreen extends ConsumerWidget {
             _buildSection(
               context,
               'Danger Zone',
-              Icons.warning,
+              warningIcon,
               [
                 _buildTile(
                   context,
                   'Delete Account',
                   'Permanently delete your account',
-                  Icons.delete_forever,
+                  deleteForeverIcon,
                   () => _showDeleteAccountDialog(context, ref),
                   isDestructive: true,
                 ),
@@ -130,7 +130,7 @@ class SettingsScreen extends ConsumerWidget {
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: CustomAppColors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -145,14 +145,14 @@ class SettingsScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(spacingSm),
                   decoration: BoxDecoration(
-                    color: (iconColor ?? CustomAppColors.primary).withOpacity(
+                    color: (iconColor ?? CustomAppColors.colorA).withOpacity(
                       0.1,
                     ),
                     borderRadius: BorderRadius.circular(radiusSm),
                   ),
                   child: Icon(
                     icon,
-                    color: iconColor ?? CustomAppColors.primary,
+                    color: iconColor ?? CustomAppColors.colorA,
                     size: 20,
                   ),
                 ),
@@ -220,7 +220,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             Icon(
-              Icons.arrow_forward_ios,
+              arrowForwardIosIcon,
               size: 16,
               color: Theme.of(context).iconTheme.color?.withOpacity(0.4),
             ),
@@ -235,7 +235,7 @@ class SettingsScreen extends ConsumerWidget {
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: () => _showResetDialog(context, ref),
-        icon: const Icon(Icons.refresh),
+        icon: const Icon(refreshIcon),
         label: const Text('Reset All Settings'),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: spacingLg),
@@ -290,7 +290,10 @@ class SettingsScreen extends ConsumerWidget {
                     title: Text(_getThemeModeText(theme)),
                     trailing:
                         current == theme
-                            ? Icon(Icons.check, color: CustomAppColors.primary)
+                            ? Icon(
+                              checkCircleIcon,
+                              color: CustomAppColors.colorA,
+                            )
                             : null,
                     onTap: () {
                       ref
@@ -330,7 +333,10 @@ class SettingsScreen extends ConsumerWidget {
                     title: Text(_getMeasurementUnitText(unit)),
                     trailing:
                         current == unit
-                            ? Icon(Icons.check, color: CustomAppColors.primary)
+                            ? Icon(
+                              checkCircleIcon,
+                              color: CustomAppColors.colorA,
+                            )
                             : null,
                     onTap: () {
                       ref
@@ -381,7 +387,7 @@ class SettingsScreen extends ConsumerWidget {
                         child: Row(
                           children: [
                             Icon(
-                              Icons.error_outline,
+                              errorOutlineIcon,
                               color: CustomAppColors.statusError,
                             ),
                             const SizedBox(width: spacingSm),
@@ -403,7 +409,7 @@ class SettingsScreen extends ConsumerWidget {
                       decoration: InputDecoration(
                         labelText: 'Current Password',
                         prefixIcon: Icon(
-                          Icons.lock_outline,
+                          lockIcon,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
@@ -418,7 +424,7 @@ class SettingsScreen extends ConsumerWidget {
                       decoration: InputDecoration(
                         labelText: 'New Password',
                         prefixIcon: Icon(
-                          Icons.lock,
+                          lockIcon,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
@@ -500,7 +506,7 @@ class SettingsScreen extends ConsumerWidget {
                 (context, setState) => AlertDialog(
                   title: Row(
                     children: [
-                      Icon(Icons.warning, color: CustomAppColors.statusError),
+                      Icon(warningIcon, color: CustomAppColors.statusError),
                       const SizedBox(width: spacingSm),
                       const Text('Delete Account'),
                     ],
@@ -598,20 +604,20 @@ class SettingsScreen extends ConsumerWidget {
   IconData _getThemeIcon(AppThemeMode theme) {
     switch (theme) {
       case AppThemeMode.light:
-        return Icons.light_mode;
+        return lightModeIcon;
       case AppThemeMode.dark:
-        return Icons.dark_mode;
+        return darkModeIcon;
       case AppThemeMode.system:
-        return Icons.brightness_auto;
+        return brightnessAutoIcon;
     }
   }
 
   IconData _getUnitIcon(MeasurementUnit unit) {
     switch (unit) {
       case MeasurementUnit.metric:
-        return Icons.public;
+        return publicIcon;
       case MeasurementUnit.imperial:
-        return Icons.flag;
+        return flagIcon;
     }
   }
 }

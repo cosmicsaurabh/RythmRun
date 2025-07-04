@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 Widget buildQuickActionCard({
@@ -30,7 +29,7 @@ Widget buildQuickActionCard({
                 color: color.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(radiusSm),
               ),
-              child: Icon(icon, color: color, size: 24),
+              child: Icon(icon, color: color, size: iconSizeMd),
             ),
             const SizedBox(height: spacingSm),
             Text(

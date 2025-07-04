@@ -6,9 +6,9 @@ class CustomAppColors {
   static const black = Color(0xFF000000);
 
   // Brand colors
-  static const primary = Color(0xFF6C63FF);
-  static const secondary = Color(0xFF4ECDC4);
-  static const accent = Color(0xFFFF6B6B);
+  static const colorA = Color(0xFF6C63FF);
+  static const colorB = Color(0xFF4ECDC4);
+  static const colorC = Color(0xFFFF6B6B);
 
   // Backgrounds / Surfaces
   static const surfaceBackgroundLight = Color(0xFFF7F7F7);
@@ -50,11 +50,10 @@ class CustomAppColors {
 
   // Progress indicators (for charts or bars)
   static const progressSky = Color(0xFFB4DAFF);
-  static const progressOrange = Color(0xFFFFCE8F);
-  static const progressGreen = Color(0xFFB5E1A1);
-  static const progressPink = Color(0xFFEAB4FF);
-  static const progressPurple = Color(0xFFB9BBFF);
-  static const progressPeach = Color(0xFFFFB4B4);
-  static const progressLavender = Color(0xFFD0B4FF);
-  // Completion-specific colors
+  static const walking = Color(0xFFFFCE8F);
+  static const cycling = Color(0xFFB5E1A1);
+  static const hiking = Color(0xFFEAB4FF);
+  static const running = Color(0xFFB9BBFF);
+  static const distance = Color(0xFFFFB4B4);
+  static const time = Color(0xFFD0B4FF);
 }

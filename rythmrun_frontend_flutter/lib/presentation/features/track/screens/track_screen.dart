@@ -38,11 +38,7 @@ class TrackScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    Icons.directions_run,
-                    size: 48,
-                    color: CustomAppColors.white,
-                  ),
+                  Icon(runningIcon, size: 48, color: CustomAppColors.white),
                   const SizedBox(height: spacingMd),
                   const Text(
                     'Ready to Track?',
@@ -83,7 +79,7 @@ class TrackScreen extends StatelessWidget {
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.play_arrow),
+                        Icon(playArrowIcon),
                         SizedBox(width: spacingSm),
                         Text(
                           'Start Tracking',
@@ -115,8 +111,8 @@ class TrackScreen extends StatelessWidget {
                     context: context,
                     title: 'Running',
                     description: 'Start a run',
-                    icon: Icons.directions_run,
-                    color: CustomAppColors.progressGreen,
+                    icon: runningIcon,
+                    color: CustomAppColors.running,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -132,8 +128,8 @@ class TrackScreen extends StatelessWidget {
                     context: context,
                     title: 'Walking',
                     description: 'Start a walk',
-                    icon: Icons.directions_walk,
-                    color: CustomAppColors.statusInfo,
+                    icon: walkingIcon,
+                    color: CustomAppColors.walking,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -155,8 +151,8 @@ class TrackScreen extends StatelessWidget {
                     context: context,
                     title: 'Cycling',
                     description: 'Start cycling',
-                    icon: Icons.directions_bike,
-                    color: CustomAppColors.statusWarning,
+                    icon: cyclingIcon,
+                    color: CustomAppColors.cycling,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -172,8 +168,8 @@ class TrackScreen extends StatelessWidget {
                     context: context,
                     title: 'Hiking',
                     description: 'Start hiking',
-                    icon: Icons.terrain,
-                    color: CustomAppColors.primary,
+                    icon: hikingIcon,
+                    color: CustomAppColors.hiking,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
