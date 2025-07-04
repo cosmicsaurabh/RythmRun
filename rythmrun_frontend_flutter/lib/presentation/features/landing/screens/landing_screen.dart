@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
+import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 class LandingScreen extends StatelessWidget {
   const LandingScreen({super.key});
@@ -18,7 +19,7 @@ class LandingScreen extends StatelessWidget {
               children: [
                 // App Logo/Title
                 Icon(
-                  Icons.directions_run,
+                  runningIcon,
                   size: 120,
                   color: Theme.of(context).colorScheme.primary,
                 ),
@@ -44,7 +45,7 @@ class LandingScreen extends StatelessWidget {
                 ElevatedButton(
                   onPressed: () {
                     Navigator.pushNamed(context, '/login');
-                  },  
+                  },
                   child: const Text('Sign In'),
                 ),
                 const SizedBox(height: 16),

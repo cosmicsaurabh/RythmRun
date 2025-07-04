@@ -2,26 +2,117 @@ import 'package:flutter/material.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 
 // ICON SIZES
+/// - [sm] 20px
 const double iconSizeSm = 20;
+
+/// - [md] 24px
 const double iconSizeMd = 24;
-const double iconSizeLg = 32; // Optional for future-proofing
+
+/// - [lg] 32px
+const double iconSizeLg = 32;
 
 // RADIUS
+/// - [sm] 8px
 const double radiusSm = 8;
+
+/// - [md] 12px
 const double radiusMd = 12;
+
+/// - [lg] 16px
 const double radiusLg = 16;
+
+/// - [xl] 24px
 const double radiusXl = 24;
 
-// SPACING / PADDING (You can use this for both padding/margin if consistent)
+// SPACING / PADDING
+
+/// - [xs] 4px
 const double spacingXs = 4;
+
+/// - [sm] 8px
 const double spacingSm = 8;
+
+/// - [md] 12px
 const double spacingMd = 12;
 const double spacingLg = 16;
+
+/// - [xl] 24px
 const double spacingXl = 24;
+
+/// - [2xl] 32px
 const double spacing2xl = 32;
 
 // ELEVATION / EFFECTS
+/// - [blurSm] 4px
 const double blurSm = 4; // for shadows, frosted glass, etc.
+
+/// - [blurMd] 8px
+const double blurMd = 8;
+
+/// - [blurLg] 16px
+const double blurLg = 16;
+
+/// - [blurXl] 24px
+
+/// - [blur2xl] 32px
+const double blur2xl = 32;
+
+///Icons
+const trackChangesIcon = Icons.track_changes;
+const listAltIcon = Icons.list_alt;
+const personIcon = Icons.person;
+const cyclingIcon = Icons.directions_bike;
+const walkingIcon = Icons.directions_walk;
+const runningIcon = Icons.directions_run;
+const hikingIcon = Icons.terrain;
+const distanceIcon = Icons.route;
+const timeIcon = Icons.timer;
+const friendsIcon = Icons.people;
+const speedIcon = Icons.speed;
+const elevationIcon = Icons.trending_up;
+const caloriesIcon = Icons.local_fire_department;
+const pauseIcon = Icons.pause;
+const playArrowIcon = Icons.play_arrow;
+const stopIcon = Icons.stop;
+const deleteIcon = Icons.delete;
+const locationDisabledIcon = Icons.location_disabled;
+const locationOffIcon = Icons.location_off;
+const settingsIcon = Icons.settings;
+const locationOnIcon = Icons.location_on;
+const noteIcon = Icons.note;
+const fitnessIcon = Icons.fitness_center;
+const wifiOffIcon = Icons.wifi_off;
+const errorOutlineIcon = Icons.error_outline;
+const closeIcon = Icons.close;
+const refreshIcon = Icons.refresh;
+const arrowForwardIosIcon = Icons.arrow_forward_ios;
+const arrowBackIosIcon = Icons.arrow_back_ios;
+const emailIcon = Icons.email_outlined;
+const lockIcon = Icons.lock_outline;
+const visibilityOffIcon = Icons.visibility_off;
+const visibilityIcon = Icons.visibility;
+const calendarTodayIcon = Icons.calendar_today;
+const emojiEventsIcon = Icons.emoji_events;
+const emojiPeopleIcon = Icons.emoji_people;
+const shareIcon = Icons.share;
+const downloadIcon = Icons.download;
+const personOutlineIcon = Icons.person_outline;
+const notificationsIcon = Icons.notifications;
+const securityIcon = Icons.security;
+const helpOutlineIcon = Icons.help_outline;
+const infoOutlineIcon = Icons.info_outline;
+const logoutIcon = Icons.logout;
+const checkCircleIcon = Icons.check_circle;
+const appearanceIcon = Icons.palette;
+const brightness6Icon = Icons.brightness_6;
+const straightenIcon = Icons.straighten;
+const warningIcon = Icons.warning;
+const deleteForeverIcon = Icons.delete_forever;
+const lightModeIcon = Icons.light_mode;
+const darkModeIcon = Icons.dark_mode;
+const brightnessAutoIcon = Icons.brightness_auto;
+const flagIcon = Icons.flag;
+const publicIcon = Icons.public;
 
 final ColorScheme colorSchemeLight = ColorScheme.light(
   primary:
@@ -42,8 +133,23 @@ final ColorScheme colorSchemeLight = ColorScheme.light(
   onError: CustomAppColors.white, // Text/icons on error color
 );
 
+/// - [displayLarge] 40px , weight: 700
+/// - [displayMedium] 32px , weight: 600
+/// - [displaySmall] 26px , weight: 600
+/// - [headlineLarge] 24px , weight: 700
+/// - [headlineMedium] 22px , weight: 600
+/// - [headlineSmall] 20px , weight: 500
+/// - [titleLarge] 18px , weight: 600
+/// - [titleMedium] 17px , weight: 500
+/// - [titleSmall] 16px , weight: 500
+/// - [bodyLarge] 16px , weight: 500
+/// - [bodyMedium] 15px , weight: 400
+/// - [bodySmall] 14px , weight: 400
+/// - [labelLarge] 15px , weight: 600
+/// - [labelMedium] 13px , weight: 500
+/// - [labelSmall] 11px , weight: 500
 final lightTextTheme = TextTheme(
-  // DISPLAY – Big, prominent text (e.g., welcome screens, titles)
+  /// DISPLAY – Big, prominent text (e.g., welcome screens, titles)
   displayLarge: TextStyle(
     fontSize: 40,
     fontWeight: FontWeight.w700,
@@ -162,13 +268,7 @@ final ThemeData lightTheme = ThemeData(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radiusLg),
       ),
-      textStyle: TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-        color:
-            CustomAppColors
-                .primaryButtonDark, // Light mode primary button text color (white)
-      ),
+      textStyle: lightTextTheme.labelLarge,
       disabledBackgroundColor:
           CustomAppColors.disabledButtonLight, // Light mode disabled background
       disabledForegroundColor:
@@ -191,13 +291,7 @@ final ThemeData lightTheme = ThemeData(
         color: CustomAppColors.primaryTextLight,
         width: 1.0,
       ), // Border color for light mode
-      textStyle: TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-        color:
-            CustomAppColors
-                .primaryTextLight, // Outlined button text color for light mode
-      ),
+      textStyle: lightTextTheme.labelLarge,
     ),
   ),
   floatingActionButtonTheme: FloatingActionButtonThemeData(
@@ -296,6 +390,20 @@ final ColorScheme colorSchemeDark = ColorScheme.dark(
   onError: CustomAppColors.white, // Text/icons on error color
 );
 
+/// - [displayLarge] 40px , weight: 700
+/// - [displayMedium] 32px , weight: 600
+/// - [displaySmall] 26px , weight: 600
+/// - [headlineLarge] 24px , weight: 700
+/// - [headlineMedium] 22px , weight: 600
+/// - [headlineSmall] 20px , weight: 500
+/// - [titleLarge] 18px , weight: 600
+/// - [titleMedium] 17px , weight: 500
+/// - [titleSmall] 16px , weight: 500
+/// - [bodyLarge] 16px , weight: 500
+/// - [bodyMedium] 15px , weight: 400
+/// - [bodySmall] 14px , weight: 400
+/// - [labelLarge] 15px , weight: 600
+/// - [labelMedium] 13px , weight: 500
 final darkTextTheme = TextTheme(
   // DISPLAY – Big, prominent text (e.g., welcome screens, titles)
   displayLarge: TextStyle(
@@ -417,13 +525,7 @@ final ThemeData darkTheme = ThemeData(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radiusLg),
       ),
-      textStyle: TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-        color:
-            CustomAppColors
-                .primaryTextLight, // Dark mode primary button text color (black)
-      ),
+      textStyle: darkTextTheme.labelLarge,
       disabledBackgroundColor:
           CustomAppColors.disabledButtonDark, // Dark mode disabled background
       disabledForegroundColor:
@@ -442,13 +544,7 @@ final ThemeData darkTheme = ThemeData(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radiusLg),
       ),
-      textStyle: TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-        color:
-            CustomAppColors
-                .primaryTextDark, // Outlined button text color for dark mode
-      ),
+      textStyle: darkTextTheme.labelLarge,
       side: BorderSide(
         color: CustomAppColors.primaryButtonDark,
         width: 1.0,

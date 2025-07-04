@@ -60,7 +60,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         backgroundColor: CustomAppColors.border,
         leading: IconButton(
           icon: Icon(
-            Icons.arrow_back_ios,
+            arrowBackIosIcon,
             color: Theme.of(context).colorScheme.onSurface,
           ),
           onPressed: () => Navigator.of(context).pop(),
@@ -97,7 +97,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   keyboardType: TextInputType.emailAddress,
                   onChanged: loginNotifier.updateEmail,
                   validator: (value) => ValidationHelper.validateEmail(value),
-                  prefixIcon: Icons.email_outlined,
+                  prefixIcon: emailIcon,
                 ),
                 const SizedBox(height: spacingLg),
 
@@ -113,12 +113,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     }
                     return null;
                   },
-                  prefixIcon: Icons.lock_outline,
+                  prefixIcon: lockIcon,
                   suffixIcon: IconButton(
                     icon: Icon(
                       loginState.obscurePassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
+                          ? visibilityOffIcon
+                          : visibilityIcon,
                       color: Theme.of(context).colorScheme.onSurface,
                     ),
                     onPressed: loginNotifier.togglePasswordVisibility,

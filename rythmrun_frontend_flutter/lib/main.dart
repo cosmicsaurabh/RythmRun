@@ -81,11 +81,7 @@ class SplashScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             // App logo or icon
-            Icon(
-              Icons.fitness_center,
-              size: 80,
-              color: Theme.of(context).primaryColor,
-            ),
+            Icon(fitnessIcon, size: 80, color: Theme.of(context).primaryColor),
             const SizedBox(height: 24),
             Text(
               'RythmRun',

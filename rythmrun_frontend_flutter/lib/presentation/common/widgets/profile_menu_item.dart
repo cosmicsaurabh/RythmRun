@@ -170,7 +170,7 @@ class _ProfileMenuItemState extends State<ProfileMenuItem>
                       child:
                           widget.trailing ??
                           Icon(
-                            Icons.arrow_forward_ios,
+                            arrowForwardIosIcon,
                             size: 14,
                             color: Theme.of(
                               context,
