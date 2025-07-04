@@ -105,19 +105,19 @@ class _ProfileMenuItemState extends State<ProfileMenuItem>
                           ],
                         ),
                         borderRadius: BorderRadius.circular(radiusSm + 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        // boxShadow: [
+                        //   BoxShadow(
+                        //     color: Theme.of(
+                        //       context,
+                        //     ).colorScheme.primary.withOpacity(0.1),
+                        //     blurRadius: 8,
+                        //     offset: const Offset(0, 2),
+                        //   ),
+                        // ],
                       ),
                       child: Icon(
                         widget.icon,
-                        size: 22,
+                        size: iconSizeMd,
                         color: Theme.of(context).colorScheme.primary,
                       ),
                     ),

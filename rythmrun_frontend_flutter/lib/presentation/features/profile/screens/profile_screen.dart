@@ -67,78 +67,61 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               : AnimatedBuilder(
                 animation: _animationController,
                 builder: (context, child) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          CustomAppColors.colorA.withOpacity(0.1),
-                          CustomAppColors.colorB.withOpacity(0.05),
-                          Theme.of(context).scaffoldBackgroundColor,
-                        ],
-                        stops: const [0.0, 0.3, 1.0],
-                      ),
-                    ),
-                    child: SafeArea(
-                      child: FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: SlideTransition(
-                          position: _slideAnimation,
-                          child: CustomScrollView(
-                            physics: const BouncingScrollPhysics(),
-                            slivers: [
-                              // Custom App Bar
-                              SliverAppBar(
-                                expandedHeight: 284,
-                                floating: false,
-                                pinned: false,
-                                backgroundColor: Colors.transparent,
-                                elevation: 0,
-                                flexibleSpace: FlexibleSpaceBar(
-                                  background: _buildProfileHeader(
-                                    context,
-                                    user,
-                                  ),
-                                ),
+                  return SafeArea(
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: SlideTransition(
+                        position: _slideAnimation,
+                        child: CustomScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          slivers: [
+                            // Custom App Bar
+                            SliverAppBar(
+                              expandedHeight: 284,
+                              floating: false,
+                              pinned: false,
+                              backgroundColor: Colors.transparent,
+                              elevation: 0,
+                              flexibleSpace: FlexibleSpaceBar(
+                                background: _buildProfileHeader(context, user),
                               ),
+                            ),
 
-                              // Content
-                              SliverPadding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  spacingLg,
-                                  0,
-                                  spacingLg,
-                                  spacingLg,
-                                ),
-                                sliver: SliverList(
-                                  delegate: SliverChildListDelegate([
-                                    const SizedBox(height: spacingLg),
-
-                                    // Achievement Banner
-                                    _buildAchievementBanner(context),
-                                    const SizedBox(height: spacing2xl),
-
-                                    // Statistics Cards
-                                    _buildStatsSection(context),
-                                    const SizedBox(height: spacing2xl),
-
-                                    // Quick Actions
-                                    _buildQuickActions(context),
-                                    const SizedBox(height: spacing2xl),
-
-                                    // Menu Section
-                                    _buildMenuSection(context, ref),
-                                    const SizedBox(height: spacingLg),
-
-                                    // Logout Button
-                                    _buildLogoutSection(context, ref),
-                                    const SizedBox(height: spacing2xl),
-                                  ]),
-                                ),
+                            // Content
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(
+                                spacingLg,
+                                0,
+                                spacingLg,
+                                spacingLg,
                               ),
-                            ],
-                          ),
+                              sliver: SliverList(
+                                delegate: SliverChildListDelegate([
+                                  const SizedBox(height: spacingLg),
+
+                                  // Achievement Banner
+                                  _buildAchievementBanner(context),
+                                  const SizedBox(height: spacing2xl),
+
+                                  // Statistics Cards
+                                  _buildStatsSection(context),
+                                  const SizedBox(height: spacing2xl),
+
+                                  // Quick Actions
+                                  _buildQuickActions(context),
+                                  const SizedBox(height: spacing2xl),
+
+                                  // Menu Section
+                                  _buildMenuSection(context, ref),
+                                  const SizedBox(height: spacingLg),
+
+                                  // Logout Button
+                                  _buildLogoutSection(context, ref),
+                                  const SizedBox(height: spacing2xl),
+                                ]),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -375,13 +358,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           crossAxisCount: 2,
           crossAxisSpacing: spacingLg,
           mainAxisSpacing: spacingLg,
-          childAspectRatio: 1.28,
+          childAspectRatio: 1.27,
           children: [
             ProfileStatCard(
               title: 'Activities',
               value: '12',
               icon: runningIcon,
-              color: CustomAppColors.colorA,
+              color: CustomAppColors.colorB,
             ),
             ProfileStatCard(
               title: 'Distance',
@@ -399,7 +382,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               title: 'Friends',
               value: '24',
               icon: friendsIcon,
-              color: CustomAppColors.colorC,
+              color: CustomAppColors.colorA,
             ),
           ],
         ),
