@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
+import 'package:rythmrun_frontend_flutter/data/repositories/live_tracking_repository_impl.dart';
+import 'package:rythmrun_frontend_flutter/domain/repositories/live_tracking_repository.dart';
 import '../network/http_client.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/datasources/auth_local_datasource.dart';
@@ -69,4 +71,8 @@ final registerUserUsecaseProvider = Provider<RegisterUserUsecase>((ref) {
 final changePasswordUsecaseProvider = Provider<ChangePasswordUsecase>((ref) {
   final repository = ref.watch(authRepositoryProvider);
   return ChangePasswordUsecase(repository);
+});
+
+final liveTrackingRepositoryProvider = Provider<LiveTrackingRepository>((ref) {
+  return LiveTrackingRepositoryImpl();
 });
