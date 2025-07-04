@@ -70,26 +70,27 @@ class _ProfileStatCardState extends State<ProfileStatCard>
             child: Container(
               padding: const EdgeInsets.all(spacingLg),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    widget.color.withOpacity(0.05),
-                    widget.color.withOpacity(0.02),
-                  ],
-                ),
+                color: widget.color.withOpacity(0.1),
+                // gradient: LinearGradient(
+                //   begin: Alignment.topLeft,
+                //   end: Alignment.bottomRight,
+                //   colors: [
+                //     widget.color.withOpacity(0.05),
+                //     widget.color.withOpacity(0.02),
+                //   ],
+                // ),
                 borderRadius: BorderRadius.circular(radiusLg),
                 border: Border.all(
                   color: widget.color.withOpacity(0.2),
-                  width: 1,
+                  width: 1.5,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: widget.color.withOpacity(0.1),
-                    blurRadius: 15,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                // boxShadow: [
+                //   BoxShadow(
+                //     color: widget.color.withOpacity(0.1),
+                //     blurRadius: 15,
+                //     offset: const Offset(0, 4),
+                //   ),
+                // ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -107,13 +108,13 @@ class _ProfileStatCardState extends State<ProfileStatCard>
                         ],
                       ),
                       borderRadius: BorderRadius.circular(radiusSm),
-                      boxShadow: [
-                        BoxShadow(
-                          color: widget.color.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      // boxShadow: [
+                      //   BoxShadow(
+                      //     color: widget.color.withOpacity(0.3),
+                      //     blurRadius: 8,
+                      //     offset: const Offset(0, 2),
+                      //   ),
+                      // ],
                     ),
                     child: Icon(widget.icon, size: 24, color: widget.color),
                   ),
