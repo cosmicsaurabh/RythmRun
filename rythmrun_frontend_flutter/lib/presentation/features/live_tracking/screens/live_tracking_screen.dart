@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../theme/app_theme.dart';
-import '../../../../const/custom_app_colors.dart';
-import '../../../../domain/entities/workout_session_entity.dart';
-import '../providers/live_tracking_provider.dart';
-import '../models/live_tracking_state.dart';
-import '../../tracking_history/providers/tracking_history_provider.dart';
+import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
+import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
+import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
+import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 class LiveTrackingScreen extends ConsumerStatefulWidget {
   const LiveTrackingScreen({super.key});
@@ -83,34 +85,26 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
   Widget _buildPermissionCard(LiveTrackingNotifier notifier) {
     final workoutState = ref.watch(liveTrackingProvider);
 
-    // Determine the type of issue based on error message
-    bool isLocationServicesDisabled =
-        workoutState.errorMessage?.contains('Location services are disabled') ??
-        false;
-    bool isPermissionDenied =
-        workoutState.errorMessage?.contains('permission') ?? false;
+    // Use the LocationServiceStatus from state, fallback to permissionDenied
+    final locationStatus =
+        workoutState.locationServiceStatus ??
+        LocationServiceStatus.permissionDenied;
 
-    IconData icon;
-    String title;
-    String description;
-    String buttonText;
-    Color color;
-
-    if (isLocationServicesDisabled) {
-      icon = Icons.location_disabled;
-      title = 'Location Services Disabled';
-      description =
-          'Location services are turned off on your device. Please enable them in device settings to track workouts.';
-      buttonText = 'Open Settings';
-      color = CustomAppColors.statusDanger;
-    } else {
-      icon = Icons.location_off;
-      title = 'Location Permission Required';
-      description =
-          'RythmRun needs location access to track your workouts with GPS precision.';
-      buttonText = 'Grant Permission';
-      color = CustomAppColors.statusWarning;
-    }
+    // Used LocationErrorHandler utility for consistent error handling
+    final title = LocationErrorHandler.getErrorTitle(locationStatus);
+    final buttonText = LocationErrorHandler.getActionText(locationStatus);
+    final IconData icon =
+        LocationErrorHandler.isLocationServicesDisabled(locationStatus)
+            ? Icons.location_disabled
+            : Icons.location_off;
+    final String description =
+        LocationErrorHandler.isLocationServicesDisabled(locationStatus)
+            ? 'Location services are turned off on your device. Please enable them in device settings to track workouts.'
+            : 'RythmRun needs location access to track your workouts with GPS precision.';
+    final Color color =
+        LocationErrorHandler.isLocationServicesDisabled(locationStatus)
+            ? CustomAppColors.statusDanger
+            : CustomAppColors.statusWarning;
 
     return Card(
       color: color.withOpacity(0.1),
@@ -134,37 +128,39 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
               textAlign: TextAlign.center,
               style: const TextStyle(color: CustomAppColors.secondaryText),
             ),
-            if (workoutState.errorMessage != null) ...[
-              const SizedBox(height: spacingSm),
-              Container(
-                padding: const EdgeInsets.all(spacingSm),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(radiusSm),
-                  border: Border.all(color: color.withOpacity(0.3)),
-                ),
-                child: Text(
-                  workoutState.errorMessage!,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: color,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+            const SizedBox(height: spacingSm),
+            Container(
+              padding: const EdgeInsets.all(spacingSm),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(radiusSm),
+                border: Border.all(color: color.withOpacity(0.3)),
               ),
-            ],
+              child: Text(
+                LocationErrorHandler.getLocationErrorMessage(locationStatus),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
             const SizedBox(height: spacingLg),
             ElevatedButton.icon(
               onPressed: () {
-                if (isLocationServicesDisabled) {
+                if (LocationErrorHandler.isLocationServicesDisabled(
+                  locationStatus,
+                )) {
                   _showLocationSettingsDialog();
                 } else {
                   notifier.checkPermissions();
                 }
               },
               icon: Icon(
-                isLocationServicesDisabled ? Icons.settings : Icons.location_on,
+                LocationErrorHandler.isLocationServicesDisabled(locationStatus)
+                    ? Icons.settings
+                    : Icons.location_on,
               ),
               label: Text(buttonText),
               style: ElevatedButton.styleFrom(
