@@ -19,14 +19,14 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(workoutProvider.notifier).checkPermissions();
+      ref.read(liveTrackingProvider.notifier).checkPermissions();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final workoutState = ref.watch(workoutProvider);
-    final workoutNotifier = ref.read(workoutProvider.notifier);
+    final liveTrackingState = ref.watch(liveTrackingProvider);
+    final liveTrackingNotifier = ref.read(liveTrackingProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
@@ -41,28 +41,34 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
           child: Column(
             children: [
               // Permission Status
-              if (!workoutState.hasLocationPermission)
-                _buildPermissionCard(workoutNotifier),
+              if (!liveTrackingState.hasLocationPermission)
+                _buildPermissionCard(liveTrackingNotifier),
 
-              if (workoutState.hasLocationPermission) ...[
+              if (liveTrackingState.hasLocationPermission) ...[
                 // Workout Type Selection (if no active session)
-                if (!workoutState.hasActiveSession)
-                  _buildWorkoutTypeSelection(workoutNotifier),
+                if (!liveTrackingState.hasActiveSession)
+                  _buildWorkoutTypeSelection(liveTrackingNotifier),
 
                 // Active Workout Display
-                if (workoutState.hasActiveSession) ...[
-                  _buildWorkoutMetrics(workoutState),
+                if (liveTrackingState.hasActiveSession) ...[
+                  _buildWorkoutMetrics(liveTrackingState),
                   const SizedBox(height: spacingXl),
-                  _buildWorkoutControls(workoutState, workoutNotifier),
+                  _buildWorkoutControls(
+                    liveTrackingState,
+                    liveTrackingNotifier,
+                  ),
                 ],
               ],
 
               // Error Display
-              if (workoutState.errorMessage != null)
-                _buildErrorCard(workoutState.errorMessage!, workoutNotifier),
+              if (liveTrackingState.errorMessage != null)
+                _buildErrorCard(
+                  liveTrackingState.errorMessage!,
+                  liveTrackingNotifier,
+                ),
 
               // Loading Indicator
-              if (workoutState.isLoading)
+              if (liveTrackingState.isLoading)
                 const Padding(
                   padding: EdgeInsets.all(spacingLg),
                   child: CircularProgressIndicator(),
@@ -74,8 +80,8 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
     );
   }
 
-  Widget _buildPermissionCard(WorkoutNotifier notifier) {
-    final workoutState = ref.watch(workoutProvider);
+  Widget _buildPermissionCard(LiveTrackingNotifier notifier) {
+    final workoutState = ref.watch(liveTrackingProvider);
 
     // Determine the type of issue based on error message
     bool isLocationServicesDisabled =
@@ -172,7 +178,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
     );
   }
 
-  Widget _buildWorkoutTypeSelection(WorkoutNotifier notifier) {
+  Widget _buildWorkoutTypeSelection(LiveTrackingNotifier notifier) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -251,7 +257,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
     );
   }
 
-  Widget _buildWorkoutMetrics(WorkoutState state) {
+  Widget _buildWorkoutMetrics(LiveTrackingState state) {
     return Container(
       padding: const EdgeInsets.all(spacingXl),
       decoration: BoxDecoration(
@@ -342,7 +348,10 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
     );
   }
 
-  Widget _buildWorkoutControls(WorkoutState state, WorkoutNotifier notifier) {
+  Widget _buildWorkoutControls(
+    LiveTrackingState state,
+    LiveTrackingNotifier notifier,
+  ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
@@ -406,7 +415,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
     );
   }
 
-  Widget _buildErrorCard(String message, WorkoutNotifier notifier) {
+  Widget _buildErrorCard(String message, LiveTrackingNotifier notifier) {
     return Card(
       color: CustomAppColors.statusDanger.withOpacity(0.1),
       child: Padding(
@@ -434,7 +443,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
     );
   }
 
-  void _showStopConfirmation(WorkoutNotifier notifier) {
+  void _showStopConfirmation(LiveTrackingNotifier notifier) {
     showDialog(
       context: context,
       builder:
