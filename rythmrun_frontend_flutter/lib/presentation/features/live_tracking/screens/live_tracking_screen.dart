@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/widgets/workout_type_card.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
@@ -190,25 +191,25 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
           mainAxisSpacing: spacingMd,
           childAspectRatio: 1.2,
           children: [
-            _buildWorkoutTypeCard(
+            buildWorkoutTypeCard(
               icon: Icons.directions_run,
               title: 'Running',
               type: WorkoutType.running,
               onTap: () => notifier.startWorkout(WorkoutType.running),
             ),
-            _buildWorkoutTypeCard(
+            buildWorkoutTypeCard(
               icon: Icons.directions_walk,
               title: 'Walking',
               type: WorkoutType.walking,
               onTap: () => notifier.startWorkout(WorkoutType.walking),
             ),
-            _buildWorkoutTypeCard(
+            buildWorkoutTypeCard(
               icon: Icons.directions_bike,
               title: 'Cycling',
               type: WorkoutType.cycling,
               onTap: () => notifier.startWorkout(WorkoutType.cycling),
             ),
-            _buildWorkoutTypeCard(
+            buildWorkoutTypeCard(
               icon: Icons.terrain,
               title: 'Hiking',
               type: WorkoutType.hiking,
@@ -217,39 +218,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen> {
           ],
         ),
       ],
-    );
-  }
-
-  Widget _buildWorkoutTypeCard({
-    required IconData icon,
-    required String title,
-    required WorkoutType type,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      color: CustomAppColors.primaryButtonLight,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(radiusMd),
-        child: Padding(
-          padding: const EdgeInsets.all(spacingLg),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 32, color: CustomAppColors.white),
-              const SizedBox(height: spacingSm),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: CustomAppColors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

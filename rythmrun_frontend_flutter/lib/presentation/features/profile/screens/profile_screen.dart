@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../theme/app_theme.dart';
-import '../../../../const/custom_app_colors.dart';
-import '../../../common/providers/session_provider.dart';
-import '../../../common/widgets/profile_stat_card.dart';
-import '../../../common/widgets/profile_menu_item.dart';
-import '../../settings/screens/settings_screen.dart';
+import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/widgets/profile_menu_item.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/widgets/profile_stat_card.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_action_card.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/settings/screens/settings_screen.dart';
+import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -441,72 +442,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         Row(
           children: [
             Expanded(
-              child: _buildQuickActionCard(
-                context,
-                'Share Profile',
-                Icons.share,
-                CustomAppColors.statusInfo,
-                () => _shareProfile(context),
+              child: buildQuickActionCard(
+                context: context,
+                title: 'Share Profile',
+                icon: Icons.share,
+                color: CustomAppColors.statusInfo,
+                onTap: () => _shareProfile(context),
               ),
             ),
             const SizedBox(width: spacingLg),
             Expanded(
-              child: _buildQuickActionCard(
-                context,
-                'Export Data',
-                Icons.download,
-                CustomAppColors.secondary,
-                () => _exportData(context),
+              child: buildQuickActionCard(
+                context: context,
+                title: 'Export Data',
+                icon: Icons.download,
+                color: CustomAppColors.secondary,
+                onTap: () => _exportData(context),
               ),
             ),
           ],
         ),
       ],
-    );
-  }
-
-  Widget _buildQuickActionCard(
-    BuildContext context,
-    String title,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(radiusLg),
-        child: Container(
-          padding: const EdgeInsets.all(spacingLg),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(radiusLg),
-            border: Border.all(color: color.withOpacity(0.3), width: 1),
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(spacingSm),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(radiusSm),
-                ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(height: spacingSm),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: color,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
