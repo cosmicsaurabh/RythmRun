@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -26,6 +27,9 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
   // Default camera position (San Francisco)
   LatLng _center = const LatLng(37.4419, -122.1419);
   double _zoom = 16.0;
+
+  // Track previous session state to detect changes
+  WorkoutSessionEntity? _previousSession;
 
   @override
   void initState() {
@@ -65,6 +69,14 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
 
     final newLatLng = LatLng(point.latitude, point.longitude);
 
+    // Validate location to prevent jumping (basic sanity check)
+    if (!_isValidLocation(newLatLng)) {
+      debugPrint(
+        '⚠️ Invalid location detected: ${point.latitude}, ${point.longitude}',
+      );
+      return;
+    }
+
     // Update current location marker
     _updateCurrentLocationMarker(newLatLng, point);
 
@@ -73,6 +85,70 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
 
     // Animate camera to follow current location
     _animateToCurrentLocation(newLatLng);
+  }
+
+  bool _isValidLocation(LatLng location) {
+    // Basic validation - check if coordinates are within valid ranges
+    if (location.latitude < -90 || location.latitude > 90) return false;
+    if (location.longitude < -180 || location.longitude > 180) return false;
+
+    // Check for obviously invalid coordinates (0,0 or similar)
+    if (location.latitude == 0 && location.longitude == 0) return false;
+
+    // Check for unrealistic jumps (more than 1km in one update)
+    if (_markers.isNotEmpty) {
+      final currentLocationMarker = _markers.firstWhere(
+        (marker) => marker.key == const ValueKey('current_location'),
+        orElse: () => _markers.first,
+      );
+
+      if (currentLocationMarker.point != null) {
+        final distance = _calculateDistance(
+          currentLocationMarker.point!,
+          location,
+        );
+
+        // If distance is more than 1000 meters, it's likely a jump
+        if (distance > 1000) {
+          debugPrint(
+            '⚠️ Large location jump detected: ${distance.toStringAsFixed(2)}m',
+          );
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  double _calculateDistance(LatLng point1, LatLng point2) {
+    const double earthRadius = 6371000; // Earth's radius in meters
+
+    double lat1Rad = point1.latitude * (pi / 180);
+    double lat2Rad = point2.latitude * (pi / 180);
+    double deltaLatRad = (point2.latitude - point1.latitude) * (pi / 180);
+    double deltaLngRad = (point2.longitude - point1.longitude) * (pi / 180);
+
+    double a =
+        sin(deltaLatRad / 2) * sin(deltaLatRad / 2) +
+        cos(lat1Rad) *
+            cos(lat2Rad) *
+            sin(deltaLngRad / 2) *
+            sin(deltaLngRad / 2);
+    double c = 2 * asin(sqrt(a));
+
+    return earthRadius * c;
+  }
+
+  bool _isValidLocationForPolyline(LatLng location) {
+    // Basic validation - check if coordinates are within valid ranges
+    if (location.latitude < -90 || location.latitude > 90) return false;
+    if (location.longitude < -180 || location.longitude > 180) return false;
+
+    // Check for obviously invalid coordinates (0,0 or similar)
+    if (location.latitude == 0 && location.longitude == 0) return false;
+
+    return true;
   }
 
   void _updateCurrentLocationMarker(
@@ -163,36 +239,107 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     final liveTrackingState = ref.read(liveTrackingProvider);
     final session = liveTrackingState.currentSession;
 
-    if (session == null || session.trackingPoints.isEmpty) return;
+    // If no session exists or session has ended, clear the map
+    if (session == null || session.status == WorkoutStatus.completed) {
+      _clearMapData();
+      return;
+    }
 
-    // Create polyline from tracking points
-    final points =
+    // If no tracking points, just clear polylines but keep current location marker
+    if (session.trackingPoints.isEmpty) {
+      _clearTrackingData();
+      return;
+    }
+
+    // Create polyline from tracking points - filter out invalid locations
+    final allPoints =
         session.trackingPoints
             .map((point) => LatLng(point.latitude, point.longitude))
             .toList();
 
+    // Filter out invalid points and large jumps
+    final List<LatLng> validPoints = [];
+    for (int i = 0; i < allPoints.length; i++) {
+      final point = allPoints[i];
+
+      // Basic validation
+      if (!_isValidLocationForPolyline(point)) {
+        debugPrint(
+          '🚫 Filtered invalid polyline point: ${point.latitude}, ${point.longitude}',
+        );
+        continue;
+      }
+
+      // Check for distance jumps (except for the first point)
+      if (validPoints.isNotEmpty) {
+        final distance = _calculateDistance(validPoints.last, point);
+        if (distance > 1000) {
+          debugPrint(
+            '🚫 Filtered polyline jump: ${distance.toStringAsFixed(2)}m from ${validPoints.last} to $point',
+          );
+          continue;
+        }
+      }
+
+      validPoints.add(point);
+    }
+
+    final points = validPoints;
+
     // Remove old polyline
     _polylines.removeWhere((polyline) => polyline.strokeWidth == 4);
 
-    // Add new polyline
-    final polyline = Polyline(
-      points: points,
-      color: _getWorkoutColor(session.type),
-      strokeWidth: 4,
-      pattern:
-          session.status == WorkoutStatus.paused
-              ? StrokePattern.dashed(segments: [10, 5])
-              : StrokePattern.solid(),
-    );
+    // Add new polyline only if we have enough valid points
+    if (points.length >= 2) {
+      final polyline = Polyline(
+        points: points,
+        color: _getWorkoutColor(session.type),
+        strokeWidth: 4,
+        pattern:
+            session.status == WorkoutStatus.paused
+                ? StrokePattern.dashed(segments: [10, 5])
+                : StrokePattern.solid(),
+      );
 
-    setState(() {
-      _polylines.add(polyline);
-    });
-
-    // Add start marker if tracking points exist
-    if (session.trackingPoints.isNotEmpty) {
-      _addStartMarker(session.trackingPoints.first);
+      setState(() {
+        _polylines.add(polyline);
+      });
+    } else {
+      debugPrint(
+        '⚠️ Not enough valid points to create polyline: ${points.length}',
+      );
     }
+
+    // Add start marker if we have valid points
+    if (points.isNotEmpty) {
+      // Use the first valid point for the start marker
+      final firstValidPoint = points.first;
+      final startPointEntity = session.trackingPoints.firstWhere(
+        (trackingPoint) =>
+            LatLng(trackingPoint.latitude, trackingPoint.longitude) ==
+            firstValidPoint,
+        orElse: () => session.trackingPoints.first,
+      );
+      _addStartMarker(startPointEntity);
+    }
+  }
+
+  void _clearMapData() {
+    setState(() {
+      _markers.clear();
+      _polylines.clear();
+    });
+  }
+
+  void _clearTrackingData() {
+    setState(() {
+      // Remove all markers except current location
+      _markers.removeWhere(
+        (marker) => marker.key != const ValueKey('current_location'),
+      );
+      // Clear all polylines
+      _polylines.clear();
+    });
   }
 
   void _addStartMarker(TrackingPointEntity startPoint) {
@@ -245,11 +392,29 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     }
   }
 
+  void _handleSessionStateChanges(WorkoutSessionEntity? currentSession) {
+    // If session ended (was active, now null or completed)
+    if (_previousSession != null &&
+        (currentSession == null ||
+            currentSession.status == WorkoutStatus.completed)) {
+      debugPrint('🧹 Session ended, clearing map data');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _clearMapData();
+      });
+    }
+
+    // Update previous session reference
+    _previousSession = currentSession;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer(
       builder: (context, ref, child) {
         final liveTrackingState = ref.watch(liveTrackingProvider);
+
+        // Check for session state changes
+        _handleSessionStateChanges(liveTrackingState.currentSession);
 
         return Container(
           height: double.infinity, // Adjust height as needed
