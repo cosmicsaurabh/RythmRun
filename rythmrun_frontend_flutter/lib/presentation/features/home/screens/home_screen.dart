@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:rythmrun_frontend_flutter/presentation/features/track/screens/track_screen.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/screens/track_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/screens/tracking_history_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/profile/screens/profile_screen.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
