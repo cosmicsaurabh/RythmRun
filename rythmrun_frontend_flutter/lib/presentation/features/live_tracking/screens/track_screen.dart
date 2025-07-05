@@ -107,61 +107,93 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                     ]
                     : null,
           ),
-          body: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          body: Stack(
+            // crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const LiveMapFeed(),
               // Animated Tracking Card
-              Padding(
-                padding: const EdgeInsets.only(
+              Positioned(
+                top: spacingLg,
+                left: 0,
+                right: 0,
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    left: spacingLg,
+                    right: spacingLg,
+                  ),
+                  child: AnimatedBuilder(
+                    animation: _cardAnimation,
+                    builder: (context, child) {
+                      return Container(
+                        // width: double.infinity,
+                        padding: const EdgeInsets.all(spacingXl),
+                        decoration: BoxDecoration(
+                          boxShadow: [
+                            // First shadow layer (e.g. black-100 token)
+                            BoxShadow(
+                              color: Colors.black.withOpacity(
+                                0.1,
+                              ), // adjust opacity to match --sds-color-black-100
+                              offset: const Offset(
+                                0,
+                                4,
+                              ), // replace 4 with your token for --sds-size-depth-100 (y-offset)
+                              blurRadius: 4, // same token for blur
+                              spreadRadius:
+                                  -1, // replace -1 with your token for --sds-size-depth-negative-025
+                            ),
+                            // Second shadow layer (e.g. black-200 token), if needed
+                            BoxShadow(
+                              color: Colors.black.withOpacity(
+                                0.2,
+                              ), // adjust for --sds-color-black-200
+                              offset: const Offset(0, 4),
+                              blurRadius: 4,
+                              spreadRadius: -1,
+                            ),
+                          ],
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Theme.of(context).colorScheme.primary,
+                              Theme.of(
+                                context,
+                              ).colorScheme.primary.withOpacity(0.6),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(radiusLg),
+                        ),
+                        child:
+                            liveTrackingState.hasActiveSession
+                                ? _buildActiveWorkoutContent(
+                                  liveTrackingState,
+                                  liveTrackingNotifier,
+                                )
+                                : _isCardExpanded
+                                ? _buildExpandedContent(
+                                  liveTrackingState,
+                                  liveTrackingNotifier,
+                                )
+                                : _buildCollapsedContent(liveTrackingState),
+                      );
+                    },
+                  ),
+                ),
+              ), // const SizedBox(height: spacingLg),
+              if (liveTrackingState.isLoading)
+                Positioned(
+                  top: spacingLg,
                   left: spacingLg,
                   right: spacingLg,
+                  child: const Padding(
+                    padding: EdgeInsets.all(spacingLg),
+                    child: CircularProgressIndicator(),
+                  ),
                 ),
-                child: AnimatedBuilder(
-                  animation: _cardAnimation,
-                  builder: (context, child) {
-                    return Container(
-                      width: double.infinity,
 
-                      padding: const EdgeInsets.all(spacingXl),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Theme.of(context).colorScheme.primary,
-                            Theme.of(
-                              context,
-                            ).colorScheme.primary.withOpacity(0.6),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(radiusLg),
-                      ),
-                      child:
-                          liveTrackingState.hasActiveSession
-                              ? _buildActiveWorkoutContent(
-                                liveTrackingState,
-                                liveTrackingNotifier,
-                              )
-                              : _isCardExpanded
-                              ? _buildExpandedContent(
-                                liveTrackingState,
-                                liveTrackingNotifier,
-                              )
-                              : _buildCollapsedContent(liveTrackingState),
-                    );
-                  },
-                ),
-              ),
-              // const SizedBox(height: spacingLg),
-              if (liveTrackingState.isLoading)
-                const Padding(
-                  padding: EdgeInsets.all(spacingLg),
-                  child: CircularProgressIndicator(),
-                ),
               if (liveTrackingState.errorMessage != null)
                 Text(liveTrackingState.errorMessage!),
-
-              const LiveMapFeed(),
 
               // Quick Actions (hidden when card is expanded)
             ],
