@@ -7,6 +7,7 @@ import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/mo
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 class TrackScreen extends ConsumerStatefulWidget {
@@ -111,7 +112,10 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             children: [
               // Animated Tracking Card
               Padding(
-                padding: const EdgeInsets.all(spacingLg),
+                padding: const EdgeInsets.only(
+                  left: spacingLg,
+                  right: spacingLg,
+                ),
                 child: AnimatedBuilder(
                   animation: _cardAnimation,
                   builder: (context, child) {
@@ -148,7 +152,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                   },
                 ),
               ),
-              const SizedBox(height: spacingLg),
+              // const SizedBox(height: spacingLg),
               if (liveTrackingState.isLoading)
                 const Padding(
                   padding: EdgeInsets.all(spacingLg),
@@ -157,12 +161,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
               if (liveTrackingState.errorMessage != null)
                 Text(liveTrackingState.errorMessage!),
 
-              if (!liveTrackingState.hasActiveSession)
-                // live feed of map
-                Text('Hosotry'),
-              if (liveTrackingState.hasActiveSession)
-                // live feed of map
-                Text('Live feed of map'),
+              const LiveMapFeed(),
 
               // Quick Actions (hidden when card is expanded)
             ],
@@ -320,13 +319,13 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             color: Theme.of(context).colorScheme.onPrimary,
           ),
         ),
-        const SizedBox(height: spacingXl),
+        const SizedBox(height: spacingLg),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
-          crossAxisSpacing: spacingMd,
-          mainAxisSpacing: spacingMd,
-          childAspectRatio: 1.2,
+          crossAxisSpacing: spacingSm,
+          mainAxisSpacing: spacingSm,
+          childAspectRatio: 1.6,
           children: [
             _buildWorkoutTypeCard(
               icon: Icons.directions_run,
@@ -407,7 +406,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             letterSpacing: 1.2,
           ),
         ),
-        const SizedBox(height: spacingLg),
+        const SizedBox(height: spacingSm),
 
         // Time
         Text(
@@ -418,30 +417,34 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             color: Theme.of(context).colorScheme.onPrimary,
           ),
         ),
-        const SizedBox(height: spacingLg),
+        const SizedBox(height: spacingSm),
 
         // Distance and Pace
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          // mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _buildMetricColumn(
-              label: 'Distance',
-              value: state.formattedDistance,
-              icon: Icons.straighten,
+            Expanded(
+              child: _buildMetricColumn(
+                label: 'Distance',
+                value: state.formattedDistance,
+                icon: Icons.straighten,
+              ),
             ),
             Container(
               width: 1,
-              height: 40,
+              height: 30,
               color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.3),
             ),
-            _buildMetricColumn(
-              label: 'Pace',
-              value: state.formattedPace,
-              icon: Icons.speed,
+            Expanded(
+              child: _buildMetricColumn(
+                label: 'Pace',
+                value: state.formattedPace,
+                icon: Icons.speed,
+              ),
             ),
           ],
         ),
-        const SizedBox(height: spacingXl),
+        const SizedBox(height: spacingSm),
 
         // Controls
         Row(
@@ -478,7 +481,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     return Column(
       children: [
         Icon(icon, color: Theme.of(context).colorScheme.onPrimary, size: 24),
-        const SizedBox(height: spacingSm),
+        // const SizedBox(height: spacingSm),
         Text(
           label,
           style: TextStyle(
@@ -487,7 +490,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             fontWeight: FontWeight.w500,
           ),
         ),
-        const SizedBox(height: spacingXs),
+        // const SizedBox(height: spacingSm),
         Text(
           value,
           style: TextStyle(
@@ -512,7 +515,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
         foregroundColor: Theme.of(context).colorScheme.primary,
         padding: const EdgeInsets.symmetric(
           horizontal: spacingLg,
-          vertical: spacingMd,
+          vertical: spacingSm,
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusMd),
