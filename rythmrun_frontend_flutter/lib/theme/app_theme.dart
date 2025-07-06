@@ -34,6 +34,8 @@ const double spacingSm = 8;
 
 /// - [md] 12px
 const double spacingMd = 12;
+
+/// - [lg] 16px
 const double spacingLg = 16;
 
 /// - [xl] 24px
