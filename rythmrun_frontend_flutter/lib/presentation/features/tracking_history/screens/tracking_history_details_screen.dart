@@ -162,7 +162,7 @@ class _TrackingHistoryDetailsScreenState
               ],
             ),
             child: Icon(
-              getCurrentLocationIcon(widget.workout),
+              getWorkoutIcon(widget.workout.type),
               color: Colors.white,
               size: 28,
             ),

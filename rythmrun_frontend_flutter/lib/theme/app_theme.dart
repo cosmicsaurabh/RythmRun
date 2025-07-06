@@ -92,6 +92,7 @@ const stopIcon = Icons.stop;
 
 /// delte and isabled icons
 const deleteIcon = Icons.delete;
+const addIcon = Icons.add;
 
 /// location icons
 const locationDisabledIcon = Icons.location_disabled;

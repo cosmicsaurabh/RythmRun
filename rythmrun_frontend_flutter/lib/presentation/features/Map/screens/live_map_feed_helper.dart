@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 double calculateDistance(LatLng point1, LatLng point2) {
   const double earthRadius = 6371000; // Earth's radius in meters
@@ -45,17 +46,30 @@ IconData getCurrentLocationIcon(WorkoutSessionEntity? session) {
   if (session != null) {
     switch (session.type) {
       case WorkoutType.running:
-        return Icons.directions_run;
+        return runningIcon;
       case WorkoutType.walking:
-        return Icons.directions_walk;
+        return walkingIcon;
       case WorkoutType.cycling:
-        return Icons.directions_bike;
+        return cyclingIcon;
       case WorkoutType.hiking:
-        return Icons.terrain;
+        return hikingIcon;
     }
   }
 
   return Icons.my_location; // Default
+}
+
+IconData getWorkoutIcon(WorkoutType type) {
+  switch (type) {
+    case WorkoutType.running:
+      return runningIcon;
+    case WorkoutType.walking:
+      return walkingIcon;
+    case WorkoutType.cycling:
+      return cyclingIcon;
+    case WorkoutType.hiking:
+      return hikingIcon;
+  }
 }
 
 Color getWorkoutColor(WorkoutType type) {
