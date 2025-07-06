@@ -1,15 +1,17 @@
 import 'package:path/path.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/status_change_event_entity.dart';
 import 'package:sqflite/sqflite.dart';
 
 class LocalDbService {
   static const String _databaseName = 'rythmrun_workouts.db';
-  static const int _databaseVersion = 1;
+  static const int _databaseVersion = 2; // Incremented for status changes table
 
   // Table names
   static const String _workoutsTable = 'workouts';
   static const String _trackingPointsTable = 'tracking_points';
+  static const String _statusChangesTable = 'status_changes';
 
   Database? _database;
 
@@ -25,10 +27,30 @@ class LocalDbService {
       path,
       version: _databaseVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
   Future<void> _onCreate(Database db, int version) async {
+    await _createTables(db);
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add status changes table
+      await db.execute('''
+        CREATE TABLE $_statusChangesTable (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          workout_id INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          FOREIGN KEY (workout_id) REFERENCES $_workoutsTable (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+  }
+
+  Future<void> _createTables(Database db) async {
     // Create workouts table
     await db.execute('''
       CREATE TABLE $_workoutsTable (
@@ -64,6 +86,17 @@ class LocalDbService {
         accuracy REAL,
         speed REAL,
         heading REAL,
+        timestamp TEXT NOT NULL,
+        FOREIGN KEY (workout_id) REFERENCES $_workoutsTable (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Create status changes table
+    await db.execute('''
+      CREATE TABLE $_statusChangesTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workout_id INTEGER NOT NULL,
+        status TEXT NOT NULL,
         timestamp TEXT NOT NULL,
         FOREIGN KEY (workout_id) REFERENCES $_workoutsTable (id) ON DELETE CASCADE
       )
@@ -112,6 +145,19 @@ class LocalDbService {
         await batch.commit(noResult: true);
       }
 
+      // Insert status changes
+      if (workout.statusChanges.isNotEmpty) {
+        final batch = txn.batch();
+        for (final statusChange in workout.statusChanges) {
+          batch.insert(_statusChangesTable, {
+            'workout_id': workoutId,
+            'status': statusChange.status.name,
+            'timestamp': statusChange.timestamp.toIso8601String(),
+          });
+        }
+        await batch.commit(noResult: true);
+      }
+
       return workoutId;
     });
   }
@@ -142,7 +188,15 @@ class LocalDbService {
         orderBy: 'timestamp ASC',
       );
 
-      result.add(_mapToWorkoutEntity(workoutMap, points));
+      // Get status changes for this workout
+      final statusChanges = await db.query(
+        _statusChangesTable,
+        where: 'workout_id = ?',
+        whereArgs: [workoutId],
+        orderBy: 'timestamp ASC',
+      );
+
+      result.add(_mapToWorkoutEntity(workoutMap, points, statusChanges));
     }
 
     return result;
@@ -170,7 +224,14 @@ class LocalDbService {
       orderBy: 'timestamp ASC',
     );
 
-    return _mapToWorkoutEntity(workouts.first, points);
+    final statusChanges = await db.query(
+      _statusChangesTable,
+      where: 'workout_id = ?',
+      whereArgs: [workoutId],
+      orderBy: 'timestamp ASC',
+    );
+
+    return _mapToWorkoutEntity(workouts.first, points, statusChanges);
   }
 
   /// Delete a workout
@@ -203,7 +264,14 @@ class LocalDbService {
         orderBy: 'timestamp ASC',
       );
 
-      result.add(_mapToWorkoutEntity(workoutMap, points));
+      final statusChanges = await db.query(
+        _statusChangesTable,
+        where: 'workout_id = ?',
+        whereArgs: [workoutId],
+        orderBy: 'timestamp ASC',
+      );
+
+      result.add(_mapToWorkoutEntity(workoutMap, points, statusChanges));
     }
 
     return result;
@@ -224,6 +292,7 @@ class LocalDbService {
   WorkoutSessionEntity _mapToWorkoutEntity(
     Map<String, dynamic> workoutMap,
     List<Map<String, dynamic>> pointsMap,
+    List<Map<String, dynamic>> statusChangesMap,
   ) {
     // Parse tracking points
     List<TrackingPointEntity> trackingPoints =
@@ -236,6 +305,18 @@ class LocalDbService {
             speed: point['speed'] as double?,
             heading: point['heading'] as double?,
             timestamp: DateTime.parse(point['timestamp'] as String),
+          );
+        }).toList();
+
+    // Parse status changes
+    List<StatusChangeEvent> statusChanges =
+        statusChangesMap.map((statusChange) {
+          return StatusChangeEvent(
+            status: WorkoutStatus.values.firstWhere(
+              (s) => s.name == statusChange['status'],
+              orElse: () => WorkoutStatus.active,
+            ),
+            timestamp: DateTime.parse(statusChange['timestamp'] as String),
           );
         }).toList();
 
@@ -278,6 +359,7 @@ class LocalDbService {
       name: workoutMap['name'] as String?,
       notes: workoutMap['notes'] as String?,
       trackingPoints: trackingPoints,
+      statusChanges: statusChanges,
     );
   }
 
