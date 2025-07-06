@@ -260,9 +260,7 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
                 minZoom: 3,
                 maxZoom: 19,
                 backgroundColor:
-                    _showMapTiles
-                        ? Colors.transparent
-                        : (Colors.grey[100] ?? Colors.grey),
+                    _showMapTiles ? Colors.transparent : Colors.grey,
               ),
               children: [
                 // Map tiles (optional)

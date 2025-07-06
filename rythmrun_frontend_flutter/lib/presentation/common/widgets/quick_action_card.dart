@@ -3,6 +3,7 @@ import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 Widget buildQuickActionCard({
   required BuildContext context,
+  String? value,
   required String title,
   String? description,
   required IconData icon,
@@ -32,6 +33,14 @@ Widget buildQuickActionCard({
               child: Icon(icon, color: color, size: iconSizeMd),
             ),
             const SizedBox(height: spacingSm),
+            if (value != null)
+              Text(
+                value,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+              ),
             Text(
               title,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
