@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/models/tracking_history_state.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/screens/tracking_history_details_screen.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 import '../providers/tracking_history_provider.dart';
 
@@ -141,11 +142,10 @@ class ActivitiesScreen extends ConsumerWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          // TODO: Navigate to workout details screen
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Tracking details coming soon!'),
-              duration: Duration(seconds: 1),
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder:
+                  (context) => TrackingHistoryDetailsScreen(workout: workout),
             ),
           );
         },
