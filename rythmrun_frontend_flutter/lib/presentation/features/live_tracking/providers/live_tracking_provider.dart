@@ -253,6 +253,17 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
       averageSpeedKmh: averageSpeed * 3.6,
     );
 
+    // Add final completed status change event
+    final completedStatusChange = StatusChangeEvent(
+      status: WorkoutStatus.completed,
+      timestamp: endTime,
+    );
+
+    final updatedStatusChanges = [
+      ...session.statusChanges,
+      completedStatusChange,
+    ];
+
     final completedSession = session.copyWith(
       status: WorkoutStatus.completed,
       endTime: endTime,
@@ -262,6 +273,7 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
       calories: calories,
       elevationGain: elevationData.gain,
       elevationLoss: elevationData.loss,
+      statusChanges: updatedStatusChanges,
     );
 
     state = state.copyWith(currentSession: completedSession, isTracking: false);
@@ -274,16 +286,51 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
     log(
       '🏁 Workout completed: ${session.totalDistance}m in ${activeDuration.inMinutes} minutes',
     );
+    log('📊 Status changes count: ${completedSession.statusChanges.length}');
+    for (int i = 0; i < completedSession.statusChanges.length; i++) {
+      final change = completedSession.statusChanges[i];
+      log('  $i: ${change.status.name} at ${change.timestamp}');
+    }
 
     // Save to database
     try {
       final workoutId = await _workoutRepository.saveWorkout(completedSession);
-      log('💾 Workout saved with ID: $workoutId');
+      log(
+        '💾 Workout saved with ID: $workoutId (including ${completedSession.statusChanges.length} status changes)',
+      );
 
       // Workout saved successfully
+
+      // Test retrieval to verify data integrity
+      _testWorkoutRetrieval(workoutId);
     } catch (e) {
       log('❌ Failed to save workout: $e');
       state = state.copyWith(errorMessage: 'Failed to save workout: $e');
+    }
+  }
+
+  /// Test workout retrieval to verify data integrity
+  Future<void> _testWorkoutRetrieval(int workoutId) async {
+    try {
+      final retrievedWorkout = await _workoutRepository.getWorkout(workoutId);
+      if (retrievedWorkout != null) {
+        log('✅ Workout retrieval test successful');
+        log(
+          '📊 Retrieved ${retrievedWorkout.trackingPoints.length} tracking points',
+        );
+        log(
+          '📊 Retrieved ${retrievedWorkout.statusChanges.length} status changes',
+        );
+
+        for (int i = 0; i < retrievedWorkout.statusChanges.length; i++) {
+          final change = retrievedWorkout.statusChanges[i];
+          log('   Retrieved: ${change.status.name} at ${change.timestamp}');
+        }
+      } else {
+        log('❌ Workout retrieval test failed: workout not found');
+      }
+    } catch (e) {
+      log('❌ Workout retrieval test failed: $e');
     }
   }
 
