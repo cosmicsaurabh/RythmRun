@@ -60,35 +60,63 @@ const double blurLg = 16;
 const double blur2xl = 32;
 
 ///Icons
+/////navbar icons
 const trackChangesIcon = Icons.track_changes;
 const listAltIcon = Icons.list_alt;
 const personIcon = Icons.person;
+
+///workout icons
 const cyclingIcon = Icons.directions_bike;
 const walkingIcon = Icons.directions_walk;
 const runningIcon = Icons.directions_run;
 const hikingIcon = Icons.terrain;
+
+///distance, time, speed, pace, elevation, calories, insights, notes icons
 const distanceIcon = Icons.route;
 const timeIcon = Icons.timer;
 const friendsIcon = Icons.people;
 const speedIcon = Icons.speed;
-const elevationIcon = Icons.trending_up;
+const elevationIcon = Icons.terrain;
 const caloriesIcon = Icons.local_fire_department;
+const paceIcon = Icons.trending_up;
+const insightsIcon = Icons.insights;
+const notesIcon = Icons.note;
+const fitnessIcon = Icons.fitness_center;
+const activeIcon = Icons.run_circle;
+
+/// pause and play icons
 const pauseIcon = Icons.pause;
 const playArrowIcon = Icons.play_arrow;
+const startIcon = Icons.play_circle_outline;
 const stopIcon = Icons.stop;
+
+/// delte and isabled icons
 const deleteIcon = Icons.delete;
+const addIcon = Icons.add;
+
+/// location icons
 const locationDisabledIcon = Icons.location_disabled;
 const locationOffIcon = Icons.location_off;
-const settingsIcon = Icons.settings;
 const locationOnIcon = Icons.location_on;
+
+/// settings icons
+const settingsIcon = Icons.settings;
+
+/// note icons
 const noteIcon = Icons.note;
-const fitnessIcon = Icons.fitness_center;
+
 const wifiOffIcon = Icons.wifi_off;
+
+/// error and close icons
 const errorOutlineIcon = Icons.error_outline;
 const closeIcon = Icons.close;
+
+/// refresh and arrow icons
 const refreshIcon = Icons.refresh;
 const arrowForwardIosIcon = Icons.arrow_forward_ios;
 const arrowBackIosIcon = Icons.arrow_back_ios;
+
+/// email and lock icons
 const emailIcon = Icons.email_outlined;
 const lockIcon = Icons.lock_outline;
 const visibilityOffIcon = Icons.visibility_off;
@@ -96,25 +124,31 @@ const visibilityIcon = Icons.visibility;
 const calendarTodayIcon = Icons.calendar_today;
 const emojiEventsIcon = Icons.emoji_events;
 const emojiPeopleIcon = Icons.emoji_people;
+const logoutIcon = Icons.logout;
+
+/// share and download notification icons
 const shareIcon = Icons.share;
 const downloadIcon = Icons.download;
-const personOutlineIcon = Icons.person_outline;
 const notificationsIcon = Icons.notifications;
+const deleteForeverIcon = Icons.delete_forever;
+
+/// settings icons
+const personOutlineIcon = Icons.person_outline;
 const securityIcon = Icons.security;
 const helpOutlineIcon = Icons.help_outline;
 const infoOutlineIcon = Icons.info_outline;
-const logoutIcon = Icons.logout;
 const checkCircleIcon = Icons.check_circle;
 const appearanceIcon = Icons.palette;
 const brightness6Icon = Icons.brightness_6;
 const straightenIcon = Icons.straighten;
 const warningIcon = Icons.warning;
-const deleteForeverIcon = Icons.delete_forever;
+const flagIcon = Icons.flag;
+const publicIcon = Icons.public;
+
+/// light and dark mode icons
 const lightModeIcon = Icons.light_mode;
 const darkModeIcon = Icons.dark_mode;
 const brightnessAutoIcon = Icons.brightness_auto;
-const flagIcon = Icons.flag;
-const publicIcon = Icons.public;
 
 final ColorScheme colorSchemeLight = ColorScheme.light(
   primary:
