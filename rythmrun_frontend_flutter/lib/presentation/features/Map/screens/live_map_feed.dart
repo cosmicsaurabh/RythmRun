@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -7,7 +6,12 @@ import 'package:latlong2/latlong.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/tracking_segment_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/widgets/map_controller_button.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_segment_builder.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
@@ -21,7 +25,8 @@ class LiveMapFeed extends ConsumerStatefulWidget {
 class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
   MapController? _mapController;
   final List<Marker> _markers = [];
-  final List<Polyline> _polylines = [];
+  final List<Polyline> _solidPolylines = [];
+  final List<Polyline> _dashedPolylines = [];
   StreamSubscription<TrackingPointEntity>? _locationSubscription;
 
   // Default camera position (San Francisco)
@@ -34,6 +39,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
   @override
   void initState() {
     super.initState();
+    print('🚀 LiveMapFeed initialized');
     _initializeMap();
   }
 
@@ -57,28 +63,39 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
 
     // Listen to location updates
     _locationSubscription = LiveTrackingService.instance.locationStream.listen(
-      _onLocationUpdate,
+      (point) => _onLocationUpdate(point, ref.read(liveTrackingProvider)),
       onError: (error) {
         debugPrint('❌ Map location error: $error');
       },
     );
   }
 
-  void _onLocationUpdate(TrackingPointEntity point) {
+  void _onLocationUpdate(
+    TrackingPointEntity point,
+    LiveTrackingState liveTrackingState,
+  ) {
     if (_mapController == null) return;
 
     final newLatLng = LatLng(point.latitude, point.longitude);
+    print('🌍 Location update received: ${point.latitude}, ${point.longitude}');
 
     // Validate location to prevent jumping (basic sanity check)
-    if (!_isValidLocation(newLatLng)) {
-      debugPrint(
+    if (!_isValidLocationForPolyline(
+      newLatLng,
+      liveTrackingState.currentSession,
+    )) {
+      print(
         '⚠️ Invalid location detected: ${point.latitude}, ${point.longitude}',
       );
       return;
     }
 
     // Update current location marker
-    _updateCurrentLocationMarker(newLatLng, point);
+    _updateCurrentLocationMarker(
+      newLatLng,
+      point,
+      liveTrackingState.currentSession,
+    );
 
     // Update tracking path
     _updateTrackingPath();
@@ -87,7 +104,19 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     _animateToCurrentLocation(newLatLng);
   }
 
-  bool _isValidLocation(LatLng location) {
+  bool _isValidLocationForPolyline(
+    LatLng location,
+    WorkoutSessionEntity? session,
+  ) {
+    // Different thresholds based on session status
+    double threshold;
+    if (session?.status == WorkoutStatus.active) {
+      threshold = 300; // Stricter for active
+    } else if (session?.status == WorkoutStatus.paused) {
+      threshold = 1000; // More lenient for paused
+    } else {
+      return true; // Allow all for other statuses
+    }
     // Basic validation - check if coordinates are within valid ranges
     if (location.latitude < -90 || location.latitude > 90) return false;
     if (location.longitude < -180 || location.longitude > 180) return false;
@@ -95,65 +124,121 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     // Check for obviously invalid coordinates (0,0 or similar)
     if (location.latitude == 0 && location.longitude == 0) return false;
 
-    // Check for unrealistic jumps (more than 1km in one update)
-    if (_markers.isNotEmpty) {
-      final currentLocationMarker = _markers.firstWhere(
-        (marker) => marker.key == const ValueKey('current_location'),
-        orElse: () => _markers.first,
+    if (session?.trackingPoints.isNotEmpty ?? false) {
+      final lastPoint = session!.trackingPoints.last;
+      final distance = calculateDistance(
+        LatLng(lastPoint.latitude, lastPoint.longitude),
+        location,
       );
-
-      if (currentLocationMarker.point != null) {
-        final distance = _calculateDistance(
-          currentLocationMarker.point!,
-          location,
+      if (distance > threshold) {
+        print(
+          '⚠️ Large location jump detected: ${distance.toStringAsFixed(2)}m',
         );
+        return false;
+      }
+    }
+    return true;
+  }
 
-        // If distance is more than 1000 meters, it's likely a jump
-        if (distance > 1000) {
-          debugPrint(
-            '⚠️ Large location jump detected: ${distance.toStringAsFixed(2)}m',
-          );
-          return false;
-        }
+  void _updateTrackingPath() {
+    final liveTrackingState = ref.read(liveTrackingProvider);
+    final session = liveTrackingState.currentSession;
+
+    // If no session exists or session has ended, clear the map
+    if (session == null || session.status == WorkoutStatus.completed) {
+      print('🧹 No session or completed, clearing map data');
+      _clearMapData();
+      return;
+    }
+
+    if (session.status == WorkoutStatus.notStarted) {
+      print('🧹 Session not started, clearing map data');
+      _clearMapData();
+      return;
+    }
+
+    // If no tracking points, just clear polylines but keep current location marker
+    if (session.trackingPoints.isEmpty) {
+      print('📍 No tracking points, clearing tracking data');
+      _clearTrackingData();
+      return;
+    }
+
+    print(
+      '📊 Processing ${session.trackingPoints.length} tracking points and ${session.statusChanges.length} status changes',
+    );
+
+    // Build segments based on workout status changes
+    final List<TrackingSegment> segments = LiveMapSegmentBuilder.buildSegments(
+      session,
+    );
+
+    // Debug segments
+    LiveMapSegmentBuilder.debugSegments(segments);
+
+    // Clear existing polylines
+    _solidPolylines.clear();
+    _dashedPolylines.clear();
+
+    // Create polylines for each segment
+    for (final segment in segments) {
+      if (segment.points.length < 2) {
+        continue;
+      }
+
+      final List<LatLng> points =
+          segment.points
+              .map((point) => LatLng(point.latitude, point.longitude))
+              .toList();
+
+      if (segment.status == WorkoutStatus.active) {
+        _createSolidPolylineFromPoints(points, session.type);
+      } else if (segment.status == WorkoutStatus.paused) {
+        _createDashedPolylineFromPoints(points, session.type);
       }
     }
 
-    return true;
+    // Add start marker if we have any points
+    if (session.trackingPoints.isNotEmpty) {
+      _addStartMarker(session.trackingPoints.first);
+    }
   }
 
-  double _calculateDistance(LatLng point1, LatLng point2) {
-    const double earthRadius = 6371000; // Earth's radius in meters
+  void _createSolidPolylineFromPoints(List<LatLng> points, WorkoutType type) {
+    final solidPolyline = Polyline(
+      points: points,
+      color: getWorkoutColor(type),
+      strokeWidth: 6,
+      strokeCap: StrokeCap.round,
+      strokeJoin: StrokeJoin.round,
+    );
 
-    double lat1Rad = point1.latitude * (pi / 180);
-    double lat2Rad = point2.latitude * (pi / 180);
-    double deltaLatRad = (point2.latitude - point1.latitude) * (pi / 180);
-    double deltaLngRad = (point2.longitude - point1.longitude) * (pi / 180);
-
-    double a =
-        sin(deltaLatRad / 2) * sin(deltaLatRad / 2) +
-        cos(lat1Rad) *
-            cos(lat2Rad) *
-            sin(deltaLngRad / 2) *
-            sin(deltaLngRad / 2);
-    double c = 2 * asin(sqrt(a));
-
-    return earthRadius * c;
+    setState(() {
+      _solidPolylines.add(solidPolyline);
+    });
+    print('✅ Created solid polyline with ${points.length} points');
   }
 
-  bool _isValidLocationForPolyline(LatLng location) {
-    // Basic validation - check if coordinates are within valid ranges
-    if (location.latitude < -90 || location.latitude > 90) return false;
-    if (location.longitude < -180 || location.longitude > 180) return false;
+  void _createDashedPolylineFromPoints(List<LatLng> points, WorkoutType type) {
+    final dashedPolyline = Polyline(
+      points: points,
+      color: CustomAppColors.statusError,
+      strokeWidth: 3,
+      strokeCap: StrokeCap.round,
+      strokeJoin: StrokeJoin.round,
+      pattern: StrokePattern.dashed(segments: [10, 5]),
+    );
 
-    // Check for obviously invalid coordinates (0,0 or similar)
-    if (location.latitude == 0 && location.longitude == 0) return false;
-
-    return true;
+    setState(() {
+      _dashedPolylines.add(dashedPolyline);
+    });
+    print('✅ Created dashed polyline with ${points.length} points');
   }
 
   void _updateCurrentLocationMarker(
     LatLng position,
     TrackingPointEntity point,
+    WorkoutSessionEntity? session,
   ) {
     // Remove old current location marker
     _markers.removeWhere(
@@ -161,8 +246,8 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     );
 
     // Get dynamic color based on workout type and speed
-    final markerColor = _getCurrentLocationMarkerColor(point);
-    final markerIcon = _getCurrentLocationIcon();
+    final markerColor = getCurrentLocationMarkerColor(point, session);
+    final markerIcon = getCurrentLocationIcon(session);
 
     // Add new current location marker
     final marker = Marker(
@@ -196,138 +281,11 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     });
   }
 
-  // Get marker color based on workout type and speed
-  Color _getCurrentLocationMarkerColor(TrackingPointEntity point) {
-    final liveTrackingState = ref.read(liveTrackingProvider);
-    final session = liveTrackingState.currentSession;
-
-    // If there's an active workout, use workout color
-    if (session != null) {
-      return _getWorkoutColor(session.type);
-    }
-
-    // Otherwise, use speed-based color
-    final speed = point.speed ?? 0.0; // m/s
-    if (speed < 0.5) return Colors.grey; // Stationary
-    if (speed < 1.5) return Colors.blue; // Walking
-    if (speed < 3.0) return Colors.orange; // Jogging
-    return Colors.red; // Running
-  }
-
-  // Get marker icon based on workout type
-  IconData _getCurrentLocationIcon() {
-    final liveTrackingState = ref.read(liveTrackingProvider);
-    final session = liveTrackingState.currentSession;
-
-    if (session != null) {
-      switch (session.type) {
-        case WorkoutType.running:
-          return Icons.directions_run;
-        case WorkoutType.walking:
-          return Icons.directions_walk;
-        case WorkoutType.cycling:
-          return Icons.directions_bike;
-        case WorkoutType.hiking:
-          return Icons.terrain;
-      }
-    }
-
-    return Icons.my_location; // Default
-  }
-
-  void _updateTrackingPath() {
-    final liveTrackingState = ref.read(liveTrackingProvider);
-    final session = liveTrackingState.currentSession;
-
-    // If no session exists or session has ended, clear the map
-    if (session == null || session.status == WorkoutStatus.completed) {
-      _clearMapData();
-      return;
-    }
-
-    // If no tracking points, just clear polylines but keep current location marker
-    if (session.trackingPoints.isEmpty) {
-      _clearTrackingData();
-      return;
-    }
-
-    // Create polyline from tracking points - filter out invalid locations
-    final allPoints =
-        session.trackingPoints
-            .map((point) => LatLng(point.latitude, point.longitude))
-            .toList();
-
-    // Filter out invalid points and large jumps
-    final List<LatLng> validPoints = [];
-    for (int i = 0; i < allPoints.length; i++) {
-      final point = allPoints[i];
-
-      // Basic validation
-      if (!_isValidLocationForPolyline(point)) {
-        debugPrint(
-          '🚫 Filtered invalid polyline point: ${point.latitude}, ${point.longitude}',
-        );
-        continue;
-      }
-
-      // Check for distance jumps (except for the first point)
-      if (validPoints.isNotEmpty) {
-        final distance = _calculateDistance(validPoints.last, point);
-        if (distance > 1000) {
-          debugPrint(
-            '🚫 Filtered polyline jump: ${distance.toStringAsFixed(2)}m from ${validPoints.last} to $point',
-          );
-          continue;
-        }
-      }
-
-      validPoints.add(point);
-    }
-
-    final points = validPoints;
-
-    // Remove old polyline
-    _polylines.removeWhere((polyline) => polyline.strokeWidth == 4);
-
-    // Add new polyline only if we have enough valid points
-    if (points.length >= 2) {
-      final polyline = Polyline(
-        points: points,
-        color: _getWorkoutColor(session.type),
-        strokeWidth: 4,
-        pattern:
-            session.status == WorkoutStatus.paused
-                ? StrokePattern.dashed(segments: [10, 5])
-                : StrokePattern.solid(),
-      );
-
-      setState(() {
-        _polylines.add(polyline);
-      });
-    } else {
-      debugPrint(
-        '⚠️ Not enough valid points to create polyline: ${points.length}',
-      );
-    }
-
-    // Add start marker if we have valid points
-    if (points.isNotEmpty) {
-      // Use the first valid point for the start marker
-      final firstValidPoint = points.first;
-      final startPointEntity = session.trackingPoints.firstWhere(
-        (trackingPoint) =>
-            LatLng(trackingPoint.latitude, trackingPoint.longitude) ==
-            firstValidPoint,
-        orElse: () => session.trackingPoints.first,
-      );
-      _addStartMarker(startPointEntity);
-    }
-  }
-
   void _clearMapData() {
     setState(() {
       _markers.clear();
-      _polylines.clear();
+      _dashedPolylines.clear();
+      _solidPolylines.clear();
     });
   }
 
@@ -338,7 +296,8 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
         (marker) => marker.key != const ValueKey('current_location'),
       );
       // Clear all polylines
-      _polylines.clear();
+      _dashedPolylines.clear();
+      _solidPolylines.clear();
     });
   }
 
@@ -379,32 +338,32 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     _mapController?.move(position, _zoom);
   }
 
-  Color _getWorkoutColor(WorkoutType type) {
-    switch (type) {
-      case WorkoutType.running:
-        return CustomAppColors.running;
-      case WorkoutType.walking:
-        return CustomAppColors.walking;
-      case WorkoutType.cycling:
-        return CustomAppColors.cycling;
-      case WorkoutType.hiking:
-        return CustomAppColors.hiking;
-    }
-  }
-
   void _handleSessionStateChanges(WorkoutSessionEntity? currentSession) {
-    // If session ended (was active, now null or completed)
-    if (_previousSession != null &&
-        (currentSession == null ||
-            currentSession.status == WorkoutStatus.completed)) {
-      debugPrint('🧹 Session ended, clearing map data');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _clearMapData();
-      });
-    }
+    // Only process if the session actually changed
+    if (_previousSession != currentSession) {
+      if (_previousSession != null &&
+          currentSession != null &&
+          _previousSession!.status != currentSession.status) {
+        print(
+          '🧹 Session state changed: ${_previousSession!.status} -> ${currentSession.status}',
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _updateTrackingPath();
+        });
+      }
+      // If sess}ion ended (was active, now null or completed)
+      if (_previousSession != null &&
+          (currentSession == null ||
+              currentSession.status == WorkoutStatus.completed)) {
+        debugPrint('🧹 Session ended, clearing map data');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _clearMapData();
+        });
+      }
 
-    // Update previous session reference
-    _previousSession = currentSession;
+      // Update previous session reference
+      _previousSession = currentSession;
+    }
   }
 
   @override
@@ -451,7 +410,8 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
                           'com.example.rythmrun_frontend_flutter',
                       maxZoom: 19,
                     ),
-                    PolylineLayer(polylines: _polylines),
+                    PolylineLayer(polylines: _solidPolylines),
+                    PolylineLayer(polylines: _dashedPolylines),
                     MarkerLayer(markers: _markers),
                   ],
                 ),
@@ -462,25 +422,25 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
                   right: spacingMd,
                   child: Column(
                     children: [
-                      _buildMapControlButton(
+                      buildMapControlButton(
                         icon: Icons.my_location,
                         onPressed: _centerOnCurrentLocation,
                         tooltip: 'Center on current location',
                       ),
                       const SizedBox(height: spacingSm),
-                      _buildMapControlButton(
+                      buildMapControlButton(
                         icon: Icons.fit_screen,
                         onPressed: _fitTrackingPath,
                         tooltip: 'Fit tracking path',
                       ),
                       const SizedBox(height: spacingSm),
-                      _buildMapControlButton(
+                      buildMapControlButton(
                         icon: Icons.zoom_in,
                         onPressed: _zoomIn,
                         tooltip: 'Zoom in',
                       ),
                       const SizedBox(height: spacingSm),
-                      _buildMapControlButton(
+                      buildMapControlButton(
                         icon: Icons.zoom_out,
                         onPressed: _zoomOut,
                         tooltip: 'Zoom out',
@@ -544,43 +504,6 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildMapControlButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    required String tooltip,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: CustomAppColors.black,
-        borderRadius: BorderRadius.circular(radiusSm),
-        boxShadow: [
-          // First shadow layer (e.g. black-100 token)
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            offset: const Offset(0, 4),
-            blurRadius: 4, // same token for blur
-            spreadRadius: -1,
-          ),
-
-          BoxShadow(
-            color: Colors.black.withOpacity(
-              0.2,
-            ), // adjust for --sds-color-black-200
-            offset: const Offset(0, 4),
-            blurRadius: 4,
-            spreadRadius: -1,
-          ),
-        ],
-      ),
-      child: IconButton(
-        icon: Icon(icon, size: 24, color: CustomAppColors.white),
-        onPressed: onPressed,
-        tooltip: tooltip,
-        padding: const EdgeInsets.all(spacingMd),
-      ),
     );
   }
 
@@ -655,5 +578,10 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
   void _zoomOut() {
     final currentZoom = _mapController?.camera.zoom ?? _zoom;
     _mapController?.move(_mapController!.camera.center, currentZoom - 1);
+  }
+
+  void _manualClearMap() {
+    print('🧹 Manual clear map triggered');
+    _clearMapData();
   }
 }

@@ -7,6 +7,7 @@ import 'package:rythmrun_frontend_flutter/core/utils/calculation_helper.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/status_change_event_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/live_tracking_repository.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/workout_repository.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
@@ -92,11 +93,19 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
         return;
       }
 
+      // Create initial status change event
+      final startTime = DateTime.now();
+      final initialStatusChange = StatusChangeEvent(
+        status: WorkoutStatus.active,
+        timestamp: startTime,
+      );
+
       // Create new workout session
       final newSession = WorkoutSessionEntity(
         type: type,
         status: WorkoutStatus.active,
-        startTime: DateTime.now(),
+        startTime: startTime,
+        statusChanges: [initialStatusChange],
         userId: int.parse(userId.toString()),
       );
 
@@ -131,20 +140,34 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   void pauseWorkout() {
     if (state.currentSession == null || !state.isTracking) return;
 
-    _liveTrackingRepository.stopTracking();
-    _locationSubscription?.cancel();
+    // Don't stop GPS tracking during pause - keep collecting points
+    // _liveTrackingRepository.stopTracking();
+    // _locationSubscription?.cancel();
     _elapsedTimer?.cancel();
 
     _pausedTime = DateTime.now();
 
+    // Create pause status change event
+    final pauseStatusChange = StatusChangeEvent(
+      status: WorkoutStatus.paused,
+      timestamp: _pausedTime!,
+    );
+
+    // Add status change to session
+    final updatedStatusChanges = [
+      ...state.currentSession!.statusChanges,
+      pauseStatusChange,
+    ];
+
     state = state.copyWith(
       currentSession: state.currentSession!.copyWith(
         status: WorkoutStatus.paused,
+        statusChanges: updatedStatusChanges,
       ),
       isTracking: false,
     );
 
-    log('⏸️ Workout paused');
+    log('⏸️ Workout paused at ${_pausedTime}');
   }
 
   /// Resume the paused workout
@@ -154,16 +177,29 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
       return;
 
     try {
+      final resumeTime = DateTime.now();
+
       // Calculate paused duration
       if (_pausedTime != null) {
-        _totalPausedDuration += DateTime.now().difference(_pausedTime!);
+        _totalPausedDuration += resumeTime.difference(_pausedTime!);
       }
 
-      // Resume location tracking
-      await _liveTrackingRepository.startTracking();
+      // Create resume status change event
+      final resumeStatusChange = StatusChangeEvent(
+        status: WorkoutStatus.active,
+        timestamp: resumeTime,
+      );
 
-      _locationSubscription = LiveTrackingService.instance.locationStream
-          .listen(_onLocationUpdate, onError: _onLocationError);
+      // Add status change to session
+      final updatedStatusChanges = [
+        ...state.currentSession!.statusChanges,
+        resumeStatusChange,
+      ];
+
+      // Location tracking should already be running (not stopped during pause)
+      // await _liveTrackingRepository.startTracking();
+      // _locationSubscription = LiveTrackingService.instance.locationStream
+      //     .listen(_onLocationUpdate, onError: _onLocationError);
 
       // Resume elapsed timer
       _startElapsedTimer();
@@ -171,11 +207,12 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
       state = state.copyWith(
         currentSession: state.currentSession!.copyWith(
           status: WorkoutStatus.active,
+          statusChanges: updatedStatusChanges,
         ),
         isTracking: true,
       );
 
-      log('▶️ Workout resumed');
+      log('▶️ Workout resumed at $resumeTime');
     } catch (e) {
       state = state.copyWith(errorMessage: 'Failed to resume workout: $e');
     }
@@ -252,8 +289,7 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
 
   /// Handle new location updates
   void _onLocationUpdate(TrackingPointEntity point) {
-    if (state.currentSession == null || !state.isTracking) return;
-
+    if (state.currentSession == null) return;
     final session = state.currentSession!;
     final newPoints = [...session.trackingPoints, point];
 

@@ -1,4 +1,5 @@
 import 'tracking_point_entity.dart';
+import 'status_change_event_entity.dart';
 
 enum WorkoutType { running, walking, cycling, hiking }
 
@@ -23,6 +24,7 @@ class WorkoutSessionEntity {
 
   // Tracking data
   final List<TrackingPointEntity> trackingPoints;
+  final List<StatusChangeEvent> statusChanges;
 
   // User info
   final int userId;
@@ -44,6 +46,7 @@ class WorkoutSessionEntity {
     this.elevationGain,
     this.elevationLoss,
     this.trackingPoints = const [],
+    this.statusChanges = const [],
     required this.userId,
     this.name,
     this.notes,
@@ -85,6 +88,7 @@ class WorkoutSessionEntity {
     double? elevationGain,
     double? elevationLoss,
     List<TrackingPointEntity>? trackingPoints,
+    List<StatusChangeEvent>? statusChanges,
     int? userId,
     String? name,
     String? notes,
@@ -104,6 +108,7 @@ class WorkoutSessionEntity {
       elevationGain: elevationGain ?? this.elevationGain,
       elevationLoss: elevationLoss ?? this.elevationLoss,
       trackingPoints: trackingPoints ?? this.trackingPoints,
+      statusChanges: statusChanges ?? this.statusChanges,
       userId: userId ?? this.userId,
       name: name ?? this.name,
       notes: notes ?? this.notes,
