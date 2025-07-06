@@ -156,7 +156,7 @@ class ActivitiesScreen extends ConsumerWidget {
       return _buildErrorState(context, ref, state.errorMessage!);
     }
 
-    if (state.workouts.isNotEmpty) {
+    if (state.workouts.isEmpty) {
       return _buildEmptyState(context);
     }
 
