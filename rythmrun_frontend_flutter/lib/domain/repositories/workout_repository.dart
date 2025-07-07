@@ -1,4 +1,5 @@
 import '../entities/workout_session_entity.dart';
+import '../../core/services/local_db_service.dart';
 
 abstract class WorkoutRepository {
   /// Save a completed workout
@@ -21,4 +22,30 @@ abstract class WorkoutRepository {
 
   /// Sync workouts with server
   Future<void> syncWorkouts();
+
+  // ==================== NEW PAGINATION & STATS METHODS ====================
+
+  /// Get workout statistics using SQL aggregation
+  Future<WorkoutStatistics> getWorkoutStatistics({
+    String? workoutType,
+    DateTime? startDate,
+    DateTime? endDate,
+  });
+
+  /// Get workout statistics grouped by type
+  Future<Map<String, WorkoutStatistics>> getWorkoutStatisticsByType();
+
+  /// Get paginated workouts with filtering
+  Future<PaginatedWorkouts> getPaginatedWorkouts({
+    int page = 1,
+    int limit = 20,
+    String? workoutType,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? searchQuery,
+    bool loadTrackingPoints = false,
+  });
+
+  /// Get workout count for quick stats
+  Future<int> getWorkoutCount();
 }

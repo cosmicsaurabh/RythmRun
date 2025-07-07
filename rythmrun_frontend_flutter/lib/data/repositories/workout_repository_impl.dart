@@ -6,6 +6,7 @@ import '../../domain/repositories/workout_repository.dart';
 import '../../domain/entities/workout_session_entity.dart';
 import '../datasources/workout_local_datasource.dart';
 import '../../domain/repositories/auth_repository.dart';
+import '../../core/services/local_db_service.dart';
 
 class WorkoutRepositoryImpl implements WorkoutRepository {
   final WorkoutLocalDataSource _localDataSource;
@@ -104,5 +105,89 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
     // 2. Send to server
     // 3. Mark as synced on success
     log('Workout sync not implemented yet');
+  }
+
+  // ==================== NEW PAGINATION & STATS METHODS ====================
+
+  @override
+  Future<WorkoutStatistics> getWorkoutStatistics({
+    String? workoutType,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    try {
+      final userId = await _getCurrentUserId();
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      return await _localDataSource.getWorkoutStatistics(
+        userId,
+        workoutType: workoutType,
+        startDate: startDate,
+        endDate: endDate,
+      );
+    } catch (e) {
+      throw Exception('Failed to get workout statistics: $e');
+    }
+  }
+
+  @override
+  Future<Map<String, WorkoutStatistics>> getWorkoutStatisticsByType() async {
+    try {
+      final userId = await _getCurrentUserId();
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      return await _localDataSource.getWorkoutStatisticsByType(userId);
+    } catch (e) {
+      throw Exception('Failed to get workout statistics by type: $e');
+    }
+  }
+
+  @override
+  Future<PaginatedWorkouts> getPaginatedWorkouts({
+    int page = 1,
+    int limit = 20,
+    String? workoutType,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? searchQuery,
+    bool loadTrackingPoints = false,
+  }) async {
+    try {
+      final userId = await _getCurrentUserId();
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      return await _localDataSource.getPaginatedWorkouts(
+        userId,
+        page: page,
+        limit: limit,
+        workoutType: workoutType,
+        startDate: startDate,
+        endDate: endDate,
+        searchQuery: searchQuery,
+        loadTrackingPoints: loadTrackingPoints,
+      );
+    } catch (e) {
+      throw Exception('Failed to get paginated workouts: $e');
+    }
+  }
+
+  @override
+  Future<int> getWorkoutCount() async {
+    try {
+      final userId = await _getCurrentUserId();
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      return await _localDataSource.getWorkoutCount(userId);
+    } catch (e) {
+      throw Exception('Failed to get workout count: $e');
+    }
   }
 }
