@@ -22,7 +22,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
       // Load all filtered workouts at once (not paginated)
       final paginatedWorkouts = await _workoutRepository.getPaginatedWorkouts(
         page: 1,
-        limit: 10,
+        limit: 10, // Large limit to get all filtered results
         workoutType: state.selectedWorkoutType,
         startDate: state.startDate,
         endDate: state.endDate,

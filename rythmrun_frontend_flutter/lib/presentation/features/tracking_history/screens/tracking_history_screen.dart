@@ -411,125 +411,132 @@ class ActivitiesScreen extends ConsumerWidget {
 
   // Filter Bottom Sheet
   void _showFilterBottomSheet(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(trackingHistoryProvider.notifier);
-    final state = ref.read(trackingHistoryProvider);
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder:
-          (context) => Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(radiusXl),
-              ),
-            ),
-            padding: EdgeInsets.only(
-              left: spacingLg,
-              right: spacingLg,
-              top: spacingLg,
-              bottom: MediaQuery.of(context).viewInsets.bottom + spacingLg,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          (context) => Consumer(
+            builder: (context, ref, child) {
+              final notifier = ref.read(trackingHistoryProvider.notifier);
+              final state = ref.watch(trackingHistoryProvider);
+
+              return Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(radiusXl),
+                  ),
+                ),
+                padding: EdgeInsets.only(
+                  left: spacingLg,
+                  right: spacingLg,
+                  top: spacingLg,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + spacingLg,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Filter Activities',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: spacingLg),
+
+                    // Workout Type Filter
                     Text(
-                      'Filter Activities',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+                      'Workout Type',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(Icons.close),
+                    const SizedBox(height: spacingSm),
+                    Wrap(
+                      spacing: spacingSm,
+                      children: [
+                        FilterChip(
+                          label: Text('All'),
+                          selected: state.selectedWorkoutType == null,
+                          onSelected:
+                              (_) => notifier.setWorkoutTypeFilter(null),
+                        ),
+                        ...notifier.getWorkoutTypeOptions().map(
+                          (type) => FilterChip(
+                            label: Text(type.toUpperCase()),
+                            selected: state.selectedWorkoutType == type,
+                            onSelected:
+                                (_) => notifier.setWorkoutTypeFilter(
+                                  state.selectedWorkoutType == type
+                                      ? null
+                                      : type,
+                                ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: spacingLg),
+                    const SizedBox(height: spacingLg),
 
-                // Workout Type Filter
-                Text(
-                  'Workout Type',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: spacingSm),
-                Wrap(
-                  spacing: spacingSm,
-                  children: [
-                    FilterChip(
-                      label: Text('All'),
-                      selected: state.selectedWorkoutType == null,
-                      onSelected: (_) => notifier.setWorkoutTypeFilter(null),
+                    // Date Range
+                    Text(
+                      'Date Range',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    ...notifier.getWorkoutTypeOptions().map(
-                      (type) => FilterChip(
-                        label: Text(type.toUpperCase()),
-                        selected: state.selectedWorkoutType == type,
-                        onSelected:
-                            (_) => notifier.setWorkoutTypeFilter(
-                              state.selectedWorkoutType == type ? null : type,
+                    const SizedBox(height: spacingSm),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _selectDateRange(context, ref),
+                            icon: Icon(Icons.date_range),
+                            label: Text(
+                              state.startDate != null && state.endDate != null
+                                  ? '${_formatShortDate(state.startDate!)} - ${_formatShortDate(state.endDate!)}'
+                                  : 'Select Date Range',
                             ),
-                      ),
+                          ),
+                        ),
+                        if (state.startDate != null ||
+                            state.endDate != null) ...[
+                          const SizedBox(width: spacingSm),
+                          IconButton(
+                            onPressed: () => notifier.setDateRangeFilter(),
+                            icon: Icon(Icons.clear),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: spacingLg),
+                    const SizedBox(height: spacingLg),
 
-                // Date Range
-                Text(
-                  'Date Range',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: spacingSm),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _selectDateRange(context, ref),
-                        icon: Icon(Icons.date_range),
-                        label: Text(
-                          state.startDate != null && state.endDate != null
-                              ? '${_formatShortDate(state.startDate!)} - ${_formatShortDate(state.endDate!)}'
-                              : 'Select Date Range',
+                    // Clear All Filters
+                    if (state.hasFilters)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () {
+                            notifier.clearFilters();
+                            Navigator.pop(context);
+                          },
+                          child: Text('Clear All Filters'),
                         ),
                       ),
-                    ),
-                    if (state.startDate != null || state.endDate != null) ...[
-                      const SizedBox(width: spacingSm),
-                      IconButton(
-                        onPressed: () => notifier.setDateRangeFilter(),
-                        icon: Icon(Icons.clear),
-                      ),
-                    ],
                   ],
                 ),
-                const SizedBox(height: spacingLg),
-
-                // Clear All Filters
-                if (state.hasFilters)
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        notifier.clearFilters();
-                        Navigator.pop(context);
-                      },
-                      child: Text('Clear All Filters'),
-                    ),
-                  ),
-              ],
-            ),
+              );
+            },
           ),
     );
   }
