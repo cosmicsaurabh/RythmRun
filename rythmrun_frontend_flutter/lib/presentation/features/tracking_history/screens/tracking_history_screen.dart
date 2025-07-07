@@ -248,18 +248,6 @@ class ActivitiesScreen extends ConsumerWidget {
       );
     }
 
-    if (state.searchQuery != null && state.searchQuery!.isNotEmpty) {
-      filterChips.add(
-        FilterChip(
-          label: Text('"${state.searchQuery}"'),
-          onDeleted: () => notifier.setSearchQuery(null),
-          onSelected: (_) => notifier.setSearchQuery(null),
-          selectedColor: CustomAppColors.colorC.withOpacity(0.2),
-          selected: true,
-        ),
-      );
-    }
-
     return Wrap(spacing: spacingSm, children: filterChips);
   }
 
@@ -493,27 +481,6 @@ class ActivitiesScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: spacingLg),
-
-                // Search
-                Text(
-                  'Search',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: spacingSm),
-                TextField(
-                  controller: TextEditingController(text: state.searchQuery),
-                  onChanged: (query) => notifier.setSearchQuery(query),
-                  decoration: InputDecoration(
-                    hintText: 'Search by workout name or notes...',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(radiusMd),
-                    ),
-                  ),
                 ),
                 const SizedBox(height: spacingLg),
 
