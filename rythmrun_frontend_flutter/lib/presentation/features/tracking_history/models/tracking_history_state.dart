@@ -22,8 +22,10 @@ class TrackingHistoryState {
   final DateTime? endDate;
   final String? searchQuery;
 
-  // Statistics
-  final WorkoutStatistics? statistics;
+  // Statistics (Two types for AppBar vs Filter cards)
+  final WorkoutStatistics? overallStatistics; // For AppBar (all workouts)
+  final WorkoutStatistics?
+  filteredStatistics; // For Filter card (filtered workouts)
   final bool isLoadingStats;
 
   const TrackingHistoryState({
@@ -40,7 +42,8 @@ class TrackingHistoryState {
     this.startDate,
     this.endDate,
     this.searchQuery,
-    this.statistics,
+    this.overallStatistics,
+    this.filteredStatistics,
     this.isLoadingStats = false,
   });
 
@@ -58,24 +61,35 @@ class TrackingHistoryState {
     DateTime? startDate,
     DateTime? endDate,
     String? searchQuery,
-    WorkoutStatistics? statistics,
+    WorkoutStatistics? overallStatistics,
+    WorkoutStatistics? filteredStatistics,
     bool? isLoadingStats,
+    bool clearSelectedWorkoutType = false,
+    bool clearStartDate = false,
+    bool clearEndDate = false,
+    bool clearSearchQuery = false,
+    bool clearErrorMessage = false,
   }) {
     return TrackingHistoryState(
       workouts: workouts ?? this.workouts,
       isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage,
+      errorMessage:
+          clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
       currentPage: currentPage ?? this.currentPage,
       totalPages: totalPages ?? this.totalPages,
       totalCount: totalCount ?? this.totalCount,
       hasNextPage: hasNextPage ?? this.hasNextPage,
       hasPreviousPage: hasPreviousPage ?? this.hasPreviousPage,
       limit: limit ?? this.limit,
-      selectedWorkoutType: selectedWorkoutType ?? this.selectedWorkoutType,
-      startDate: startDate ?? this.startDate,
-      endDate: endDate ?? this.endDate,
-      searchQuery: searchQuery ?? this.searchQuery,
-      statistics: statistics ?? this.statistics,
+      selectedWorkoutType:
+          clearSelectedWorkoutType
+              ? null
+              : (selectedWorkoutType ?? this.selectedWorkoutType),
+      startDate: clearStartDate ? null : (startDate ?? this.startDate),
+      endDate: clearEndDate ? null : (endDate ?? this.endDate),
+      searchQuery: clearSearchQuery ? null : (searchQuery ?? this.searchQuery),
+      overallStatistics: overallStatistics ?? this.overallStatistics,
+      filteredStatistics: filteredStatistics ?? this.filteredStatistics,
       isLoadingStats: isLoadingStats ?? this.isLoadingStats,
     );
   }
@@ -83,11 +97,11 @@ class TrackingHistoryState {
   // Clear filters
   TrackingHistoryState clearFilters() {
     return copyWith(
-      selectedWorkoutType: null,
-      startDate: null,
-      endDate: null,
-      searchQuery: null,
       currentPage: 1,
+      clearSelectedWorkoutType: true,
+      clearStartDate: true,
+      clearEndDate: true,
+      clearSearchQuery: true,
     );
   }
 
@@ -117,7 +131,8 @@ class TrackingHistoryState {
           startDate == other.startDate &&
           endDate == other.endDate &&
           searchQuery == other.searchQuery &&
-          statistics == other.statistics &&
+          overallStatistics == other.overallStatistics &&
+          filteredStatistics == other.filteredStatistics &&
           isLoadingStats == other.isLoadingStats;
 
   @override
@@ -135,7 +150,8 @@ class TrackingHistoryState {
       startDate.hashCode ^
       endDate.hashCode ^
       searchQuery.hashCode ^
-      statistics.hashCode ^
+      overallStatistics.hashCode ^
+      filteredStatistics.hashCode ^
       isLoadingStats.hashCode;
 
   @override

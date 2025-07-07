@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
@@ -63,7 +64,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     return Scaffold(
       body:
           user == null
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: CupertinoActivityIndicator())
               : AnimatedBuilder(
                 animation: _animationController,
                 builder: (context, child) {

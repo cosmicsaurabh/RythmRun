@@ -1,12 +1,11 @@
 import 'dart:developer';
 
+import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
-
-import '../../domain/repositories/workout_repository.dart';
-import '../../domain/entities/workout_session_entity.dart';
-import '../datasources/workout_local_datasource.dart';
-import '../../domain/repositories/auth_repository.dart';
-import '../../core/services/local_db_service.dart';
+import 'package:rythmrun_frontend_flutter/data/datasources/workout_local_datasource.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/domain/repositories/auth_repository.dart';
+import 'package:rythmrun_frontend_flutter/domain/repositories/workout_repository.dart';
 
 class WorkoutRepositoryImpl implements WorkoutRepository {
   final WorkoutLocalDataSource _localDataSource;

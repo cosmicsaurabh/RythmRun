@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
@@ -31,86 +32,70 @@ class ActivitiesScreen extends ConsumerWidget {
     WidgetRef ref,
     TrackingHistoryState state,
   ) {
+    final notifier = ref.read(trackingHistoryProvider.notifier);
+
     return SliverAppBar(
-      expandedHeight: 120,
+      expandedHeight: 120.0,
       floating: false,
       pinned: true,
-      elevation: 0,
       backgroundColor: Colors.transparent,
-      automaticallyImplyLeading: false,
+      elevation: 0,
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Theme.of(context).colorScheme.primary.withOpacity(.1),
-                Theme.of(context).colorScheme.onPrimary.withOpacity(.1),
-              ],
-            ),
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          padding: const EdgeInsets.fromLTRB(
+            spacingMd,
+            spacingXl,
+            spacingMd,
+            spacingMd,
           ),
           child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: spacingLg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Workout History',
-                            style: Theme.of(
-                              context,
-                            ).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onBackground,
-                            ),
-                          ),
-                          const SizedBox(height: spacingSm),
-                          Text(
-                            _getStatsText(state.workouts),
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodyMedium?.copyWith(
-                              color: CustomAppColors.secondaryText,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (state.workouts.isNotEmpty)
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(radiusMd),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: IconButton(
-                            icon: const Icon(refreshIcon),
-                            onPressed: () {
-                              ref
-                                  .read(trackingHistoryProvider.notifier)
-                                  .refresh();
-                            },
-                            tooltip: 'Refresh workouts',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Workout History',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.onPrimary,
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: spacingMd),
-                ],
-              ),
+                        const SizedBox(height: spacingSm),
+                        // AppBar Card: Overall Statistics
+                        Text(
+                          notifier.getOverallStatsText(),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: CustomAppColors.secondaryText),
+                        ),
+                      ],
+                    ),
+                    // Filter toggle button
+                    IconButton(
+                      onPressed: () => _showFilterBottomSheet(context, ref),
+                      icon: Icon(
+                        state.hasFilters
+                            ? Icons.filter_alt
+                            : Icons.filter_alt_outlined,
+                        color:
+                            state.hasFilters
+                                ? CustomAppColors.progressSky
+                                : CustomAppColors.secondaryText,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -126,23 +111,6 @@ class ActivitiesScreen extends ConsumerWidget {
     return SliverToBoxAdapter(child: _buildBody(context, ref, state));
   }
 
-  String _getStatsText(List<WorkoutSessionEntity> workouts) {
-    if (workouts.isEmpty) return 'No workouts yet';
-    final totalTime = workouts.fold<Duration>(Duration.zero, (sum, workout) {
-      final duration =
-          workout.endTime != null && workout.startTime != null
-              ? workout.endTime!.difference(workout.startTime!)
-              : Duration.zero;
-      return sum + duration;
-    });
-    final totalDistance = workouts.fold<double>(
-      0,
-      (sum, workout) => sum + workout.totalDistance,
-    );
-    final totalWorkouts = workouts.length;
-    return '$totalWorkouts workouts • ${(totalDistance / 1000).toStringAsFixed(1)}km • ${_formatDuration(totalTime)}';
-  }
-
   Widget _buildBody(
     BuildContext context,
     WidgetRef ref,
@@ -153,11 +121,7 @@ class ActivitiesScreen extends ConsumerWidget {
     }
 
     if (state.errorMessage != null) {
-      return _buildErrorState(context, ref, state.errorMessage!);
-    }
-
-    if (state.workouts.isEmpty) {
-      return _buildEmptyState(context);
+      return _buildErrorState(context, ref, state.errorMessage);
     }
 
     return Padding(
@@ -166,200 +130,137 @@ class ActivitiesScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: spacingMd),
-          _buildQuickStats(state.workouts),
-          const SizedBox(height: spacingLg),
-          _buildWorkoutsList(context, ref, state.workouts),
+
+          // Filter Card: Filtered Statistics (only show if filters applied)
+          if (state.hasFilters) ...[
+            _buildFilteredStatsCard(context, ref, state),
+            const SizedBox(height: spacingLg),
+          ],
+
+          // Active filters display
+          if (state.hasFilters) ...[
+            _buildActiveFilters(context, ref, state),
+            const SizedBox(height: spacingMd),
+          ],
+
+          // Workouts list
+          if (state.workouts.isEmpty)
+            _buildEmptyState(context, state.hasFilters)
+          else
+            _buildWorkoutsList(context, ref, state.workouts),
         ],
       ),
     );
   }
 
-  Widget _buildLoadingState() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(spacingXl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: spacingLg),
-            Text(
-              'Loading your workouts...',
-              style: TextStyle(
-                fontSize: 16,
-                color: CustomAppColors.secondaryText,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorState(
+  // Filter Card: Shows statistics for current filter
+  Widget _buildFilteredStatsCard(
     BuildContext context,
     WidgetRef ref,
-    String errorMessage,
+    TrackingHistoryState state,
   ) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(spacingXl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(spacingLg),
-              decoration: BoxDecoration(
-                color: CustomAppColors.statusDanger.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(radiusLg),
-              ),
-              child: Icon(
-                errorOutlineIcon,
-                size: 60,
-                color: CustomAppColors.statusDanger,
-              ),
-            ),
-            const SizedBox(height: spacingLg),
-            Text(
-              'Something went wrong',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: spacingSm),
-            Text(
-              errorMessage,
-              style: TextStyle(color: CustomAppColors.secondaryText),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: spacingLg),
-            ElevatedButton.icon(
-              onPressed: () {
-                ref.read(trackingHistoryProvider.notifier).refresh();
-              },
-              icon: const Icon(refreshIcon),
-              label: const Text('Try Again'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: spacingLg,
-                  vertical: spacingMd,
+    final notifier = ref.read(trackingHistoryProvider.notifier);
+
+    return Container(
+      padding: const EdgeInsets.all(spacingLg),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary,
+        borderRadius: BorderRadius.circular(radiusLg),
+        border: Border.all(
+          color: CustomAppColors.progressSky.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Filtered Results',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onPrimary,
                 ),
               ),
+              TextButton(
+                onPressed: () => notifier.clearFilters(),
+                child: Text(
+                  'Clear Filters',
+                  style: TextStyle(color: CustomAppColors.progressSky),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: spacingSm),
+          Text(
+            notifier.getFilteredStatsText(),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w500,
+              color: CustomAppColors.secondaryText,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildQuickStats(List<WorkoutSessionEntity> workouts) {
-    return Builder(
-      builder: (context) {
-        final totalDistance = workouts.fold<double>(
-          0,
-          (sum, workout) => sum + workout.totalDistance,
-        );
-        final totalTime = workouts.fold<Duration>(Duration.zero, (
-          sum,
-          workout,
-        ) {
-          final duration =
-              workout.endTime != null && workout.startTime != null
-                  ? workout.endTime!.difference(workout.startTime!)
-                  : Duration.zero;
-          return sum + duration;
-        });
-
-        return Container(
-          padding: const EdgeInsets.all(spacingLg),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Theme.of(context).colorScheme.primaryContainer,
-                Theme.of(context).colorScheme.primaryContainer.withOpacity(0.7),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(radiusLg),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'This Month',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
-              ),
-              const SizedBox(height: spacingMd),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildQuickStatItem(
-                      '${workouts.length}',
-                      'Workouts',
-                      Icons.fitness_center,
-                      Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                  Expanded(
-                    child: _buildQuickStatItem(
-                      '${(totalDistance / 1000).toStringAsFixed(1)}km',
-                      'Distance',
-                      distanceIcon,
-                      Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                  Expanded(
-                    child: _buildQuickStatItem(
-                      '${totalTime.inHours}h ${totalTime.inMinutes % 60}m',
-                      'Time',
-                      timeIcon,
-                      Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildQuickStatItem(
-    String value,
-    String label,
-    IconData icon,
-    Color color,
+  // Active filters display
+  Widget _buildActiveFilters(
+    BuildContext context,
+    WidgetRef ref,
+    TrackingHistoryState state,
   ) {
-    return Column(
-      children: [
-        Icon(icon, size: 24, color: color),
-        const SizedBox(height: spacingSm),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
+    final notifier = ref.read(trackingHistoryProvider.notifier);
+    final List<Widget> filterChips = [];
+
+    if (state.selectedWorkoutType != null) {
+      filterChips.add(
+        FilterChip(
+          label: Text(state.selectedWorkoutType!.toUpperCase()),
+          onDeleted: () => notifier.setWorkoutTypeFilter(null),
+          onSelected: (_) => notifier.setWorkoutTypeFilter(null),
+          selectedColor: getWorkoutColor(
+            getReverseWorkoutTypeName(state.selectedWorkoutType!),
+          ).withOpacity(0.2),
+          selected: true,
         ),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: color.withOpacity(0.8)),
+      );
+    }
+
+    if (state.startDate != null || state.endDate != null) {
+      final dateText =
+          state.startDate != null && state.endDate != null
+              ? '${_formatShortDate(state.startDate!)} - ${_formatShortDate(state.endDate!)}'
+              : state.startDate != null
+              ? 'From ${_formatShortDate(state.startDate!)}'
+              : 'Until ${_formatShortDate(state.endDate!)}';
+
+      filterChips.add(
+        FilterChip(
+          label: Text(dateText),
+          onDeleted: () => notifier.setDateRangeFilter(),
+          onSelected: (_) => notifier.setDateRangeFilter(),
+          selectedColor: CustomAppColors.colorB.withOpacity(0.2),
+          selected: true,
         ),
-      ],
-    );
+      );
+    }
+
+    if (state.searchQuery != null && state.searchQuery!.isNotEmpty) {
+      filterChips.add(
+        FilterChip(
+          label: Text('"${state.searchQuery}"'),
+          onDeleted: () => notifier.setSearchQuery(null),
+          onSelected: (_) => notifier.setSearchQuery(null),
+          selectedColor: CustomAppColors.colorC.withOpacity(0.2),
+          selected: true,
+        ),
+      );
+    }
+
+    return Wrap(spacing: spacingSm, children: filterChips);
   }
 
   Widget _buildWorkoutsList(
@@ -370,13 +271,13 @@ class ActivitiesScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: spacingMd),
         Text(
-          'Recent Activities',
+          'Activities (${workouts.length})',
           style: Theme.of(
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
         ),
+        const SizedBox(height: spacingMd),
         ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -393,62 +294,21 @@ class ActivitiesScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
+  Widget _buildEmptyState(BuildContext context, bool hasFilters) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(spacingXl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(spacingXl),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    CustomAppColors.running.withOpacity(0.1),
-                    CustomAppColors.cycling.withOpacity(0.1),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(radiusXl),
-                border: Border.all(
-                  color: CustomAppColors.running.withOpacity(0.2),
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                children: [
-                  Icon(runningIcon, size: 80, color: CustomAppColors.running),
-                  const SizedBox(height: spacingMd),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        walkingIcon,
-                        size: iconSizeMd,
-                        color: CustomAppColors.walking,
-                      ),
-                      const SizedBox(width: spacingSm),
-                      Icon(
-                        cyclingIcon,
-                        size: iconSizeMd,
-                        color: CustomAppColors.cycling,
-                      ),
-                      const SizedBox(width: spacingSm),
-                      Icon(
-                        hikingIcon,
-                        size: iconSizeMd,
-                        color: CustomAppColors.hiking,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+            Icon(
+              hasFilters ? Icons.search_off : Icons.fitness_center,
+              size: 64.0,
+              color: CustomAppColors.secondaryText,
             ),
             const SizedBox(height: spacingLg),
             Text(
-              'No Activities Yet',
+              hasFilters ? 'No Activities Found' : 'No Activities Yet',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: CustomAppColors.secondaryText,
@@ -456,62 +316,278 @@ class ActivitiesScreen extends ConsumerWidget {
             ),
             const SizedBox(height: spacingSm),
             Text(
-              'Start your fitness journey today!\nTrack your runs, walks, bike rides, and hikes.',
+              hasFilters
+                  ? 'Try adjusting your filters to see more activities.'
+                  : 'Start your fitness journey today!\nTrack your runs, walks, bike rides, and hikes.',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: CustomAppColors.secondaryText,
                 height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),
+            if (!hasFilters) ...[
+              const SizedBox(height: spacingLg),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: spacingLg,
+                  vertical: spacingMd,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [CustomAppColors.running, CustomAppColors.cycling],
+                  ),
+                  borderRadius: BorderRadius.circular(radiusLg),
+                  boxShadow: [
+                    BoxShadow(
+                      color: CustomAppColors.running.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  'Ready to get started?',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Expanded(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(spacingXl),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CupertinoActivityIndicator(color: CustomAppColors.secondaryText),
+              const SizedBox(height: spacingMd),
+              Text(
+                'Loading workouts...',
+                style: TextStyle(color: CustomAppColors.secondaryText),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context, WidgetRef ref, String? error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(spacingXl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64.0,
+              color: CustomAppColors.statusDanger,
+            ),
             const SizedBox(height: spacingLg),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: spacingLg,
-                vertical: spacingMd,
+            Text(
+              'Something went wrong',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: CustomAppColors.statusDanger,
               ),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [CustomAppColors.running, CustomAppColors.cycling],
-                ),
-                borderRadius: BorderRadius.circular(radiusLg),
-                boxShadow: [
-                  BoxShadow(
-                    color: CustomAppColors.running.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+            ),
+            const SizedBox(height: spacingSm),
+            Text(
+              error ?? 'Unknown error',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: CustomAppColors.secondaryText,
               ),
-              child: Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(radiusLg),
-                child: InkWell(
-                  onTap: () {
-                    //  tab change to 0
-                  },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(addIcon, color: Colors.white, size: iconSizeSm),
-                      const SizedBox(width: spacingSm),
-                      Text(
-                        'Start Your First Workout',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: spacingLg),
+            ElevatedButton(
+              onPressed:
+                  () => ref.read(trackingHistoryProvider.notifier).refresh(),
+              child: Text('Try Again'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  // Filter Bottom Sheet
+  void _showFilterBottomSheet(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(trackingHistoryProvider.notifier);
+    final state = ref.read(trackingHistoryProvider);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (context) => Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(radiusXl),
+              ),
+            ),
+            padding: EdgeInsets.only(
+              left: spacingLg,
+              right: spacingLg,
+              top: spacingLg,
+              bottom: MediaQuery.of(context).viewInsets.bottom + spacingLg,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Filter Activities',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: spacingLg),
+
+                // Workout Type Filter
+                Text(
+                  'Workout Type',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: spacingSm),
+                Wrap(
+                  spacing: spacingSm,
+                  children: [
+                    FilterChip(
+                      label: Text('All'),
+                      selected: state.selectedWorkoutType == null,
+                      onSelected: (_) => notifier.setWorkoutTypeFilter(null),
+                    ),
+                    ...notifier.getWorkoutTypeOptions().map(
+                      (type) => FilterChip(
+                        label: Text(type.toUpperCase()),
+                        selected: state.selectedWorkoutType == type,
+                        onSelected:
+                            (_) => notifier.setWorkoutTypeFilter(
+                              state.selectedWorkoutType == type ? null : type,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: spacingLg),
+
+                // Search
+                Text(
+                  'Search',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: spacingSm),
+                TextField(
+                  controller: TextEditingController(text: state.searchQuery),
+                  onChanged: (query) => notifier.setSearchQuery(query),
+                  decoration: InputDecoration(
+                    hintText: 'Search by workout name or notes...',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(radiusMd),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: spacingLg),
+
+                // Date Range
+                Text(
+                  'Date Range',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: spacingSm),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _selectDateRange(context, ref),
+                        icon: Icon(Icons.date_range),
+                        label: Text(
+                          state.startDate != null && state.endDate != null
+                              ? '${_formatShortDate(state.startDate!)} - ${_formatShortDate(state.endDate!)}'
+                              : 'Select Date Range',
+                        ),
+                      ),
+                    ),
+                    if (state.startDate != null || state.endDate != null) ...[
+                      const SizedBox(width: spacingSm),
+                      IconButton(
+                        onPressed: () => notifier.setDateRangeFilter(),
+                        icon: Icon(Icons.clear),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: spacingLg),
+
+                // Clear All Filters
+                if (state.hasFilters)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        notifier.clearFilters();
+                        Navigator.pop(context);
+                      },
+                      child: Text('Clear All Filters'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+    );
+  }
+
+  Future<void> _selectDateRange(BuildContext context, WidgetRef ref) async {
+    final notifier = ref.read(trackingHistoryProvider.notifier);
+    final state = ref.read(trackingHistoryProvider);
+
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange:
+          state.startDate != null && state.endDate != null
+              ? DateTimeRange(start: state.startDate!, end: state.endDate!)
+              : null,
+    );
+
+    if (picked != null) {
+      notifier.setDateRangeFilter(startDate: picked.start, endDate: picked.end);
+    }
+  }
+
+  String _formatShortDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 
   Widget _buildWorkoutCard(
@@ -599,7 +675,7 @@ class ActivitiesScreen extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _getWorkoutTypeName(workout.type),
+                            getWorkoutTypeName(workout.type),
                             style: Theme.of(
                               context,
                             ).textTheme.titleLarge?.copyWith(
@@ -630,13 +706,14 @@ class ActivitiesScreen extends ConsumerWidget {
                         ],
                       ),
                     ),
+                    // Delete button
                     PopupMenuButton<String>(
                       onSelected: (value) async {
                         if (value == 'delete') {
-                          final confirmed = await _showDeleteConfirmation(
+                          final shouldDelete = await _showDeleteConfirmation(
                             context,
                           );
-                          if (confirmed && workout.id != null) {
+                          if (shouldDelete) {
                             ref
                                 .read(trackingHistoryProvider.notifier)
                                 .deleteWorkout(workout.id!);
@@ -645,33 +722,20 @@ class ActivitiesScreen extends ConsumerWidget {
                       },
                       itemBuilder:
                           (context) => [
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'delete',
                               child: Row(
                                 children: [
                                   Icon(
-                                    deleteIcon,
+                                    Icons.delete,
                                     color: CustomAppColors.statusDanger,
-                                    size: iconSizeSm,
                                   ),
-                                  SizedBox(width: spacingSm),
-                                  Text('Delete Workout'),
+                                  const SizedBox(width: spacingSm),
+                                  Text('Delete'),
                                 ],
                               ),
                             ),
                           ],
-                      child: Container(
-                        padding: const EdgeInsets.all(spacingSm),
-                        decoration: BoxDecoration(
-                          color: CustomAppColors.secondaryText.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(radiusSm),
-                        ),
-                        child: Icon(
-                          Icons.more_vert,
-                          color: CustomAppColors.secondaryText,
-                          size: iconSizeSm,
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -741,74 +805,18 @@ class ActivitiesScreen extends ConsumerWidget {
                             ),
                           ),
                           Expanded(
-                            child:
-                                workout.elevationGain != null &&
-                                        workout.elevationGain! > 0
-                                    ? _buildEnhancedMetric(
-                                      icon: elevationIcon,
-                                      label: 'Elevation',
-                                      value:
-                                          '${workout.elevationGain!.toInt()}m',
-                                      color: CustomAppColors.statusSuccess,
-                                    )
-                                    : workout.calories != null
-                                    ? _buildEnhancedMetric(
-                                      icon: caloriesIcon,
-                                      label: 'Calories',
-                                      value: '${workout.calories}',
-                                      color: CustomAppColors.statusWarning,
-                                    )
-                                    : _buildEnhancedMetric(
-                                      icon: Icons.my_location,
-                                      label: 'Points',
-                                      value: '${workout.trackingPoints.length}',
-                                      color: CustomAppColors.colorB,
-                                    ),
+                            child: _buildEnhancedMetric(
+                              icon: caloriesIcon,
+                              label: 'Calories',
+                              value: workout.calories?.toString() ?? '--',
+                              color: CustomAppColors.colorB,
+                            ),
                           ),
                         ],
                       ),
                     ],
                   ),
                 ),
-
-                // Notes if available
-                if (workout.notes != null && workout.notes!.isNotEmpty) ...[
-                  const SizedBox(height: spacingMd),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(spacingMd),
-                    decoration: BoxDecoration(
-                      color: getWorkoutColor(workout.type).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(radiusMd),
-                      border: Border.all(
-                        color: getWorkoutColor(workout.type).withOpacity(0.2),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          noteIcon,
-                          size: iconSizeSm,
-                          color: getWorkoutColor(workout.type),
-                        ),
-                        const SizedBox(width: spacingSm),
-                        Expanded(
-                          child: Text(
-                            workout.notes!,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: CustomAppColors.secondaryText,
-                              fontStyle: FontStyle.italic,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -848,19 +856,6 @@ class ActivitiesScreen extends ConsumerWidget {
         ),
       ],
     );
-  }
-
-  String _getWorkoutTypeName(WorkoutType type) {
-    switch (type) {
-      case WorkoutType.running:
-        return 'Running';
-      case WorkoutType.walking:
-        return 'Walking';
-      case WorkoutType.cycling:
-        return 'Cycling';
-      case WorkoutType.hiking:
-        return 'Hiking';
-    }
   }
 
   String _formatDate(DateTime? date) {

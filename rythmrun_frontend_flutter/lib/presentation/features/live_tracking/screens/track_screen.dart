@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
@@ -188,7 +189,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                   right: spacingLg,
                   child: const Padding(
                     padding: EdgeInsets.all(spacingLg),
-                    child: CircularProgressIndicator(),
+                    child: CupertinoActivityIndicator(),
                   ),
                 ),
 

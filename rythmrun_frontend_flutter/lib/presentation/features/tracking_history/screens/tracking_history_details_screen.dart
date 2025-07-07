@@ -19,6 +19,12 @@ class TrackingHistoryDetailsScreen extends StatefulWidget {
 class _TrackingHistoryDetailsScreenState
     extends State<TrackingHistoryDetailsScreen> {
   bool _showMapTiles = true;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(

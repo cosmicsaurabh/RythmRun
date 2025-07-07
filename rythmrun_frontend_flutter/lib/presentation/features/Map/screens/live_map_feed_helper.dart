@@ -59,6 +59,34 @@ IconData getCurrentLocationIcon(WorkoutSessionEntity? session) {
   return Icons.my_location; // Default
 }
 
+String getWorkoutTypeName(WorkoutType type) {
+  switch (type) {
+    case WorkoutType.running:
+      return 'Running';
+    case WorkoutType.walking:
+      return 'Walking';
+    case WorkoutType.cycling:
+      return 'Cycling';
+    case WorkoutType.hiking:
+      return 'Hiking';
+  }
+}
+
+WorkoutType getReverseWorkoutTypeName(String type) {
+  switch (type.toLowerCase()) {
+    case 'running':
+      return WorkoutType.running;
+    case 'walking':
+      return WorkoutType.walking;
+    case 'cycling':
+      return WorkoutType.cycling;
+    case 'hiking':
+      return WorkoutType.hiking;
+    default:
+      throw ArgumentError('Unknown workout type: $type');
+  }
+}
+
 IconData getWorkoutIcon(WorkoutType type) {
   switch (type) {
     case WorkoutType.running:
