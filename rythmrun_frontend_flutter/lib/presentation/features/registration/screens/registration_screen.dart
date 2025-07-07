@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../theme/app_theme.dart';
@@ -271,11 +272,8 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                             ? SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Theme.of(context).colorScheme.secondary,
-                                ),
+                              child: CupertinoActivityIndicator(
+                                color: Theme.of(context).colorScheme.secondary,
                               ),
                             )
                             : const Text('Create Account'),

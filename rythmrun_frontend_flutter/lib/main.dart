@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/landing_screen.dart';
@@ -92,11 +93,7 @@ class SplashScreen extends StatelessWidget {
             ),
             const SizedBox(height: 48),
             // Loading indicator
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).primaryColor,
-              ),
-            ),
+            CupertinoActivityIndicator(),
             const SizedBox(height: 16),
             Text(
               'Loading...',
