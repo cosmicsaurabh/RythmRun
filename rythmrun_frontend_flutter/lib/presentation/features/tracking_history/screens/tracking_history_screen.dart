@@ -349,7 +349,8 @@ class ActivitiesScreen extends ConsumerWidget {
   }
 
   Widget _buildLoadingState() {
-    return Expanded(
+    return SizedBox(
+      height: 400, // Give it a fixed height since we can't use Expanded
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(spacingXl),
