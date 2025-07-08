@@ -31,6 +31,10 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
     this._ref,
   ) : super(const LiveTrackingState());
 
+  void clearErrorMessage() {
+    state = state.copyWith(clearErrorMessage: true);
+  }
+
   /// Check location permissions
   Future<void> checkPermissions() async {
     try {
