@@ -1,32 +1,45 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_action_card.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_details_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/screens/workout_history_map_viewer.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
-class TrackingHistoryDetailsScreen extends StatefulWidget {
+class TrackingHistoryDetailsScreen extends ConsumerStatefulWidget {
   final WorkoutSessionEntity workout;
 
   const TrackingHistoryDetailsScreen({super.key, required this.workout});
 
   @override
-  State<TrackingHistoryDetailsScreen> createState() =>
+  ConsumerState<TrackingHistoryDetailsScreen> createState() =>
       _TrackingHistoryDetailsScreenState();
 }
 
 class _TrackingHistoryDetailsScreenState
-    extends State<TrackingHistoryDetailsScreen> {
+    extends ConsumerState<TrackingHistoryDetailsScreen> {
   bool _showMapTiles = true;
 
   @override
   void initState() {
     super.initState();
+    // Load full workout details on init
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.workout.id != null) {
+        ref
+            .read(trackingHistoryDetailsProvider.notifier)
+            .loadWorkoutDetails(widget.workout.id!);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(trackingHistoryDetailsProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -43,97 +56,183 @@ class _TrackingHistoryDetailsScreenState
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Map view with improved styling
-              Container(
-                margin: const EdgeInsets.all(spacingMd),
-                height: 380,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(radiusLg),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(radiusXl),
+        child:
+            state.isLoading
+                ? Center(child: CupertinoActivityIndicator())
+                : state.errorMessage != null
+                ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: CustomAppColors.statusError,
+                      ),
+                      SizedBox(height: spacingMd),
+                      Text(
+                        state.errorMessage ?? 'Something went wrong',
+                        style: TextStyle(color: CustomAppColors.statusError),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: spacingMd),
+                      ElevatedButton(
+                        onPressed: () {
+                          if (widget.workout.id != null) {
+                            ref
+                                .read(trackingHistoryDetailsProvider.notifier)
+                                .loadWorkoutDetails(widget.workout.id!);
+                          }
+                        },
+                        child: Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+                : SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Map view with improved styling
+                      Container(
+                        margin: const EdgeInsets.all(spacingMd),
+                        height: 380,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(radiusLg),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withOpacity(0.2),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(radiusXl),
+                          child: WorkoutHistoryMapViewer(
+                            workout: state.workout ?? widget.workout,
+                            showMapTiles: _showMapTiles,
+                            showControls: true,
+                          ),
+                        ),
+                      ),
 
-                  child: WorkoutHistoryMapViewer(
-                    workout: widget.workout,
-                    showMapTiles: _showMapTiles,
-                    showControls: true,
+                      const SizedBox(height: spacingMd),
+
+                      // Enhanced stats section
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: spacingMd,
+                        ),
+                        child: _buildComprehensiveStats(
+                          state.workout ?? widget.workout,
+                        ),
+                      ),
+
+                      const SizedBox(height: spacingLg),
+                    ],
                   ),
                 ),
-              ),
-
-              const SizedBox(height: spacingMd),
-
-              // Enhanced stats section
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: spacingMd),
-                child: _buildComprehensiveStats(),
-              ),
-
-              const SizedBox(height: spacingLg),
-            ],
-          ),
-        ),
       ),
     );
   }
 
-  Widget _buildComprehensiveStats() {
+  Widget _buildComprehensiveStats(WorkoutSessionEntity workout) {
     final duration =
-        widget.workout.endTime != null && widget.workout.startTime != null
-            ? widget.workout.endTime!.difference(widget.workout.startTime!)
+        workout.endTime != null && workout.startTime != null
+            ? workout.endTime!.difference(workout.startTime!)
             : Duration.zero;
 
-    final activeDuration = widget.workout.activeDuration ?? duration;
+    final activeDuration = workout.activeDuration ?? duration;
     final totalDuration =
-        activeDuration + (widget.workout.pausedDuration ?? Duration.zero);
+        activeDuration + (workout.pausedDuration ?? Duration.zero);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Workout Header
-        _buildWorkoutHeader(),
+        _buildWorkoutHeader(workout),
 
         const SizedBox(height: spacingLg),
 
         // Performance Metrics
-        _buildPerformanceSection(totalDuration, activeDuration),
+        _buildPerformanceSection(workout, totalDuration, activeDuration),
 
         const SizedBox(height: spacingLg),
 
         // Session Timeline
-        _buildSessionTimeline(),
+        _buildSessionTimeline(workout),
 
         // Additional Metrics (if available)
-        if (_hasAdditionalMetrics()) ...[
+        if (_hasAdditionalMetrics(workout)) ...[
           const SizedBox(height: spacingLg),
-          _buildAdditionalMetrics(),
+          _buildAdditionalMetrics(workout),
         ],
 
         // Notes (if available)
-        if (widget.workout.notes != null &&
-            widget.workout.notes!.isNotEmpty) ...[
+        if (workout.notes != null && workout.notes!.isNotEmpty) ...[
           const SizedBox(height: spacingLg),
-          _buildNotesSection(),
+          _buildNotesSection(workout),
         ],
+
+        // Debug Info (can be removed in production)
+        const SizedBox(height: spacingLg),
+        _buildDebugInfo(workout),
       ],
     );
   }
 
-  Widget _buildWorkoutHeader() {
+  Widget _buildDebugInfo(WorkoutSessionEntity workout) {
+    return Container(
+      padding: const EdgeInsets.all(spacingLg),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(radiusLg),
+        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Debug Info',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: Colors.blue,
+            ),
+          ),
+          const SizedBox(height: spacingMd),
+          Text(
+            'Tracking Points: ${workout.trackingPoints.length}',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          Text(
+            'Status Changes: ${workout.statusChanges.length}',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (workout.statusChanges.isNotEmpty) ...[
+            const SizedBox(height: spacingSm),
+            Text(
+              'Status Timeline:',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            ...workout.statusChanges.map(
+              (change) => Text(
+                '  ${change.status.name} at ${_formatTime(change.timestamp)}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkoutHeader(WorkoutSessionEntity workout) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(spacingLg),
@@ -142,13 +241,13 @@ class _TrackingHistoryDetailsScreenState
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            getWorkoutColor(widget.workout.type).withOpacity(0.1),
-            getWorkoutColor(widget.workout.type).withOpacity(0.05),
+            getWorkoutColor(workout.type).withOpacity(0.1),
+            getWorkoutColor(workout.type).withOpacity(0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(radiusLg),
         border: Border.all(
-          color: getWorkoutColor(widget.workout.type).withOpacity(0.3),
+          color: getWorkoutColor(workout.type).withOpacity(0.3),
           width: 1,
         ),
       ),
@@ -157,18 +256,18 @@ class _TrackingHistoryDetailsScreenState
           Container(
             padding: const EdgeInsets.all(spacingMd),
             decoration: BoxDecoration(
-              color: getWorkoutColor(widget.workout.type),
+              color: getWorkoutColor(workout.type),
               borderRadius: BorderRadius.circular(radiusMd),
               boxShadow: [
                 BoxShadow(
-                  color: getWorkoutColor(widget.workout.type).withOpacity(0.3),
+                  color: getWorkoutColor(workout.type).withOpacity(0.3),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: Icon(
-              getWorkoutIcon(widget.workout.type),
+              getWorkoutIcon(workout.type),
               color: Colors.white,
               size: 28,
             ),
@@ -179,15 +278,15 @@ class _TrackingHistoryDetailsScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _getWorkoutTypeString(widget.workout.type),
+                  _getWorkoutTypeString(workout.type),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: getWorkoutColor(widget.workout.type),
+                    color: getWorkoutColor(workout.type),
                   ),
                 ),
                 const SizedBox(height: spacingSm),
                 Text(
-                  _formatFullDate(widget.workout.startTime),
+                  _formatFullDate(workout.startTime),
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: CustomAppColors.secondaryText,
                     fontWeight: FontWeight.w500,
@@ -202,6 +301,7 @@ class _TrackingHistoryDetailsScreenState
   }
 
   Widget _buildPerformanceSection(
+    WorkoutSessionEntity workout,
     Duration totalDuration,
     Duration activeDuration,
   ) {
@@ -246,7 +346,7 @@ class _TrackingHistoryDetailsScreenState
                   context: context,
                   icon: distanceIcon,
                   value:
-                      '${(widget.workout.totalDistance / 1000).toStringAsFixed(2)} km',
+                      '${(workout.totalDistance / 1000).toStringAsFixed(2)} km',
                   title: 'Distance',
                   color: CustomAppColors.distance,
                   onTap: () {},
@@ -257,7 +357,7 @@ class _TrackingHistoryDetailsScreenState
                 child: buildQuickActionCard(
                   context: context,
                   icon: speedIcon,
-                  value: _formatPace(widget.workout.averagePace),
+                  value: _formatPace(workout.averagePace),
                   title: 'Avg Pace',
                   color: CustomAppColors.colorA,
                   onTap: () {},
@@ -296,7 +396,7 @@ class _TrackingHistoryDetailsScreenState
     );
   }
 
-  Widget _buildSessionTimeline() {
+  Widget _buildSessionTimeline(WorkoutSessionEntity workout) {
     return Container(
       padding: const EdgeInsets.all(spacingLg),
       decoration: BoxDecoration(
@@ -332,7 +432,7 @@ class _TrackingHistoryDetailsScreenState
               Expanded(
                 child: _buildDetailRow(
                   'Started',
-                  _formatTime(widget.workout.startTime),
+                  _formatTime(workout.startTime),
                   startIcon,
                   CustomAppColors.statusSuccess,
                 ),
@@ -354,7 +454,7 @@ class _TrackingHistoryDetailsScreenState
               Expanded(
                 child: _buildDetailRow(
                   'Ended',
-                  _formatTime(widget.workout.endTime),
+                  _formatTime(workout.endTime),
                   stopIcon,
                   CustomAppColors.statusError,
                 ),
@@ -366,13 +466,12 @@ class _TrackingHistoryDetailsScreenState
     );
   }
 
-  bool _hasAdditionalMetrics() {
-    return (widget.workout.elevationGain != null &&
-            widget.workout.elevationGain! > 0) ||
-        widget.workout.calories != null;
+  bool _hasAdditionalMetrics(WorkoutSessionEntity workout) {
+    return (workout.elevationGain != null && workout.elevationGain! > 0) ||
+        workout.calories != null;
   }
 
-  Widget _buildAdditionalMetrics() {
+  Widget _buildAdditionalMetrics(WorkoutSessionEntity workout) {
     return Container(
       padding: const EdgeInsets.all(spacingLg),
       decoration: BoxDecoration(
@@ -409,21 +508,21 @@ class _TrackingHistoryDetailsScreenState
           const SizedBox(height: spacingLg),
           Row(
             children: [
-              if (widget.workout.elevationGain != null &&
-                  widget.workout.elevationGain! > 0) ...[
+              if (workout.elevationGain != null &&
+                  workout.elevationGain! > 0) ...[
                 Expanded(
                   child: _buildDetailRow(
                     'Elevation Gain',
-                    '${widget.workout.elevationGain!.toInt()}m',
+                    '${workout.elevationGain!.toInt()}m',
                     elevationIcon,
                     CustomAppColors.statusSuccess,
                   ),
                 ),
               ],
-              if (_hasAdditionalMetrics() &&
-                  widget.workout.elevationGain != null &&
-                  widget.workout.elevationGain! > 0 &&
-                  widget.workout.calories != null) ...[
+              if (_hasAdditionalMetrics(workout) &&
+                  workout.elevationGain != null &&
+                  workout.elevationGain! > 0 &&
+                  workout.calories != null) ...[
                 Container(
                   width: 2,
                   height: 50,
@@ -431,11 +530,11 @@ class _TrackingHistoryDetailsScreenState
                   margin: const EdgeInsets.symmetric(horizontal: spacingMd),
                 ),
               ],
-              if (widget.workout.calories != null) ...[
+              if (workout.calories != null) ...[
                 Expanded(
                   child: _buildDetailRow(
                     'Calories Burned',
-                    '${widget.workout.calories}',
+                    '${workout.calories}',
                     caloriesIcon,
                     CustomAppColors.statusWarning,
                   ),
@@ -448,7 +547,7 @@ class _TrackingHistoryDetailsScreenState
     );
   }
 
-  Widget _buildNotesSection() {
+  Widget _buildNotesSection(WorkoutSessionEntity workout) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(spacingLg),
@@ -493,7 +592,7 @@ class _TrackingHistoryDetailsScreenState
               border: Border.all(color: Colors.grey.withOpacity(0.2), width: 1),
             ),
             child: Text(
-              widget.workout.notes!,
+              workout.notes!,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: CustomAppColors.secondaryText,
                 height: 1.6,
