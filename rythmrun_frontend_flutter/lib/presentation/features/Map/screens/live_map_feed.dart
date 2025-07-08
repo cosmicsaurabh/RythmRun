@@ -44,6 +44,18 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     _initializeMap();
   }
 
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: CustomAppColors.statusError,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(spacingMd),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _locationSubscription?.cancel();
@@ -373,6 +385,17 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
       builder: (context, ref, child) {
         final liveTrackingState = ref.watch(liveTrackingProvider);
 
+        // Listen for error messages and show them in a SnackBar
+        ref.listen<String?>(
+          liveTrackingProvider.select((state) => state.errorMessage),
+          (previous, next) {
+            if (next != null) {
+              _showErrorSnackBar(next);
+              ref.read(liveTrackingProvider.notifier).clearErrorMessage();
+            }
+          },
+        );
+
         // Check for session state changes
         _handleSessionStateChanges(liveTrackingState.currentSession);
 
@@ -475,31 +498,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
                     ),
                   ),
 
-                // Error overlay
-                if (liveTrackingState.errorMessage != null)
-                  Positioned(
-                    bottom: spacingMd,
-                    left: spacingMd,
-                    right: spacingXl * 3,
-                    child: Card(
-                      color: CustomAppColors.statusError,
-                      child: Padding(
-                        padding: const EdgeInsets.all(spacingSm),
-                        child: Row(
-                          children: [
-                            Icon(Icons.error, color: CustomAppColors.white),
-                            const SizedBox(width: spacingSm),
-                            Expanded(
-                              child: Text(
-                                liveTrackingState.errorMessage!,
-                                style: TextStyle(color: CustomAppColors.white),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                // Error overlay is now handled by the SnackBar
               ],
             ),
           ),

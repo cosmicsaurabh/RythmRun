@@ -32,6 +32,7 @@ class LiveTrackingState {
     bool? isTracking,
     bool? isLoading,
     String? errorMessage,
+    bool? clearErrorMessage,
     TrackingPointEntity? currentLocation,
     Duration? elapsedTime,
     double? currentPace,
@@ -42,7 +43,8 @@ class LiveTrackingState {
       currentSession: currentSession ?? this.currentSession,
       isTracking: isTracking ?? this.isTracking,
       isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage:
+          clearErrorMessage == true ? null : errorMessage ?? this.errorMessage,
       currentLocation: currentLocation ?? this.currentLocation,
       elapsedTime: elapsedTime ?? this.elapsedTime,
       currentPace: currentPace ?? this.currentPace,
@@ -55,7 +57,7 @@ class LiveTrackingState {
 
   /// Clear error message
   LiveTrackingState clearError() {
-    return copyWith(errorMessage: null);
+    return copyWith(clearErrorMessage: true);
   }
 
   ////----------------------Checkers----------------------

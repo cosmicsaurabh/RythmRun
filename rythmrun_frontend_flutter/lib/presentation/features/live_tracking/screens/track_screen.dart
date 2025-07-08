@@ -193,9 +193,6 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                   ),
                 ),
 
-              if (liveTrackingState.errorMessage != null)
-                Text(liveTrackingState.errorMessage!),
-
               // Quick Actions (hidden when card is expanded)
             ],
           ),
