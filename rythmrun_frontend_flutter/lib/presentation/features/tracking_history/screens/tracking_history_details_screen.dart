@@ -177,58 +177,7 @@ class _TrackingHistoryDetailsScreenState
           const SizedBox(height: spacingLg),
           _buildNotesSection(workout),
         ],
-
-        // Debug Info (can be removed in production)
-        const SizedBox(height: spacingLg),
-        _buildDebugInfo(workout),
       ],
-    );
-  }
-
-  Widget _buildDebugInfo(WorkoutSessionEntity workout) {
-    return Container(
-      padding: const EdgeInsets.all(spacingLg),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(radiusLg),
-        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Debug Info',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Colors.blue,
-            ),
-          ),
-          const SizedBox(height: spacingMd),
-          Text(
-            'Tracking Points: ${workout.trackingPoints.length}',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          Text(
-            'Status Changes: ${workout.statusChanges.length}',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          if (workout.statusChanges.isNotEmpty) ...[
-            const SizedBox(height: spacingSm),
-            Text(
-              'Status Timeline:',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            ...workout.statusChanges.map(
-              (change) => Text(
-                '  ${change.status.name} at ${_formatTime(change.timestamp)}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          ],
-        ],
-      ),
     );
   }
 

@@ -6,6 +6,7 @@ import '../../../../core/services/local_db_service.dart';
 class TrackingHistoryState {
   final List<WorkoutSessionEntity> workouts;
   final bool isLoading;
+  final bool isLoadingMore;
   final String? errorMessage;
 
   // Pagination
@@ -31,13 +32,14 @@ class TrackingHistoryState {
   const TrackingHistoryState({
     this.workouts = const [],
     this.isLoading = false,
+    this.isLoadingMore = false,
     this.errorMessage,
     this.currentPage = 1,
     this.totalPages = 1,
     this.totalCount = 0,
     this.hasNextPage = false,
     this.hasPreviousPage = false,
-    this.limit = 20,
+    this.limit = 10,
     this.selectedWorkoutType,
     this.startDate,
     this.endDate,
@@ -50,6 +52,7 @@ class TrackingHistoryState {
   TrackingHistoryState copyWith({
     List<WorkoutSessionEntity>? workouts,
     bool? isLoading,
+    bool? isLoadingMore,
     String? errorMessage,
     int? currentPage,
     int? totalPages,
@@ -73,6 +76,7 @@ class TrackingHistoryState {
     return TrackingHistoryState(
       workouts: workouts ?? this.workouts,
       isLoading: isLoading ?? this.isLoading,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       errorMessage:
           clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
       currentPage: currentPage ?? this.currentPage,
@@ -120,6 +124,7 @@ class TrackingHistoryState {
           runtimeType == other.runtimeType &&
           workouts == other.workouts &&
           isLoading == other.isLoading &&
+          isLoadingMore == other.isLoadingMore &&
           errorMessage == other.errorMessage &&
           currentPage == other.currentPage &&
           totalPages == other.totalPages &&
@@ -139,6 +144,7 @@ class TrackingHistoryState {
   int get hashCode =>
       workouts.hashCode ^
       isLoading.hashCode ^
+      isLoadingMore.hashCode ^
       errorMessage.hashCode ^
       currentPage.hashCode ^
       totalPages.hashCode ^
@@ -156,6 +162,6 @@ class TrackingHistoryState {
 
   @override
   String toString() {
-    return 'TrackingHistoryState{workouts: ${workouts.length}, isLoading: $isLoading, errorMessage: $errorMessage, currentPage: $currentPage, totalPages: $totalPages, totalCount: $totalCount, hasFilters: $hasFilters}';
+    return 'TrackingHistoryState{workouts: ${workouts.length}, isLoading: $isLoading, isLoadingMore: $isLoadingMore, errorMessage: $errorMessage, currentPage: $currentPage, totalPages: $totalPages, totalCount: $totalCount, hasFilters: $hasFilters}';
   }
 }

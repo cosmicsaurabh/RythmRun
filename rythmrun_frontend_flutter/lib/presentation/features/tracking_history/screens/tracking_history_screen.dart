@@ -9,16 +9,52 @@ import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 import '../providers/tracking_history_provider.dart';
 
-class ActivitiesScreen extends ConsumerWidget {
+class ActivitiesScreen extends ConsumerStatefulWidget {
   const ActivitiesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ActivitiesScreen> createState() => _ActivitiesScreenState();
+}
+
+class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
+  late ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() async {
+    // Load more when user scrolls to 80% of the list
+    final scrollPosition = _scrollController.position.pixels;
+    final maxScrollExtent = _scrollController.position.maxScrollExtent;
+    final threshold = maxScrollExtent * 0.9;
+
+    if (scrollPosition >= threshold) {
+      print(
+        '🔄 Scroll threshold reached: ${scrollPosition.toInt()}/${maxScrollExtent.toInt()} (${(scrollPosition / maxScrollExtent * 100).toInt()}%)',
+      );
+      ref.read(trackingHistoryProvider.notifier).loadMoreWorkouts();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final workoutsState = ref.watch(trackingHistoryProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
       body: CustomScrollView(
+        controller: _scrollController,
         slivers: [
           _buildSliverAppBar(context, ref, workoutsState),
           _buildSliverBody(context, ref, workoutsState),
@@ -256,11 +292,13 @@ class ActivitiesScreen extends ConsumerWidget {
     WidgetRef ref,
     List<WorkoutSessionEntity> workouts,
   ) {
+    final state = ref.watch(trackingHistoryProvider);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Activities (${workouts.length})',
+          'Activities (${workouts.length}${state.totalCount > workouts.length ? ' of ${state.totalCount}' : ''})',
           style: Theme.of(
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
@@ -269,10 +307,22 @@ class ActivitiesScreen extends ConsumerWidget {
         ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: workouts.length,
-          separatorBuilder:
-              (context, index) => const SizedBox(height: spacingMd),
+          itemCount:
+              workouts.length +
+              (state.hasNextPage ? 1 : 0), // +1 for loading indicator
+          separatorBuilder: (context, index) {
+            // Don't add separator after the last workout if there's a loading indicator
+            if (index == workouts.length - 1 && state.hasNextPage) {
+              return const SizedBox(height: spacingMd);
+            }
+            return const SizedBox(height: spacingMd);
+          },
           itemBuilder: (context, index) {
+            // Show loading indicator at the end
+            if (index == workouts.length) {
+              return _buildLoadMoreIndicator(state.isLoadingMore);
+            }
+
             final workout = workouts[index];
             return _buildWorkoutCard(context, ref, workout);
           },
@@ -280,6 +330,43 @@ class ActivitiesScreen extends ConsumerWidget {
         const SizedBox(height: spacingXl),
       ],
     );
+  }
+
+  Widget _buildLoadMoreIndicator(bool isLoadingMore) {
+    if (isLoadingMore) {
+      return Container(
+        padding: const EdgeInsets.all(spacingLg),
+        child: Center(
+          child: Column(
+            children: [
+              CupertinoActivityIndicator(color: CustomAppColors.secondaryText),
+              const SizedBox(height: spacingSm),
+              Text(
+                'Loading more workouts...',
+                style: TextStyle(
+                  color: CustomAppColors.secondaryText,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      // Show a subtle indicator that more data is available
+      return Container(
+        padding: const EdgeInsets.all(spacingMd),
+        child: Center(
+          child: Text(
+            'Scroll to load more',
+            style: TextStyle(
+              color: CustomAppColors.secondaryText.withOpacity(0.7),
+              fontSize: 12,
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildEmptyState(BuildContext context, bool hasFilters) {

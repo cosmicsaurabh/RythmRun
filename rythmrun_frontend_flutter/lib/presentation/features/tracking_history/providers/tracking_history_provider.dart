@@ -11,18 +11,18 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
   TrackingHistoryNotifier(this._workoutRepository)
     : super(const TrackingHistoryState()) {
     // Load initial data
-    loadAllData();
+    loadInitialData();
   }
 
-  /// Load all data (Option 2: Fetch full filtered data at once)
-  Future<void> loadAllData() async {
+  /// Load initial data (first page)
+  Future<void> loadInitialData() async {
     try {
       state = state.copyWith(isLoading: true, clearErrorMessage: true);
 
-      // Load all filtered workouts at once (not paginated)
+      // Load first page of workouts
       final paginatedWorkouts = await _workoutRepository.getPaginatedWorkouts(
         page: 1,
-        limit: 10, // Large limit to get all filtered results
+        limit: state.limit,
         workoutType: state.selectedWorkoutType,
         startDate: state.startDate,
         endDate: state.endDate,
@@ -43,9 +43,9 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         workouts: paginatedWorkouts.workouts,
         isLoading: false,
         currentPage: 1,
-        totalPages: 1, // Since we load all data at once
+        totalPages: (paginatedWorkouts.totalCount / state.limit).ceil(),
         totalCount: paginatedWorkouts.totalCount,
-        hasNextPage: false,
+        hasNextPage: paginatedWorkouts.workouts.length >= state.limit,
         hasPreviousPage: false,
         overallStatistics: overallStats,
         filteredStatistics: filteredStats,
@@ -55,6 +55,58 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Failed to load workouts: $e',
+      );
+    }
+  }
+
+  /// Load more workouts for infinite scroll
+  Future<void> loadMoreWorkouts() async {
+    // Don't load if already loading or no more pages
+    if (state.isLoading || state.isLoadingMore || !state.hasNextPage) {
+      print(
+        '🚫 Skipping loadMoreWorkouts: isLoading=${state.isLoading}, isLoadingMore=${state.isLoadingMore}, hasNextPage=${state.hasNextPage}',
+      );
+      return;
+    }
+
+    try {
+      print('📄 Loading more workouts - page ${state.currentPage + 1}');
+      state = state.copyWith(isLoadingMore: true);
+
+      final nextPage = state.currentPage + 1;
+
+      // Load next page of workouts
+      final paginatedWorkouts = await _workoutRepository.getPaginatedWorkouts(
+        page: nextPage,
+        limit: state.limit,
+        workoutType: state.selectedWorkoutType,
+        startDate: state.startDate,
+        endDate: state.endDate,
+        loadTrackingPoints: false,
+      );
+
+      // Append new workouts to existing list
+      final updatedWorkouts = [
+        ...state.workouts,
+        ...paginatedWorkouts.workouts,
+      ];
+
+      print(
+        '✅ Loaded ${paginatedWorkouts.workouts.length} more workouts. Total: ${updatedWorkouts.length}',
+      );
+
+      state = state.copyWith(
+        workouts: updatedWorkouts,
+        currentPage: nextPage,
+        hasNextPage: paginatedWorkouts.workouts.length >= state.limit,
+        hasPreviousPage: nextPage > 1,
+        isLoadingMore: false,
+      );
+    } catch (e) {
+      print('❌ Error loading more workouts: $e');
+      state = state.copyWith(
+        isLoadingMore: false,
+        errorMessage: 'Failed to load more workouts: $e',
       );
     }
   }
@@ -73,9 +125,8 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
           isLoadingStats: true,
         );
       }
-      await loadAllData(); // Reload all data with new filter
+      await loadInitialData(); // Reload with new filter
     }
-    // If the same workout type is selected again, do nothing
   }
 
   /// Set date range filter
@@ -91,15 +142,14 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         clearEndDate: endDate == null,
         isLoadingStats: true,
       );
-      await loadAllData();
+      await loadInitialData();
     }
   }
 
   Future<void> clearFilters() async {
     if (state.hasFilters) {
       state = state.clearFilters().copyWith(isLoadingStats: true);
-
-      await loadAllData();
+      await loadInitialData();
     }
   }
 
@@ -113,8 +163,8 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
 
       await _workoutRepository.deleteWorkout(id);
 
-      // Reload all data to reflect changes
-      await loadAllData();
+      // Reload initial data to reflect changes
+      await loadInitialData();
     } catch (e) {
       state = state.copyWith(errorMessage: 'Failed to delete workout: $e');
     }
@@ -122,7 +172,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
 
   /// Refresh the workout list
   Future<void> refresh() async {
-    await loadAllData();
+    await loadInitialData();
   }
 
   /// Get workout type options for filtering
@@ -187,6 +237,12 @@ final filteredStatisticsProvider = Provider<WorkoutStatistics?>((ref) {
 
 final isLoadingWorkoutsProvider = Provider<bool>((ref) {
   return ref.watch(trackingHistoryProvider.select((state) => state.isLoading));
+});
+
+final isLoadingMoreWorkoutsProvider = Provider<bool>((ref) {
+  return ref.watch(
+    trackingHistoryProvider.select((state) => state.isLoadingMore),
+  );
 });
 
 final hasFiltersProvider = Provider<bool>((ref) {
