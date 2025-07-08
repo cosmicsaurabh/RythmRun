@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/core/di/injection_container.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
@@ -29,10 +30,16 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         loadTrackingPoints: false, // Don't load tracking points for list view
       );
 
-      // Load overall statistics (no filters)
-      final overallStats = await _workoutRepository.getWorkoutStatistics();
+      // Only load overall statistics if we don't have them yet or if this is a refresh
+      WorkoutStatistics? overallStats = state.overallStatistics;
+      if (overallStats == null) {
+        debugPrint('📊 Loading overall statistics for the first time');
+        overallStats = await _workoutRepository.getWorkoutStatistics();
+      } else {
+        debugPrint('📊 Reusing cached overall statistics');
+      }
 
-      // Load filtered statistics (with current filters)
+      // Always load filtered statistics (since filters changed)
       final filteredStats = await _workoutRepository.getWorkoutStatistics(
         workoutType: state.selectedWorkoutType,
         startDate: state.startDate,
@@ -59,18 +66,36 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
     }
   }
 
+  /// Refresh data and force reload of overall statistics
+  Future<void> _refreshOverallStatistics() async {
+    debugPrint('🔄 Refreshing overall statistics');
+    try {
+      final overallStats = await _workoutRepository.getWorkoutStatistics();
+      state = state.copyWith(overallStatistics: overallStats);
+    } catch (e) {
+      debugPrint('❌ Error refreshing overall statistics: $e');
+    }
+  }
+
+  /// Call this when a new workout is added (for future use)
+  Future<void> onWorkoutAdded() async {
+    debugPrint('➕ New workout added - refreshing statistics');
+    await _refreshOverallStatistics();
+    await loadInitialData();
+  }
+
   /// Load more workouts for infinite scroll
   Future<void> loadMoreWorkouts() async {
     // Don't load if already loading or no more pages
     if (state.isLoading || state.isLoadingMore || !state.hasNextPage) {
-      print(
+      debugPrint(
         '🚫 Skipping loadMoreWorkouts: isLoading=${state.isLoading}, isLoadingMore=${state.isLoadingMore}, hasNextPage=${state.hasNextPage}',
       );
       return;
     }
 
     try {
-      print('📄 Loading more workouts - page ${state.currentPage + 1}');
+      debugPrint('📄 Loading more workouts - page ${state.currentPage + 1}');
       state = state.copyWith(isLoadingMore: true);
 
       final nextPage = state.currentPage + 1;
@@ -91,7 +116,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         ...paginatedWorkouts.workouts,
       ];
 
-      print(
+      debugPrint(
         '✅ Loaded ${paginatedWorkouts.workouts.length} more workouts. Total: ${updatedWorkouts.length}',
       );
 
@@ -103,53 +128,11 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         isLoadingMore: false,
       );
     } catch (e) {
-      print('❌ Error loading more workouts: $e');
+      debugPrint('❌ Error loading more workouts: $e');
       state = state.copyWith(
         isLoadingMore: false,
         errorMessage: 'Failed to load more workouts: $e',
       );
-    }
-  }
-
-  /// Set workout type filter
-  Future<void> setWorkoutTypeFilter(String? workoutType) async {
-    if (state.selectedWorkoutType != workoutType) {
-      if (workoutType == null) {
-        state = state.copyWith(
-          clearSelectedWorkoutType: true,
-          isLoadingStats: true,
-        );
-      } else {
-        state = state.copyWith(
-          selectedWorkoutType: workoutType,
-          isLoadingStats: true,
-        );
-      }
-      await loadInitialData(); // Reload with new filter
-    }
-  }
-
-  /// Set date range filter
-  Future<void> setDateRangeFilter({
-    DateTime? startDate,
-    DateTime? endDate,
-  }) async {
-    if (state.startDate != startDate || state.endDate != endDate) {
-      state = state.copyWith(
-        startDate: startDate,
-        endDate: endDate,
-        clearStartDate: startDate == null,
-        clearEndDate: endDate == null,
-        isLoadingStats: true,
-      );
-      await loadInitialData();
-    }
-  }
-
-  Future<void> clearFilters() async {
-    if (state.hasFilters) {
-      state = state.clearFilters().copyWith(isLoadingStats: true);
-      await loadInitialData();
     }
   }
 
@@ -163,8 +146,8 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
 
       await _workoutRepository.deleteWorkout(id);
 
-      // Reload initial data to reflect changes
-      await loadInitialData();
+      // Reload initial data to reflect changes and refresh overall stats
+      await onWorkoutAdded();
     } catch (e) {
       state = state.copyWith(errorMessage: 'Failed to delete workout: $e');
     }
@@ -172,7 +155,59 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
 
   /// Refresh the workout list
   Future<void> refresh() async {
+    debugPrint('🔄 Full refresh requested - reloading all data');
+    // Clear cached overall statistics to force reload
+    state = state.copyWith(overallStatistics: null);
     await loadInitialData();
+  }
+
+  /// Set workout type filter
+  Future<void> setWorkoutTypeFilter(String? workoutType) async {
+    if (state.selectedWorkoutType != workoutType) {
+      debugPrint(
+        '🔍 Workout type filter changed: ${state.selectedWorkoutType} -> $workoutType',
+      );
+      if (workoutType == null) {
+        state = state.copyWith(
+          clearSelectedWorkoutType: true,
+          isLoadingStats: true,
+        );
+      } else {
+        state = state.copyWith(
+          selectedWorkoutType: workoutType,
+          isLoadingStats: true,
+        );
+      }
+      await loadInitialData(); // Only reload filtered data, keep overall stats cached
+    }
+  }
+
+  /// Set date range filter
+  Future<void> setDateRangeFilter({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    if (state.startDate != startDate || state.endDate != endDate) {
+      debugPrint(
+        '📅 Date filter changed: ${state.startDate} -> $startDate, ${state.endDate} -> $endDate',
+      );
+      state = state.copyWith(
+        startDate: startDate,
+        endDate: endDate,
+        clearStartDate: startDate == null,
+        clearEndDate: endDate == null,
+        isLoadingStats: true,
+      );
+      await loadInitialData(); // Only reload filtered data, keep overall stats cached
+    }
+  }
+
+  Future<void> clearFilters() async {
+    if (state.hasFilters) {
+      debugPrint('🧹 Clearing all filters');
+      state = state.clearFilters().copyWith(isLoadingStats: true);
+      await loadInitialData(); // Only reload filtered data, keep overall stats cached
+    }
   }
 
   /// Get workout type options for filtering
