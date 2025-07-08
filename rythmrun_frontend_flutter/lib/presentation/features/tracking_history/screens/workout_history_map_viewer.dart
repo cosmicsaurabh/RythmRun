@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -33,36 +34,76 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
   bool _showMapTiles = true;
 
   // Default camera position
-  LatLng _center = const LatLng(37.4419, -122.1419);
+  LatLng _center = const LatLng(28.6139, 77.2090); // New Delhi coordinates
   double _zoom = 16.0;
 
   @override
   void initState() {
     super.initState();
-    setState(() {
-      _showMapTiles = widget.showMapTiles;
-    });
-    _initializeMap();
+    _mapController = MapController();
+    _showMapTiles = widget.showMapTiles;
+    _buildAndFitMap();
   }
 
-  void _initializeMap() {
-    _mapController = MapController();
+  @override
+  void didUpdateWidget(WorkoutHistoryMapViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    debugPrint('🔄 didUpdateWidget called');
+    debugPrint('  Old workout ID: ${oldWidget.workout.id}');
+    debugPrint('  New workout ID: ${widget.workout.id}');
+    debugPrint(
+      '  Old tracking points: ${oldWidget.workout.trackingPoints.length}',
+    );
+    debugPrint(
+      '  New tracking points: ${widget.workout.trackingPoints.length}',
+    );
+
+    // Rebuild the map visualization if the workout data changes
+    if (widget.workout.id != oldWidget.workout.id ||
+        widget.workout.trackingPoints.length !=
+            oldWidget.workout.trackingPoints.length) {
+      debugPrint('💡 Workout data changed, rebuilding visualization...');
+      _buildAndFitMap();
+    } else {
+      debugPrint('📍 No significant changes detected');
+    }
+  }
+
+  void _buildAndFitMap() {
+    debugPrint('🏗️ _buildAndFitMap called');
+    debugPrint(
+      '  Tracking points available: ${widget.workout.trackingPoints.length}',
+    );
 
     if (widget.workout.trackingPoints.isNotEmpty) {
       // Center map on workout start location
       final startPoint = widget.workout.trackingPoints.first;
       _center = LatLng(startPoint.latitude, startPoint.longitude);
+      debugPrint(
+        '  Setting center to: ${_center.latitude}, ${_center.longitude}',
+      );
 
       _buildWorkoutVisualization();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _fitWorkoutToMap();
+        if (mounted) {
+          debugPrint('📐 Fitting map to workout bounds...');
+          //Critical:  Add a small delay to ensure map has finished rendering
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) {
+              _fitWorkoutToMap();
+            }
+          });
+        }
       });
+    } else {
+      debugPrint('⚠️ No tracking points available for visualization');
     }
   }
 
   void _buildWorkoutVisualization() {
-    print(
+    debugPrint(
       '🔧 Building workout visualization for ${widget.workout.trackingPoints.length} points',
     );
 
@@ -75,9 +116,10 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
     // Build segments from workout data
     final segments = LiveMapSegmentBuilder.buildSegments(widget.workout);
 
-    print('🎯 Built ${segments.length} segments for visualization');
+    debugPrint('🎯 Built ${segments.length} segments for visualization');
 
     // Create polylines for each segment
+    bool hasValidSegments = false;
     for (final segment in segments) {
       if (segment.points.length < 2) continue;
 
@@ -88,9 +130,21 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
 
       if (segment.status == WorkoutStatus.active) {
         _createSolidPolyline(points, widget.workout.type);
+        hasValidSegments = true;
       } else if (segment.status == WorkoutStatus.paused) {
         _createDashedPolyline(points, widget.workout.type);
+        hasValidSegments = true;
       }
+    }
+
+    // Fallback: if no valid segments, create a simple polyline from all points
+    if (!hasValidSegments && widget.workout.trackingPoints.length >= 2) {
+      debugPrint('⚠️ No valid segments found, creating fallback polyline');
+      final allPoints =
+          widget.workout.trackingPoints
+              .map((point) => LatLng(point.latitude, point.longitude))
+              .toList();
+      _createSolidPolyline(allPoints, widget.workout.type);
     }
 
     // Add start and end markers
@@ -101,6 +155,7 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
   }
 
   void _createSolidPolyline(List<LatLng> points, WorkoutType type) {
+    debugPrint('✅ Creating solid polyline with ${points.length} points');
     final polyline = Polyline(
       points: points,
       color: getWorkoutColor(type),
@@ -112,6 +167,7 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
   }
 
   void _createDashedPolyline(List<LatLng> points, WorkoutType type) {
+    debugPrint('✅ Creating dashed polyline with ${points.length} points');
     final polyline = Polyline(
       points: points,
       color: CustomAppColors.statusError,
@@ -182,24 +238,39 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
   void _fitWorkoutToMap() {
     if (widget.workout.trackingPoints.isEmpty || _mapController == null) return;
 
-    // Calculate bounds for all tracking points
-    double minLat = widget.workout.trackingPoints.first.latitude;
-    double maxLat = widget.workout.trackingPoints.first.latitude;
-    double minLng = widget.workout.trackingPoints.first.longitude;
-    double maxLng = widget.workout.trackingPoints.first.longitude;
+    try {
+      // Calculate bounds for all tracking points
+      double minLat = widget.workout.trackingPoints.first.latitude;
+      double maxLat = widget.workout.trackingPoints.first.latitude;
+      double minLng = widget.workout.trackingPoints.first.longitude;
+      double maxLng = widget.workout.trackingPoints.first.longitude;
 
-    for (final point in widget.workout.trackingPoints) {
-      minLat = minLat < point.latitude ? minLat : point.latitude;
-      maxLat = maxLat > point.latitude ? maxLat : point.latitude;
-      minLng = minLng < point.longitude ? minLng : point.longitude;
-      maxLng = maxLng > point.longitude ? maxLng : point.longitude;
+      for (final point in widget.workout.trackingPoints) {
+        minLat = minLat < point.latitude ? minLat : point.latitude;
+        maxLat = maxLat > point.latitude ? maxLat : point.latitude;
+        minLng = minLng < point.longitude ? minLng : point.longitude;
+        maxLng = maxLng > point.longitude ? maxLng : point.longitude;
+      }
+
+      final bounds = LatLngBounds(
+        LatLng(minLat, minLng),
+        LatLng(maxLat, maxLng),
+      );
+
+      _mapController!.fitCamera(
+        CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
+      );
+    } catch (e) {
+      debugPrint('⚠️ Error fitting map to workout: $e');
+      // Fallback to centering on first point
+      if (widget.workout.trackingPoints.isNotEmpty) {
+        final startPoint = widget.workout.trackingPoints.first;
+        _mapController!.move(
+          LatLng(startPoint.latitude, startPoint.longitude),
+          _zoom,
+        );
+      }
     }
-
-    final bounds = LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng));
-
-    _mapController!.fitCamera(
-      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
-    );
   }
 
   void _toggleMapTiles() {
@@ -240,6 +311,43 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading state if map controller is not ready
+    if (_mapController == null) {
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radiusLg),
+          color: Colors.red,
+        ),
+        child: const Center(child: CupertinoActivityIndicator()),
+      );
+    }
+
+    // Show empty state if no tracking points
+    if (widget.workout.trackingPoints.isEmpty) {
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radiusLg),
+          color: Colors.red,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radiusLg),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.map_outlined, size: 48, color: Colors.grey[400]),
+                const SizedBox(height: 16),
+                Text(
+                  'No route data available',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radiusLg),
@@ -253,7 +361,7 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
         child: Stack(
           children: [
             FlutterMap(
-              mapController: _mapController,
+              mapController: _mapController!,
               options: MapOptions(
                 initialCenter: _center,
                 initialZoom: _zoom,
