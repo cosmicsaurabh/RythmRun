@@ -26,8 +26,10 @@ class WorkoutHistoryMapViewer extends StatefulWidget {
       _WorkoutHistoryMapViewerState();
 }
 
-class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
+class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer>
+    with TickerProviderStateMixin {
   MapController? _mapController;
+  late final AnimationController _animationController;
   final List<Marker> _markers = [];
   final List<Polyline> _solidPolylines = [];
   final List<Polyline> _dashedPolylines = [];
@@ -41,8 +43,18 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
   void initState() {
     super.initState();
     _mapController = MapController();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _showMapTiles = widget.showMapTiles;
     _buildAndFitMap();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   @override
@@ -92,7 +104,7 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
           //Critical:  Add a small delay to ensure map has finished rendering
           Future.delayed(const Duration(milliseconds: 100), () {
             if (mounted) {
-              _fitWorkoutToMap();
+              _animatedFitWorkoutToMap();
             }
           });
         }
@@ -235,6 +247,35 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
     _markers.add(endMarker);
   }
 
+  void _animatedFitWorkoutToMap() {
+    if (widget.workout.trackingPoints.isEmpty || _mapController == null) return;
+
+    // Calculate bounds for all tracking points
+    double minLat = widget.workout.trackingPoints.first.latitude;
+    double maxLat = widget.workout.trackingPoints.first.latitude;
+    double minLng = widget.workout.trackingPoints.first.longitude;
+    double maxLng = widget.workout.trackingPoints.first.longitude;
+
+    for (final point in widget.workout.trackingPoints) {
+      minLat = minLat < point.latitude ? minLat : point.latitude;
+      maxLat = maxLat > point.latitude ? maxLat : point.latitude;
+      minLng = minLng < point.longitude ? minLng : point.longitude;
+      maxLng = maxLng > point.longitude ? maxLng : point.longitude;
+    }
+
+    final bounds = LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng));
+
+    final cameraFit = CameraFit.bounds(
+      bounds: bounds,
+      padding: const EdgeInsets.all(50),
+    );
+
+    final camera = _mapController!.camera;
+    final target = cameraFit.fit(camera);
+
+    _animatedMove(target.center, target.zoom);
+  }
+
   void _fitWorkoutToMap() {
     if (widget.workout.trackingPoints.isEmpty || _mapController == null) return;
 
@@ -282,31 +323,68 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
   void _centerOnStart() {
     if (widget.workout.trackingPoints.isNotEmpty && _mapController != null) {
       final startPoint = widget.workout.trackingPoints.first;
-      _mapController!.move(
-        LatLng(startPoint.latitude, startPoint.longitude),
-        _zoom,
-      );
+      _animatedMove(LatLng(startPoint.latitude, startPoint.longitude), _zoom);
     }
   }
 
   void _centerOnEnd() {
     if (widget.workout.trackingPoints.isNotEmpty && _mapController != null) {
       final endPoint = widget.workout.trackingPoints.last;
-      _mapController!.move(
-        LatLng(endPoint.latitude, endPoint.longitude),
-        _zoom,
-      );
+      _animatedMove(LatLng(endPoint.latitude, endPoint.longitude), _zoom);
     }
   }
 
   void _zoomIn() {
-    final currentZoom = _mapController?.camera.zoom ?? _zoom;
-    _mapController?.move(_mapController!.camera.center, currentZoom + 1);
+    if (_mapController == null) return;
+    final currentZoom = _mapController!.camera.zoom;
+    _animatedMove(_mapController!.camera.center, currentZoom + 1);
   }
 
   void _zoomOut() {
-    final currentZoom = _mapController?.camera.zoom ?? _zoom;
-    _mapController?.move(_mapController!.camera.center, currentZoom - 1);
+    if (_mapController == null) return;
+    final currentZoom = _mapController!.camera.zoom;
+    _animatedMove(_mapController!.camera.center, currentZoom - 1);
+  }
+
+  void _animatedMove(LatLng destLocation, double destZoom) {
+    if (_mapController == null) return;
+
+    final latTween = Tween<double>(
+      begin: _mapController!.camera.center.latitude,
+      end: destLocation.latitude,
+    );
+    final lngTween = Tween<double>(
+      begin: _mapController!.camera.center.longitude,
+      end: destLocation.longitude,
+    );
+    final zoomTween = Tween<double>(
+      begin: _mapController!.camera.zoom,
+      end: destZoom,
+    );
+
+    final animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.fastOutSlowIn,
+    );
+
+    void listener() {
+      _mapController!.move(
+        LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
+        zoomTween.evaluate(animation),
+      );
+    }
+
+    _animationController.addListener(listener);
+
+    animation.addStatusListener((status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        _animationController.removeListener(listener);
+        _animationController.reset();
+      }
+    });
+
+    _animationController.forward();
   }
 
   @override
@@ -405,7 +483,7 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer> {
                     const SizedBox(height: spacingSm),
                     buildMapControlButton(
                       icon: Icons.fit_screen,
-                      onPressed: _fitWorkoutToMap,
+                      onPressed: _animatedFitWorkoutToMap,
                       tooltip: 'Fit workout',
                     ),
                     const SizedBox(height: spacingSm),

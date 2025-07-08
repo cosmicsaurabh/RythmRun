@@ -23,15 +23,17 @@ class LiveMapFeed extends ConsumerStatefulWidget {
   ConsumerState<LiveMapFeed> createState() => _LiveMapFeedState();
 }
 
-class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
+class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
+    with TickerProviderStateMixin {
   MapController? _mapController;
+  late final AnimationController _animationController;
   final List<Marker> _markers = [];
   final List<Polyline> _solidPolylines = [];
   final List<Polyline> _dashedPolylines = [];
   StreamSubscription<TrackingPointEntity>? _locationSubscription;
 
   // Default camera position (San Francisco)
-  LatLng _center = const LatLng(37.4419, -122.1419);
+  LatLng _center = const LatLng(28.6139, 77.2090); // Default to Delhi
   double _zoom = 16.0;
 
   // Track previous session state to detect changes
@@ -41,6 +43,11 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
   void initState() {
     super.initState();
     print('🚀 LiveMapFeed initialized');
+    _mapController = MapController();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _initializeMap();
   }
 
@@ -58,6 +65,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
 
   @override
   void dispose() {
+    _animationController.dispose();
     _locationSubscription?.cancel();
     super.dispose();
   }
@@ -68,10 +76,17 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     // Get current location for initial camera position
     final currentLocation =
         await LiveTrackingService.instance.getCurrentLocation();
-    if (currentLocation != null) {
+    if (currentLocation != null && mounted) {
+      final newCenter = LatLng(
+        currentLocation.latitude,
+        currentLocation.longitude,
+      );
       setState(() {
-        _center = LatLng(currentLocation.latitude, currentLocation.longitude);
+        _center = newCenter;
       });
+
+      // Programmatically move the map to the user's current location
+      _animatedMove(newCenter, _zoom);
     }
 
     // Listen to location updates
@@ -348,7 +363,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
   }
 
   void _animateToCurrentLocation(LatLng position) {
-    _mapController?.move(position, _zoom);
+    _animatedMove(position, _zoom);
   }
 
   void _handleSessionStateChanges(WorkoutSessionEntity? currentSession) {
@@ -511,30 +526,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
     final currentLocation =
         await LiveTrackingService.instance.getCurrentLocation();
     if (currentLocation != null && _mapController != null) {
-      // final currentZoom = _mapController!.camera.zoom;
-
-      // // Fixed offset values to reliably show current location in lower half
-      // double latOffset;
-      // if (currentZoom >= 18) {
-      //   latOffset = 0.002; // Very close zoom - small offset
-      // } else if (currentZoom >= 15) {
-      //   latOffset = 0.005; // Close zoom - medium offset
-      // } else if (currentZoom >= 12) {
-      //   latOffset = 0.010; // Medium zoom - larger offset
-      // } else if (currentZoom >= 10) {
-      //   latOffset = 0.020; // Far zoom - large offset
-      // } else {
-      //   latOffset = 0.040; // Very far zoom - very large offset
-      // }
-
-      // _mapController!.move(
-      //   LatLng(
-      //     currentLocation.latitude + latOffset, // Move center up (north)
-      //     currentLocation.longitude,
-      //   ),
-      //   currentZoom,
-      // );
-      _mapController!.move(
+      _animatedMove(
         LatLng(currentLocation.latitude, currentLocation.longitude),
         _zoom,
       );
@@ -547,8 +539,9 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
 
     if (session == null ||
         session.trackingPoints.isEmpty ||
-        _mapController == null)
+        _mapController == null) {
       return;
+    }
 
     // Calculate bounds for all tracking points
     double minLat = session.trackingPoints.first.latitude;
@@ -565,23 +558,70 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed> {
 
     final bounds = LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng));
 
-    _mapController!.fitCamera(
-      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
+    final cameraFit = CameraFit.bounds(
+      bounds: bounds,
+      padding: const EdgeInsets.all(50),
     );
+    final camera = _mapController!.camera;
+    final target = cameraFit.fit(camera);
+    _animatedMove(target.center, target.zoom);
   }
 
   void _zoomIn() {
-    final currentZoom = _mapController?.camera.zoom ?? _zoom;
-    _mapController?.move(_mapController!.camera.center, currentZoom + 1);
+    if (_mapController == null) return;
+    final currentZoom = _mapController!.camera.zoom;
+    _animatedMove(_mapController!.camera.center, currentZoom + 1);
   }
 
   void _zoomOut() {
-    final currentZoom = _mapController?.camera.zoom ?? _zoom;
-    _mapController?.move(_mapController!.camera.center, currentZoom - 1);
+    if (_mapController == null) return;
+    final currentZoom = _mapController!.camera.zoom;
+    _animatedMove(_mapController!.camera.center, currentZoom - 1);
   }
 
   void _manualClearMap() {
     print('🧹 Manual clear map triggered');
     _clearMapData();
+  }
+
+  void _animatedMove(LatLng destLocation, double destZoom) {
+    if (_mapController == null) return;
+
+    final latTween = Tween<double>(
+      begin: _mapController!.camera.center.latitude,
+      end: destLocation.latitude,
+    );
+    final lngTween = Tween<double>(
+      begin: _mapController!.camera.center.longitude,
+      end: destLocation.longitude,
+    );
+    final zoomTween = Tween<double>(
+      begin: _mapController!.camera.zoom,
+      end: destZoom,
+    );
+
+    final animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.fastOutSlowIn,
+    );
+
+    void listener() {
+      _mapController!.move(
+        LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
+        zoomTween.evaluate(animation),
+      );
+    }
+
+    _animationController.addListener(listener);
+
+    animation.addStatusListener((status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        _animationController.removeListener(listener);
+        _animationController.reset();
+      }
+    });
+
+    _animationController.forward();
   }
 }
