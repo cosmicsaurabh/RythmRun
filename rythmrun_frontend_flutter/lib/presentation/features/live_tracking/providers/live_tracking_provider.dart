@@ -12,6 +12,7 @@ import 'package:rythmrun_frontend_flutter/domain/repositories/live_tracking_repo
 import 'package:rythmrun_frontend_flutter/domain/repositories/workout_repository.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
 
 class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   final LiveTrackingRepository _liveTrackingRepository;
@@ -299,7 +300,8 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
         '💾 Workout saved with ID: $workoutId (including ${completedSession.statusChanges.length} status changes)',
       );
 
-      // Workout saved successfully
+      // Notify history that a new workout was added
+      await _ref.read(trackingHistoryProvider.notifier).onWorkoutAdded();
 
       // Test retrieval to verify data integrity
       _testWorkoutRetrieval(workoutId);
@@ -441,8 +443,8 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
 // Provider definition
 final liveTrackingProvider =
     StateNotifierProvider<LiveTrackingNotifier, LiveTrackingState>((ref) {
-      final workoutRepository = ref.watch(workoutRepositoryProvider);
       final liveTrackingRepository = ref.watch(liveTrackingRepositoryProvider);
+      final workoutRepository = ref.watch(workoutRepositoryProvider);
       return LiveTrackingNotifier(
         liveTrackingRepository,
         workoutRepository,
