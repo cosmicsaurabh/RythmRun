@@ -7,6 +7,7 @@ import 'package:rythmrun_frontend_flutter/presentation/common/widgets/profile_me
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/profile_stat_card.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_action_card.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/settings/screens/settings_screen.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -25,6 +26,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   @override
   void initState() {
     super.initState();
+
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
@@ -326,6 +328,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildStatsSection(BuildContext context) {
+    final state = ref.watch(trackingHistoryProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -363,25 +366,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           children: [
             ProfileStatCard(
               title: 'Activities',
-              value: '12',
+              value: '${state.overallStatistics?.totalWorkouts}',
               icon: runningIcon,
               color: CustomAppColors.colorB,
             ),
             ProfileStatCard(
               title: 'Distance',
-              value: '45.2 km',
+              value: '${state.overallStatistics?.formattedTotalDistance}',
               icon: distanceIcon,
               color: CustomAppColors.distance,
             ),
             ProfileStatCard(
               title: 'Time',
-              value: '8h 23m',
+              value: '${state.overallStatistics?.formattedTotalDuration}',
               icon: timeIcon,
               color: CustomAppColors.time,
             ),
             ProfileStatCard(
               title: 'Friends',
-              value: '24',
+              value: '-',
               icon: friendsIcon,
               color: CustomAppColors.colorA,
             ),
