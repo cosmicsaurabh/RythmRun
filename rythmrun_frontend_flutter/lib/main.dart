@@ -62,6 +62,7 @@ class AuthWrapper extends ConsumerWidget {
         return const SplashScreen();
 
       case SessionState.authenticated:
+      case SessionState.authenticatedOffline:
         return const HomeScreen();
 
       case SessionState.unauthenticated:

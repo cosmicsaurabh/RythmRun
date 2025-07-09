@@ -101,6 +101,13 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
+  /// Check if user has valid offline access (local data available)
+  @override
+  Future<bool> hasOfflineAccess() async {
+    final userData = await _localDataSource.getUserData();
+    return userData != null;
+  }
+
   @override
   Future<UserEntity> refreshToken() async {
     try {
@@ -119,8 +126,15 @@ class AuthRepositoryImpl implements AuthRepository {
       // 4. Return user entity
       return authResponse.toUserEntity();
     } catch (e) {
-      // Clear data on refresh failure
-      await _localDataSource.clearAuthData();
+      // Don't clear data immediately on refresh failure
+      // This could be a network issue - preserve offline access
+      log('AuthRepository: Token refresh failed: $e');
+
+      // Only clear data if it's a genuine auth error (not network)
+      if (e.toString().contains('401') || e.toString().contains('403')) {
+        await _localDataSource.clearAuthData();
+      }
+
       rethrow;
     }
   }
@@ -147,24 +161,41 @@ class AuthRepositoryImpl implements AuthRepository {
       return false;
     }
 
-    // Check if token is still valid
+    // Check if token is still valid locally
     if (!await _localDataSource.hasValidSession()) {
-      // Try to refresh
+      // Try to refresh if we have a refresh token
       if (await _localDataSource.needsTokenRefresh()) {
         try {
           await refreshToken();
           return true;
         } catch (e) {
-          await _localDataSource.clearAuthData();
-          return false;
+          // Token refresh failed - but don't clear local data immediately
+          // This could be a network issue, allow offline access
+          log(
+            'AuthRepository: Token refresh failed, allowing offline access: $e',
+          );
+          return false; // Return false but don't clear data
         }
       } else {
+        // No refresh token available - this is a genuine auth failure
         await _localDataSource.clearAuthData();
         return false;
       }
     }
 
-    return true;
+    // Try to verify with server if possible (with timeout)
+    try {
+      // TODO: Add actual server verification call here
+      // For now, just verify JWT locally
+      return true;
+    } catch (e) {
+      // Server verification failed - could be network issue
+      // Don't clear local data, allow offline access
+      log(
+        'AuthRepository: Server verification failed, allowing offline access: $e',
+      );
+      return false;
+    }
   }
 
   @override
