@@ -37,6 +37,9 @@ abstract class AuthRepository {
   /// Validate current session
   Future<bool> validateSession();
 
+  /// Check if user has offline access (local data available)
+  Future<bool> hasOfflineAccess();
+
   /// Clear all authentication data
   Future<void> clearAuthData();
 }

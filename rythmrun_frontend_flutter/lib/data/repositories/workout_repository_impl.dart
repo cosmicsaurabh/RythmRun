@@ -14,9 +14,18 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   WorkoutRepositoryImpl(this._localDataSource, this._authRepository);
 
   /// Get current user ID from auth repository
-  Future<int?> _getCurrentUserId() async {
+  /// Returns null only if no user data is available locally
+  @override
+  Future<int?> getCurrentUserId() async {
     final user = await _authRepository.getCurrentUser();
     return user?.id != null ? EnsureTypeHelper.ensureInt(user!.id) : null;
+  }
+
+  /// Check if user has local access (authenticated or offline mode)
+  @override
+  Future<bool> hasLocalAccess() async {
+    final userId = await getCurrentUserId();
+    return userId != null;
   }
 
   @override
@@ -42,11 +51,14 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<List<WorkoutSessionEntity>> getWorkouts() async {
     try {
-      final userId = await _getCurrentUserId();
+      final userId = await getCurrentUserId();
       if (userId == null) {
-        throw Exception('User not authenticated');
+        throw Exception(
+          'No user data available - please sign in to access workouts',
+        );
       }
 
+      // This works offline since it's reading from local database
       return await _localDataSource.getWorkoutsFromLocalDatabase(userId);
     } catch (e) {
       throw Exception('Failed to get workouts: $e');
@@ -74,7 +86,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<List<WorkoutSessionEntity>> getUnsyncedWorkouts() async {
     try {
-      final userId = await _getCurrentUserId();
+      final userId = await getCurrentUserId();
       if (userId == null) {
         throw Exception('User not authenticated');
       }
@@ -115,7 +127,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
     DateTime? endDate,
   }) async {
     try {
-      final userId = await _getCurrentUserId();
+      final userId = await getCurrentUserId();
       if (userId == null) {
         throw Exception('User not authenticated');
       }
@@ -134,7 +146,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<Map<String, WorkoutStatistics>> getWorkoutStatisticsByType() async {
     try {
-      final userId = await _getCurrentUserId();
+      final userId = await getCurrentUserId();
       if (userId == null) {
         throw Exception('User not authenticated');
       }
@@ -156,7 +168,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
     bool loadTrackingPoints = false,
   }) async {
     try {
-      final userId = await _getCurrentUserId();
+      final userId = await getCurrentUserId();
       if (userId == null) {
         throw Exception('User not authenticated');
       }
@@ -179,7 +191,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<int> getWorkoutCount() async {
     try {
-      final userId = await _getCurrentUserId();
+      final userId = await getCurrentUserId();
       if (userId == null) {
         throw Exception('User not authenticated');
       }

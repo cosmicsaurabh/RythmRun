@@ -11,6 +11,9 @@ abstract class WorkoutRepository {
   /// Get a single workout by ID
   Future<WorkoutSessionEntity?> getWorkout(int workoutId);
 
+  /// Check if user has local access (authenticated or offline mode)
+  Future<bool> hasLocalAccess();
+
   /// Delete a workout
   Future<void> deleteWorkout(int workoutId);
 

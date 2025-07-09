@@ -8,7 +8,8 @@ import '../../../core/di/injection_container.dart';
 enum SessionState {
   initial,
   checking,
-  authenticated,
+  authenticated, // Full access - online and offline
+  authenticatedOffline, // Limited access - offline features only
   unauthenticated,
   refreshing,
 }
@@ -46,30 +47,85 @@ class SessionNotifier extends StateNotifier<SessionData> {
     state = state.copyWith(state: SessionState.checking);
 
     try {
-      // Check if user is authenticated
+      // Check if user is authenticated locally
       if (await _authRepository.isAuthenticated()) {
         final userData = await _authRepository.getCurrentUser();
         if (userData != null) {
-          state = state.copyWith(
-            state: SessionState.authenticated,
-            user: userData,
-            errorMessage: null,
-          );
+          // User has valid local session, check if we can go online
+          try {
+            // Try to validate session online (with timeout)
+            final isValid = await _authRepository.validateSession();
+            if (isValid) {
+              // Full authenticated state - online capabilities available
+              state = state.copyWith(
+                state: SessionState.authenticated,
+                user: userData,
+                errorMessage: null,
+              );
+            } else {
+              // Session validation failed, but keep offline access
+              state = state.copyWith(
+                state: SessionState.authenticatedOffline,
+                user: userData,
+                errorMessage:
+                    'Limited offline access - please check your connection',
+              );
+            }
+          } catch (e) {
+            // Network error during validation - allow offline access
+            log(
+              'SessionProvider: Network error during validation, enabling offline mode: $e',
+            );
+            state = state.copyWith(
+              state: SessionState.authenticatedOffline,
+              user: userData,
+              errorMessage: 'Offline mode - limited functionality available',
+            );
+          }
           return;
         }
       }
 
-      // Check if we need to refresh tokens
+      // Check if we need to refresh tokens (only if we have network)
       if (await _authRepository.needsTokenRefresh()) {
-        await _refreshToken();
-        return;
+        try {
+          await _refreshToken();
+          return;
+        } catch (e) {
+          // Token refresh failed - check if we have local user data
+          final userData = await _authRepository.getCurrentUser();
+          if (userData != null) {
+            log('SessionProvider: Token refresh failed, enabling offline mode');
+            state = state.copyWith(
+              state: SessionState.authenticatedOffline,
+              user: userData,
+              errorMessage: 'Connection failed - offline mode enabled',
+            );
+            return;
+          }
+        }
       }
 
       // No valid session found
       state = state.copyWith(state: SessionState.unauthenticated);
     } catch (e) {
-      // If anything goes wrong, clear session and go to unauthenticated
-      await _clearSession();
+      // Only clear session if it's a serious error and we have no local data
+      final userData = await _authRepository.getCurrentUser();
+      if (userData != null) {
+        log(
+          'SessionProvider: Error during initialization, but user data exists - enabling offline mode',
+        );
+        state = state.copyWith(
+          state: SessionState.authenticatedOffline,
+          user: userData,
+          errorMessage: 'Error during startup - offline mode enabled',
+        );
+      } else {
+        log(
+          'SessionProvider: Error during initialization and no local user data: $e',
+        );
+        await _clearSession();
+      }
     }
   }
 
@@ -132,8 +188,16 @@ class SessionNotifier extends StateNotifier<SessionData> {
     }
   }
 
-  /// Check if user is authenticated
-  bool get isAuthenticated => state.state == SessionState.authenticated;
+  /// Check if user is authenticated (either online or offline)
+  bool get isAuthenticated =>
+      state.state == SessionState.authenticated ||
+      state.state == SessionState.authenticatedOffline;
+
+  /// Check if user has full online access
+  bool get isFullyAuthenticated => state.state == SessionState.authenticated;
+
+  /// Check if user is in offline mode
+  bool get isOfflineMode => state.state == SessionState.authenticatedOffline;
 
   /// Check if session is being checked/initialized
   bool get isLoading =>
@@ -179,7 +243,18 @@ final sessionProvider = StateNotifierProvider<SessionNotifier, SessionData>((
 // Convenience providers
 final isAuthenticatedProvider = Provider<bool>((ref) {
   final session = ref.watch(sessionProvider);
+  return session.state == SessionState.authenticated ||
+      session.state == SessionState.authenticatedOffline;
+});
+
+final isFullyAuthenticatedProvider = Provider<bool>((ref) {
+  final session = ref.watch(sessionProvider);
   return session.state == SessionState.authenticated;
+});
+
+final isOfflineModeProvider = Provider<bool>((ref) {
+  final session = ref.watch(sessionProvider);
+  return session.state == SessionState.authenticatedOffline;
 });
 
 final currentUserProvider = Provider<UserEntity?>((ref) {
