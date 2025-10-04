@@ -51,4 +51,7 @@ abstract class AuthRepository {
 
   /// Update the last backend sync timestamp
   Future<void> updateLastBackendSync();
+
+  /// Debug method to print stored data (only for development)
+  Future<void> printStoredData();
 }

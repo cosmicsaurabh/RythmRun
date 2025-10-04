@@ -1,45 +1,70 @@
 import 'dart:convert';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import '../../data/models/auth_response_model.dart';
 import '../../domain/entities/user_entity.dart';
 
 class AuthPersistenceService {
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
-
   // Storage keys
   static const String _accessTokenKey = 'access_token';
   static const String _refreshTokenKey = 'refresh_token';
   static const String _userDataKey = 'user_data';
   static const String _lastBackendSyncKey = 'last_backend_sync';
 
+  /// Write data to SharedPreferences
+  static Future<void> _write(String key, String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, value);
+  }
+
+  /// Read data from SharedPreferences
+  static Future<String?> _read(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(key);
+  }
+
+  /// Delete data from SharedPreferences
+  static Future<void> _delete(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(key);
+  }
+
   /// Save authentication data after successful login
   static Future<void> saveAuthData(AuthResponseModel authResponse) async {
     final now = DateTime.now().toIso8601String();
+
+    if (kDebugMode) {
+      print(
+        '🔐 AuthPersistenceService: Saving auth data for user: ${authResponse.user.email}',
+      );
+    }
+
     await Future.wait([
-      _storage.write(key: _accessTokenKey, value: authResponse.accessToken),
-      _storage.write(key: _refreshTokenKey, value: authResponse.refreshToken),
-      _storage.write(
-        key: _userDataKey,
-        value: json.encode(authResponse.user.toJson()),
-      ),
-      _storage.write(key: _lastBackendSyncKey, value: now),
+      _write(_accessTokenKey, authResponse.accessToken),
+      _write(_refreshTokenKey, authResponse.refreshToken),
+      _write(_userDataKey, json.encode(authResponse.user.toJson())),
+      _write(_lastBackendSyncKey, now),
     ]);
+
+    if (kDebugMode) {
+      print('✅ AuthPersistenceService: Auth data saved successfully');
+    }
   }
 
   /// Get stored access token
   static Future<String?> getAccessToken() async {
-    return await _storage.read(key: _accessTokenKey);
+    return await _read(_accessTokenKey);
   }
 
   /// Get stored refresh token
   static Future<String?> getRefreshToken() async {
-    return await _storage.read(key: _refreshTokenKey);
+    return await _read(_refreshTokenKey);
   }
 
   /// Get stored user data
   static Future<UserEntity?> getUserData() async {
-    final userDataJson = await _storage.read(key: _userDataKey);
+    final userDataJson = await _read(_userDataKey);
     if (userDataJson == null) return null;
 
     try {
@@ -64,15 +89,33 @@ class AuthPersistenceService {
   /// Check if user has a valid session
   static Future<bool> hasValidSession() async {
     final accessToken = await getAccessToken();
+
+    if (kDebugMode) {
+      print('🔍 AuthPersistenceService: Checking valid session');
+      print(
+        '   Access token exists: ${accessToken != null && accessToken.isNotEmpty}',
+      );
+    }
+
     if (accessToken == null || accessToken.isEmpty) {
+      if (kDebugMode) {
+        print('❌ AuthPersistenceService: No access token found');
+      }
       return false;
     }
 
     try {
       // Check if token is not expired
-      return !JwtDecoder.isExpired(accessToken);
+      final isValid = !JwtDecoder.isExpired(accessToken);
+      if (kDebugMode) {
+        print('🔍 AuthPersistenceService: Token valid: $isValid');
+      }
+      return isValid;
     } catch (e) {
       // If token is malformed, consider session invalid
+      if (kDebugMode) {
+        print('❌ AuthPersistenceService: Token malformed: $e');
+      }
       return false;
     }
   }
@@ -101,18 +144,15 @@ class AuthPersistenceService {
     String newRefreshToken,
   ) async {
     await Future.wait([
-      _storage.write(key: _accessTokenKey, value: newAccessToken),
-      _storage.write(key: _refreshTokenKey, value: newRefreshToken),
-      _storage.write(
-        key: _lastBackendSyncKey,
-        value: DateTime.now().toIso8601String(),
-      ),
+      _write(_accessTokenKey, newAccessToken),
+      _write(_refreshTokenKey, newRefreshToken),
+      _write(_lastBackendSyncKey, DateTime.now().toIso8601String()),
     ]);
   }
 
   /// Get the last backend sync timestamp
   static Future<DateTime?> getLastBackendSync() async {
-    final timestampStr = await _storage.read(key: _lastBackendSyncKey);
+    final timestampStr = await _read(_lastBackendSyncKey);
     if (timestampStr == null) return null;
 
     try {
@@ -135,10 +175,7 @@ class AuthPersistenceService {
 
   /// Update the last backend sync timestamp
   static Future<void> updateLastBackendSync() async {
-    await _storage.write(
-      key: _lastBackendSyncKey,
-      value: DateTime.now().toIso8601String(),
-    );
+    await _write(_lastBackendSyncKey, DateTime.now().toIso8601String());
   }
 
   /// Check if user can stay logged in offline (has valid session and within sync window)
@@ -159,16 +196,16 @@ class AuthPersistenceService {
   /// Clear all stored authentication data
   static Future<void> clearAuthData() async {
     await Future.wait([
-      _storage.delete(key: _accessTokenKey),
-      _storage.delete(key: _refreshTokenKey),
-      _storage.delete(key: _userDataKey),
-      _storage.delete(key: _lastBackendSyncKey),
+      _delete(_accessTokenKey),
+      _delete(_refreshTokenKey),
+      _delete(_userDataKey),
+      _delete(_lastBackendSyncKey),
     ]);
   }
 
   /// Clear only user data (keep tokens for logout API call)
   static Future<void> clearUserData() async {
-    await _storage.delete(key: _userDataKey);
+    await _delete(_userDataKey);
   }
 
   /// Get authorization header for API calls
@@ -185,10 +222,36 @@ class AuthPersistenceService {
   /// Debug method to check what's stored (only for development)
   static Future<Map<String, String?>> getAllStoredData() async {
     return {
-      'accessToken': await _storage.read(key: _accessTokenKey),
-      'refreshToken': await _storage.read(key: _refreshTokenKey),
-      'userData': await _storage.read(key: _userDataKey),
-      'lastBackendSync': await _storage.read(key: _lastBackendSyncKey),
+      'accessToken': await _read(_accessTokenKey),
+      'refreshToken': await _read(_refreshTokenKey),
+      'userData': await _read(_userDataKey),
+      'lastBackendSync': await _read(_lastBackendSyncKey),
     };
+  }
+
+  /// Debug method to print all stored data (only for development)
+  static Future<void> printStoredData() async {
+    if (!kDebugMode) return;
+
+    print('🔍 AuthPersistenceService: Checking stored data...');
+    final data = await getAllStoredData();
+
+    print(
+      '   Access Token: ${data['accessToken'] != null ? 'EXISTS' : 'NULL'}',
+    );
+    print(
+      '   Refresh Token: ${data['refreshToken'] != null ? 'EXISTS' : 'NULL'}',
+    );
+    print('   User Data: ${data['userData'] != null ? 'EXISTS' : 'NULL'}');
+    print('   Last Backend Sync: ${data['lastBackendSync'] ?? 'NULL'}');
+
+    if (data['accessToken'] != null) {
+      try {
+        final isExpired = JwtDecoder.isExpired(data['accessToken']!);
+        print('   Access Token Expired: $isExpired');
+      } catch (e) {
+        print('   Access Token Error: $e');
+      }
+    }
   }
 }

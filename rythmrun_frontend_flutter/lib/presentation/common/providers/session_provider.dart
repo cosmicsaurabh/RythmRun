@@ -1,5 +1,6 @@
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/repositories/auth_repository.dart';
 import '../../../domain/entities/user_entity.dart';
@@ -46,9 +47,23 @@ class SessionNotifier extends StateNotifier<SessionData> {
   Future<void> _initializeSession() async {
     state = state.copyWith(state: SessionState.checking);
 
+    if (kDebugMode) {
+      print('🚀 SessionProvider: Initializing session...');
+      // Print stored data for debugging
+      await _authRepository.printStoredData();
+    }
+
     try {
       // Check if user is authenticated locally
-      if (await _authRepository.isAuthenticated()) {
+      final isAuthenticated = await _authRepository.isAuthenticated();
+
+      if (kDebugMode) {
+        print(
+          '🔍 SessionProvider: User authenticated locally: $isAuthenticated',
+        );
+      }
+
+      if (isAuthenticated) {
         final userData = await _authRepository.getCurrentUser();
         if (userData != null) {
           // Check if user can stay logged in offline (within 7-day sync window)
