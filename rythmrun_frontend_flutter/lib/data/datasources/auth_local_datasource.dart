@@ -64,4 +64,9 @@ class AuthLocalDataSource {
   Future<DateTime?> getLastBackendSync() async {
     return await AuthPersistenceService.getLastBackendSync();
   }
+
+  /// Debug method to print stored data (only for development)
+  Future<void> printStoredData() async {
+    await AuthPersistenceService.printStoredData();
+  }
 }

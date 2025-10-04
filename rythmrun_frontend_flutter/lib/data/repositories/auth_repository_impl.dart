@@ -242,4 +242,9 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> updateLastBackendSync() async {
     await _localDataSource.updateLastBackendSync();
   }
+
+  /// Debug method to print stored data (only for development)
+  Future<void> printStoredData() async {
+    await _localDataSource.printStoredData();
+  }
 }
