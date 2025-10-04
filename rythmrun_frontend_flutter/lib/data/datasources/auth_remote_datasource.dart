@@ -108,4 +108,32 @@ class AuthRemoteDataSource {
       throw Exception(e.toString());
     }
   }
+
+  /// Verify session with backend server
+  Future<bool> verifySession(Map<String, String> authHeaders) async {
+    try {
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      };
+
+      final response = await _httpClient.get(
+        AppConfig.getUrl(ApiEndpoints.profile),
+        headers: headers,
+      );
+
+      // If we get a successful response, session is valid
+      return response.statusCode == 200;
+    } catch (e) {
+      // If it's a network error, don't throw - let caller handle offline mode
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('TimeoutException') ||
+          e.toString().contains('HandshakeException')) {
+        return false; // Network issue, not auth issue
+      }
+
+      // For auth errors (401, 403), throw to indicate session is invalid
+      throw Exception(e.toString());
+    }
+  }
 }

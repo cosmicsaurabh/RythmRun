@@ -51,36 +51,74 @@ class SessionNotifier extends StateNotifier<SessionData> {
       if (await _authRepository.isAuthenticated()) {
         final userData = await _authRepository.getCurrentUser();
         if (userData != null) {
-          // User has valid local session, check if we can go online
-          try {
-            // Try to validate session online (with timeout)
-            final isValid = await _authRepository.validateSession();
-            if (isValid) {
-              // Full authenticated state - online capabilities available
-              state = state.copyWith(
-                state: SessionState.authenticated,
-                user: userData,
-                errorMessage: null,
+          // Check if user can stay logged in offline (within 7-day sync window)
+          final canStayOffline = await _authRepository.canStayLoggedInOffline();
+
+          if (canStayOffline) {
+            // User has valid local session and is within sync window
+            try {
+              // Try to validate session online (with timeout)
+              final isValid = await _authRepository.validateSession();
+              if (isValid) {
+                // Full authenticated state - online capabilities available
+                state = state.copyWith(
+                  state: SessionState.authenticated,
+                  user: userData,
+                  errorMessage: null,
+                );
+              } else {
+                // Session validation failed, but keep offline access
+                state = state.copyWith(
+                  state: SessionState.authenticatedOffline,
+                  user: userData,
+                  errorMessage:
+                      'Limited offline access - please check your connection',
+                );
+              }
+            } catch (e) {
+              // Network error during validation - allow offline access
+              log(
+                'SessionProvider: Network error during validation, enabling offline mode: $e',
               );
-            } else {
-              // Session validation failed, but keep offline access
+              state = state.copyWith(
+                state: SessionState.authenticatedOffline,
+                user: userData,
+                errorMessage: 'Offline mode - limited functionality available',
+              );
+            }
+          } else {
+            // 7-day sync requirement not met - need backend verification
+            log(
+              'SessionProvider: 7-day sync requirement not met, attempting backend verification',
+            );
+            try {
+              final isValid = await _authRepository.validateSession();
+              if (isValid) {
+                // Backend verification successful
+                state = state.copyWith(
+                  state: SessionState.authenticated,
+                  user: userData,
+                  errorMessage: null,
+                );
+              } else {
+                // Backend verification failed - clear session
+                log(
+                  'SessionProvider: Backend verification failed, clearing session',
+                );
+                await _clearSession();
+              }
+            } catch (e) {
+              // Network error during backend verification
+              log(
+                'SessionProvider: Backend verification failed due to network: $e',
+              );
               state = state.copyWith(
                 state: SessionState.authenticatedOffline,
                 user: userData,
                 errorMessage:
-                    'Limited offline access - please check your connection',
+                    'Backend sync required - please check your connection',
               );
             }
-          } catch (e) {
-            // Network error during validation - allow offline access
-            log(
-              'SessionProvider: Network error during validation, enabling offline mode: $e',
-            );
-            state = state.copyWith(
-              state: SessionState.authenticatedOffline,
-              user: userData,
-              errorMessage: 'Offline mode - limited functionality available',
-            );
           }
           return;
         }

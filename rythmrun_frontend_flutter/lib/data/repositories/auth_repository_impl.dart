@@ -183,23 +183,63 @@ class AuthRepositoryImpl implements AuthRepository {
       }
     }
 
-    // Try to verify with server if possible (with timeout)
-    try {
-      // TODO: Add actual server verification call here
-      // For now, just verify JWT locally
-      return true;
-    } catch (e) {
-      // Server verification failed - could be network issue
-      // Don't clear local data, allow offline access
-      log(
-        'AuthRepository: Server verification failed, allowing offline access: $e',
-      );
-      return false;
+    // Check if we need backend sync (7-day requirement)
+    if (await _localDataSource.needsBackendSync()) {
+      log('AuthRepository: Backend sync required (7-day limit reached)');
+
+      // Try to verify with server
+      try {
+        final authHeaders = await _localDataSource.getAuthHeaders();
+        if (authHeaders != null) {
+          final isValid = await _remoteDataSource.verifySession(authHeaders);
+          if (isValid) {
+            // Update sync timestamp
+            await _localDataSource.updateLastBackendSync();
+            return true;
+          } else {
+            // Session is invalid on server
+            await _localDataSource.clearAuthData();
+            return false;
+          }
+        } else {
+          // No auth headers available
+          await _localDataSource.clearAuthData();
+          return false;
+        }
+      } catch (e) {
+        // Server verification failed - could be network issue
+        // Don't clear local data, allow offline access
+        log(
+          'AuthRepository: Server verification failed, allowing offline access: $e',
+        );
+        return false;
+      }
     }
+
+    // Within sync window, just verify JWT locally
+    return true;
   }
 
   @override
   Future<void> clearAuthData() async {
     await _localDataSource.clearAuthData();
+  }
+
+  /// Check if user can stay logged in offline (has valid session and within sync window)
+  @override
+  Future<bool> canStayLoggedInOffline() async {
+    return await _localDataSource.canStayLoggedInOffline();
+  }
+
+  /// Check if backend sync is required (7 days since last sync)
+  @override
+  Future<bool> needsBackendSync() async {
+    return await _localDataSource.needsBackendSync();
+  }
+
+  /// Update the last backend sync timestamp
+  @override
+  Future<void> updateLastBackendSync() async {
+    await _localDataSource.updateLastBackendSync();
   }
 }

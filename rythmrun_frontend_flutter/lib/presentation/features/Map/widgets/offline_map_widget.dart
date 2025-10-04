@@ -87,6 +87,13 @@ class _OfflineMapWidgetState extends State<OfflineMapWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // Debug: Print offline mode status
+    print('🗺️ OfflineMapWidget: Building with workout: ${widget.workout?.id}');
+    print('🗺️ OfflineMapWidget: Markers count: ${widget.markers.length}');
+    print(
+      '🗺️ OfflineMapWidget: Polylines - solid: ${_solidPolylines.length}, dashed: ${_dashedPolylines.length}',
+    );
+
     return Container(
       decoration: BoxDecoration(
         color: const Color.fromARGB(255, 229, 35, 35),
@@ -165,7 +172,9 @@ class GridPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint =
         Paint()
-          ..color = Colors.grey.shade300
+          ..color = Colors.white.withOpacity(
+            0.3,
+          ) // White lines visible on red background
           ..strokeWidth = 1;
 
     const double gridSize = 20.0;

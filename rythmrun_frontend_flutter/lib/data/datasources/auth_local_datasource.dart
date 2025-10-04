@@ -35,11 +35,6 @@ class AuthLocalDataSource {
     return await AuthPersistenceService.hasValidSession();
   }
 
-  /// Check if session has expired
-  Future<bool> isSessionExpired() async {
-    return await AuthPersistenceService.isSessionExpired();
-  }
-
   /// Check if token refresh is needed
   Future<bool> needsTokenRefresh() async {
     return await AuthPersistenceService.needsTokenRefresh();
@@ -48,5 +43,25 @@ class AuthLocalDataSource {
   /// Clear all authentication data
   Future<void> clearAuthData() async {
     await AuthPersistenceService.clearAuthData();
+  }
+
+  /// Check if backend sync is required (7 days since last sync)
+  Future<bool> needsBackendSync() async {
+    return await AuthPersistenceService.needsBackendSync();
+  }
+
+  /// Update the last backend sync timestamp
+  Future<void> updateLastBackendSync() async {
+    await AuthPersistenceService.updateLastBackendSync();
+  }
+
+  /// Check if user can stay logged in offline (has valid session and within sync window)
+  Future<bool> canStayLoggedInOffline() async {
+    return await AuthPersistenceService.canStayLoggedInOffline();
+  }
+
+  /// Get the last backend sync timestamp
+  Future<DateTime?> getLastBackendSync() async {
+    return await AuthPersistenceService.getLastBackendSync();
   }
 }

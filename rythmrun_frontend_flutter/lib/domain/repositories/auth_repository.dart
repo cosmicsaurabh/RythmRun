@@ -42,4 +42,13 @@ abstract class AuthRepository {
 
   /// Clear all authentication data
   Future<void> clearAuthData();
+
+  /// Check if user can stay logged in offline (has valid session and within sync window)
+  Future<bool> canStayLoggedInOffline();
+
+  /// Check if backend sync is required (7 days since last sync)
+  Future<bool> needsBackendSync();
+
+  /// Update the last backend sync timestamp
+  Future<void> updateLastBackendSync();
 }
