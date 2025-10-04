@@ -142,8 +142,20 @@ class SessionNotifier extends StateNotifier<SessionData> {
         errorMessage: null,
       );
     } catch (e) {
-      // Token refresh failed, user needs to login again
-      await _clearSession();
+      // Token refresh failed - check if we have local user data for offline access
+      final userData = await _authRepository.getCurrentUser();
+      if (userData != null) {
+        log('SessionProvider: Token refresh failed, enabling offline mode: $e');
+        state = state.copyWith(
+          state: SessionState.authenticatedOffline,
+          user: userData,
+          errorMessage: 'Connection failed - offline mode enabled',
+        );
+      } else {
+        // No local data available, user needs to login again
+        log('SessionProvider: Token refresh failed and no local user data: $e');
+        await _clearSession();
+      }
     }
   }
 

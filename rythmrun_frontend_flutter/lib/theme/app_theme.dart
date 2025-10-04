@@ -350,15 +350,15 @@ final ThemeData lightTheme = ThemeData(
               .white, // Assuming white icon for light mode icon buttons
     ),
   ),
-  cardTheme: CardTheme(
-    // Changed CardThemeData to CardTheme
-    elevation: 4,
-    color: CustomAppColors.surfaceCardLight, // Card background for light mode
-    margin: EdgeInsets.zero,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(radiusXl),
-    ),
-  ),
+  // cardTheme: CardTheme(
+  //   // Changed CardThemeData to CardTheme
+  //   elevation: 4,
+  //   color: CustomAppColors.surfaceCardLight, // Card background for light mode
+  //   margin: EdgeInsets.zero,
+  //   shape: RoundedRectangleBorder(
+  //     borderRadius: BorderRadius.circular(radiusXl),
+  //   ),
+  // ),
   bottomSheetTheme: BottomSheetThemeData(
     backgroundColor:
         CustomAppColors
@@ -607,15 +607,15 @@ final ThemeData darkTheme = ThemeData(
               .black, // Assuming black icon for dark mode icon buttons
     ),
   ),
-  cardTheme: CardTheme(
-    // Changed CardThemeData to CardTheme
-    elevation: 0,
-    color: CustomAppColors.surfaceCardDark, // Card background for dark mode
-    margin: EdgeInsets.zero,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(radiusXl),
-    ),
-  ),
+  // cardTheme: CardTheme(
+  //   // Changed CardThemeData to CardTheme
+  //   elevation: 0,
+  //   color: CustomAppColors.surfaceCardDark, // Card background for dark mode
+  //   margin: EdgeInsets.zero,
+  //   shape: RoundedRectangleBorder(
+  //     borderRadius: BorderRadius.circular(radiusXl),
+  //   ),
+  // ),
   bottomSheetTheme: BottomSheetThemeData(
     backgroundColor:
         CustomAppColors

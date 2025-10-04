@@ -1,15 +1,18 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/map_controller_button.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_segment_builder.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/Map/widgets/offline_map_widget.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
-class WorkoutHistoryMapViewer extends StatefulWidget {
+class WorkoutHistoryMapViewer extends ConsumerStatefulWidget {
   final WorkoutSessionEntity workout;
   final bool showMapTiles;
   final bool showControls;
@@ -22,11 +25,12 @@ class WorkoutHistoryMapViewer extends StatefulWidget {
   });
 
   @override
-  State<WorkoutHistoryMapViewer> createState() =>
+  ConsumerState<WorkoutHistoryMapViewer> createState() =>
       _WorkoutHistoryMapViewerState();
 }
 
-class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer>
+class _WorkoutHistoryMapViewerState
+    extends ConsumerState<WorkoutHistoryMapViewer>
     with TickerProviderStateMixin {
   MapController? _mapController;
   late final AnimationController _animationController;
@@ -389,6 +393,9 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer>
 
   @override
   Widget build(BuildContext context) {
+    final sessionData = ref.watch(sessionProvider);
+    final isOffline = sessionData.state == SessionState.authenticatedOffline;
+
     // Show loading state if map controller is not ready
     if (_mapController == null) {
       return Container(
@@ -423,6 +430,17 @@ class _WorkoutHistoryMapViewerState extends State<WorkoutHistoryMapViewer>
             ),
           ),
         ),
+      );
+    }
+
+    // Use offline map widget when offline
+    if (isOffline) {
+      return OfflineMapWidget(
+        workout: widget.workout,
+        markers: _markers,
+        mapController: _mapController,
+        center: _center,
+        zoom: _zoom,
       );
     }
 
