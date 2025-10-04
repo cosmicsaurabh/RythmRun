@@ -421,6 +421,13 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
         final isOffline =
             sessionData.state == SessionState.authenticatedOffline;
 
+        // Debug: Print session state
+        print('🗺️ LiveMapFeed: Session state: ${sessionData.state.name}');
+        print('🗺️ LiveMapFeed: Is offline: $isOffline');
+        print(
+          '🗺️ LiveMapFeed: Current session: ${liveTrackingState.currentSession?.id}',
+        );
+
         return isOffline
             ? OfflineMapWidget(
               workout: liveTrackingState.currentSession,

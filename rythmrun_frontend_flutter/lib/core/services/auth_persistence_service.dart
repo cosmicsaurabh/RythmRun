@@ -11,10 +11,11 @@ class AuthPersistenceService {
   static const String _accessTokenKey = 'access_token';
   static const String _refreshTokenKey = 'refresh_token';
   static const String _userDataKey = 'user_data';
-  static const String _loginTimestampKey = 'login_timestamp';
+  static const String _lastBackendSyncKey = 'last_backend_sync';
 
   /// Save authentication data after successful login
   static Future<void> saveAuthData(AuthResponseModel authResponse) async {
+    final now = DateTime.now().toIso8601String();
     await Future.wait([
       _storage.write(key: _accessTokenKey, value: authResponse.accessToken),
       _storage.write(key: _refreshTokenKey, value: authResponse.refreshToken),
@@ -22,10 +23,7 @@ class AuthPersistenceService {
         key: _userDataKey,
         value: json.encode(authResponse.user.toJson()),
       ),
-      _storage.write(
-        key: _loginTimestampKey,
-        value: DateTime.now().toIso8601String(),
-      ),
+      _storage.write(key: _lastBackendSyncKey, value: now),
     ]);
   }
 
@@ -105,30 +103,57 @@ class AuthPersistenceService {
     await Future.wait([
       _storage.write(key: _accessTokenKey, value: newAccessToken),
       _storage.write(key: _refreshTokenKey, value: newRefreshToken),
+      _storage.write(
+        key: _lastBackendSyncKey,
+        value: DateTime.now().toIso8601String(),
+      ),
     ]);
   }
 
-  /// Check how long user has been logged in
-  static Future<Duration?> getSessionDuration() async {
-    final timestampStr = await _storage.read(key: _loginTimestampKey);
+  /// Get the last backend sync timestamp
+  static Future<DateTime?> getLastBackendSync() async {
+    final timestampStr = await _storage.read(key: _lastBackendSyncKey);
     if (timestampStr == null) return null;
 
     try {
-      final loginTime = DateTime.parse(timestampStr);
-      return DateTime.now().difference(loginTime);
+      return DateTime.parse(timestampStr);
     } catch (e) {
       return null;
     }
   }
 
-  /// Check if session has exceeded maximum duration (e.g., 30 days)
-  static Future<bool> isSessionExpired({
-    Duration maxDuration = const Duration(days: 30),
+  /// Check if backend sync is required (7 days since last sync)
+  static Future<bool> needsBackendSync({
+    Duration syncInterval = const Duration(days: 7),
   }) async {
-    final sessionDuration = await getSessionDuration();
-    if (sessionDuration == null) return true;
+    final lastSync = await getLastBackendSync();
+    if (lastSync == null) return true;
 
-    return sessionDuration > maxDuration;
+    final timeSinceLastSync = DateTime.now().difference(lastSync);
+    return timeSinceLastSync > syncInterval;
+  }
+
+  /// Update the last backend sync timestamp
+  static Future<void> updateLastBackendSync() async {
+    await _storage.write(
+      key: _lastBackendSyncKey,
+      value: DateTime.now().toIso8601String(),
+    );
+  }
+
+  /// Check if user can stay logged in offline (has valid session and within sync window)
+  static Future<bool> canStayLoggedInOffline() async {
+    // Check if we have valid tokens
+    if (!await hasValidSession()) {
+      return false;
+    }
+
+    // Check if we're within the sync window (7 days)
+    if (await needsBackendSync()) {
+      return false;
+    }
+
+    return true;
   }
 
   /// Clear all stored authentication data
@@ -137,7 +162,7 @@ class AuthPersistenceService {
       _storage.delete(key: _accessTokenKey),
       _storage.delete(key: _refreshTokenKey),
       _storage.delete(key: _userDataKey),
-      _storage.delete(key: _loginTimestampKey),
+      _storage.delete(key: _lastBackendSyncKey),
     ]);
   }
 
@@ -163,7 +188,7 @@ class AuthPersistenceService {
       'accessToken': await _storage.read(key: _accessTokenKey),
       'refreshToken': await _storage.read(key: _refreshTokenKey),
       'userData': await _storage.read(key: _userDataKey),
-      'loginTimestamp': await _storage.read(key: _loginTimestampKey),
+      'lastBackendSync': await _storage.read(key: _lastBackendSyncKey),
     };
   }
 }
