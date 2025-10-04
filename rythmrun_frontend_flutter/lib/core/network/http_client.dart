@@ -107,7 +107,7 @@ class AppHttpClient {
       } on SocketException catch (e) {
         attempts++;
         if (attempts > maxRetries) {
-          throw NetworkException('Network connection failed: ${e.message}');
+          throw NetworkException('Please check your internet connection : $e');
         }
         // Wait before retrying (exponential backoff)
         await Future.delayed(Duration(milliseconds: 1000 * attempts));

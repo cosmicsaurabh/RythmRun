@@ -10,8 +10,10 @@ import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_segment_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/map_controller_button.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_segment_builder.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/Map/widgets/offline_map_widget.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
@@ -399,6 +401,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
     return Consumer(
       builder: (context, ref, child) {
         final liveTrackingState = ref.watch(liveTrackingProvider);
+        final sessionData = ref.watch(sessionProvider);
 
         // Listen for error messages and show them in a SnackBar
         ref.listen<String?>(
@@ -414,110 +417,122 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
         // Check for session state changes
         _handleSessionStateChanges(liveTrackingState.currentSession);
 
-        return Container(
-          height: double.infinity, // Adjust height as needed
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radiusLg),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+        // Determine if the app is in offline mode
+        final isOffline =
+            sessionData.state == SessionState.authenticatedOffline;
+
+        return isOffline
+            ? OfflineMapWidget(
+              workout: liveTrackingState.currentSession,
+              markers: _markers,
+              mapController: _mapController,
+              center: _center,
+              zoom: _zoom,
+            )
+            : Container(
+              height: double.infinity, // Adjust height as needed
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radiusLg),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: ClipRRect(
-            // borderRadius: BorderRadius.circular(radiusLg),
-            child: Stack(
-              children: [
-                FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _center,
-                    initialZoom: _zoom,
-                    minZoom: 3,
-                    maxZoom: 19,
-                    onTap: (tapPosition, point) {
-                      // Handle map tap if needed
-                    },
-                  ),
+              child: ClipRRect(
+                // borderRadius: BorderRadius.circular(radiusLg),
+                child: Stack(
                   children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName:
-                          'com.example.rythmrun_frontend_flutter',
-                      maxZoom: 19,
+                    FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _center,
+                        initialZoom: _zoom,
+                        minZoom: 3,
+                        maxZoom: 19,
+                        onTap: (tapPosition, point) {
+                          // Handle map tap if needed
+                        },
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName:
+                              'com.example.rythmrun_frontend_flutter',
+                          maxZoom: 19,
+                        ),
+                        PolylineLayer(polylines: _solidPolylines),
+                        PolylineLayer(polylines: _dashedPolylines),
+                        MarkerLayer(markers: _markers),
+                      ],
                     ),
-                    PolylineLayer(polylines: _solidPolylines),
-                    PolylineLayer(polylines: _dashedPolylines),
-                    MarkerLayer(markers: _markers),
-                  ],
-                ),
 
-                // Map controls overlay
-                Positioned(
-                  bottom: spacingMd,
-                  right: spacingMd,
-                  child: Column(
-                    children: [
-                      buildMapControlButton(
-                        icon: Icons.my_location,
-                        onPressed: _centerOnCurrentLocation,
-                        tooltip: 'Center on current location',
+                    // Map controls overlay
+                    Positioned(
+                      bottom: spacingMd,
+                      right: spacingMd,
+                      child: Column(
+                        children: [
+                          buildMapControlButton(
+                            icon: Icons.my_location,
+                            onPressed: _centerOnCurrentLocation,
+                            tooltip: 'Center on current location',
+                          ),
+                          const SizedBox(height: spacingSm),
+                          buildMapControlButton(
+                            icon: Icons.fit_screen,
+                            onPressed: _fitTrackingPath,
+                            tooltip: 'Fit tracking path',
+                          ),
+                          const SizedBox(height: spacingSm),
+                          buildMapControlButton(
+                            icon: Icons.zoom_in,
+                            onPressed: _zoomIn,
+                            tooltip: 'Zoom in',
+                          ),
+                          const SizedBox(height: spacingSm),
+                          buildMapControlButton(
+                            icon: Icons.zoom_out,
+                            onPressed: _zoomOut,
+                            tooltip: 'Zoom out',
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: spacingSm),
-                      buildMapControlButton(
-                        icon: Icons.fit_screen,
-                        onPressed: _fitTrackingPath,
-                        tooltip: 'Fit tracking path',
-                      ),
-                      const SizedBox(height: spacingSm),
-                      buildMapControlButton(
-                        icon: Icons.zoom_in,
-                        onPressed: _zoomIn,
-                        tooltip: 'Zoom in',
-                      ),
-                      const SizedBox(height: spacingSm),
-                      buildMapControlButton(
-                        icon: Icons.zoom_out,
-                        onPressed: _zoomOut,
-                        tooltip: 'Zoom out',
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                // Status overlay
-                if (liveTrackingState.isLoading)
-                  const Positioned(
-                    top: spacingMd,
-                    left: spacingMd,
-                    right: spacingMd,
-                    child: Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(spacingSm),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CupertinoActivityIndicator(),
+                    // Status overlay
+                    if (liveTrackingState.isLoading)
+                      const Positioned(
+                        top: spacingMd,
+                        left: spacingMd,
+                        right: spacingMd,
+                        child: Card(
+                          child: Padding(
+                            padding: EdgeInsets.all(spacingSm),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CupertinoActivityIndicator(),
+                                ),
+                                SizedBox(width: spacingSm),
+                                Text('Loading location...'),
+                              ],
                             ),
-                            SizedBox(width: spacingSm),
-                            Text('Loading location...'),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
 
-                // Error overlay is now handled by the SnackBar
-              ],
-            ),
-          ),
-        );
+                    // Error overlay is now handled by the SnackBar
+                  ],
+                ),
+              ),
+            );
       },
     );
   }

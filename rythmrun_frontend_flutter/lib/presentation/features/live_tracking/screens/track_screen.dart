@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
@@ -92,6 +93,8 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
       builder: (context, ref, child) {
         final liveTrackingState = ref.watch(liveTrackingProvider);
         final liveTrackingNotifier = ref.read(liveTrackingProvider.notifier);
+        final sessionState = ref.watch(sessionStateProvider);
+        final isOffline = ref.watch(isOfflineModeProvider);
 
         return Scaffold(
           appBar: AppBar(
@@ -111,6 +114,13 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           body: Stack(
             // crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Column(
+                children: [
+                  Text('Session State: ${sessionState.name}'),
+                  Text('Is Offline: $isOffline'),
+                  Text('Expected: authenticatedOffline when backend down'),
+                ],
+              ),
               const LiveMapFeed(),
               // Animated Tracking Card
               Positioned(
