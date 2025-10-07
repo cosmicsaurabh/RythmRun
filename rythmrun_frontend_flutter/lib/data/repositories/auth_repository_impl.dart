@@ -146,18 +146,13 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<bool> isAuthenticated() async {
-    return await _localDataSource.hasValidSession();
-  }
-
-  @override
   Future<bool> needsTokenRefresh() async {
     return await _localDataSource.needsTokenRefresh();
   }
 
   @override
   Future<bool> validateSession() async {
-    if (!await isAuthenticated()) {
+    if (!await _localDataSource.hasValidSession()) {
       return false;
     }
 

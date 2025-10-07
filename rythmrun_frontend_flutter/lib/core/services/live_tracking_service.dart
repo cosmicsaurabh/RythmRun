@@ -147,12 +147,27 @@ class LiveTrackingService {
   Future<TrackingPointEntity?> getCurrentLocation() async {
     try {
       LocationServiceStatus permissionStatus = await checkPermissions();
-      if (permissionStatus != LocationServiceStatus.granted) return null;
+      if (permissionStatus != LocationServiceStatus.granted) {
+        debugPrint('❌ Location permission not granted: $permissionStatus');
+        return null;
+      }
 
+      debugPrint('📍 Requesting current location...');
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10), // Add timeout
         ),
+      );
+
+      // Validate the position
+      if (position.latitude == 0.0 && position.longitude == 0.0) {
+        debugPrint('❌ Invalid position received (0,0)');
+        return null;
+      }
+
+      debugPrint(
+        '✅ Current location obtained: ${position.latitude}, ${position.longitude} (accuracy: ${position.accuracy}m)',
       );
 
       return TrackingPointEntity(
