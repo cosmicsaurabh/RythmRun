@@ -28,9 +28,6 @@ abstract class AuthRepository {
   /// Get current authenticated user
   Future<UserEntity?> getCurrentUser();
 
-  /// Check if user is currently authenticated
-  Future<bool> isAuthenticated();
-
   /// Check if session needs token refresh
   Future<bool> needsTokenRefresh();
 

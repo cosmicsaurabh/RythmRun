@@ -54,108 +54,130 @@ class SessionNotifier extends StateNotifier<SessionData> {
     }
 
     try {
-      // Check if user is authenticated locally
-      final isAuthenticated = await _authRepository.isAuthenticated();
+      // First, check if we have user data and if we need token refresh
+      final userData = await _authRepository.getCurrentUser();
+      final needsRefresh = await _authRepository.needsTokenRefresh();
 
       if (kDebugMode) {
-        print(
-          '🔍 SessionProvider: User authenticated locally: $isAuthenticated',
-        );
+        print('🔍 SessionProvider: User data exists: ${userData != null}');
+        print('🔍 SessionProvider: Needs token refresh: $needsRefresh');
       }
 
-      if (isAuthenticated) {
-        final userData = await _authRepository.getCurrentUser();
-        if (userData != null) {
-          // Check if user can stay logged in offline (within 7-day sync window)
-          final canStayOffline = await _authRepository.canStayLoggedInOffline();
-
-          if (canStayOffline) {
-            // User has valid local session and is within sync window
-            try {
-              // Try to validate session online (with timeout)
-              final isValid = await _authRepository.validateSession();
-              if (isValid) {
-                // Full authenticated state - online capabilities available
-                state = state.copyWith(
-                  state: SessionState.authenticated,
-                  user: userData,
-                  errorMessage: null,
-                );
-              } else {
-                // Session validation failed, but keep offline access
-                state = state.copyWith(
-                  state: SessionState.authenticatedOffline,
-                  user: userData,
-                  errorMessage:
-                      'Limited offline access - please check your connection',
-                );
-              }
-            } catch (e) {
-              // Network error during validation - allow offline access
-              log(
-                'SessionProvider: Network error during validation, enabling offline mode: $e',
-              );
+      // If we have user data, try to handle authentication
+      if (userData != null) {
+        // If we need token refresh, try to refresh first
+        if (needsRefresh) {
+          try {
+            if (kDebugMode) {
+              print('🔄 SessionProvider: Attempting token refresh...');
+            }
+            await _refreshToken();
+            return;
+          } catch (e) {
+            if (kDebugMode) {
+              print('❌ SessionProvider: Token refresh failed: $e');
+            }
+            // Token refresh failed - check if we can stay offline
+            final canStayOffline =
+                await _authRepository.canStayLoggedInOffline();
+            if (canStayOffline) {
               state = state.copyWith(
                 state: SessionState.authenticatedOffline,
                 user: userData,
-                errorMessage: 'Offline mode - limited functionality available',
+                errorMessage: 'Connection failed - offline mode enabled',
               );
-            }
-          } else {
-            // 7-day sync requirement not met - need backend verification
-            log(
-              'SessionProvider: 7-day sync requirement not met, attempting backend verification',
-            );
-            try {
-              final isValid = await _authRepository.validateSession();
-              if (isValid) {
-                // Backend verification successful
-                state = state.copyWith(
-                  state: SessionState.authenticated,
-                  user: userData,
-                  errorMessage: null,
-                );
-              } else {
-                // Backend verification failed - clear session
-                log(
-                  'SessionProvider: Backend verification failed, clearing session',
-                );
-                await _clearSession();
-              }
-            } catch (e) {
-              // Network error during backend verification
+              return;
+            } else {
+              // Can't stay offline, need to clear session
               log(
-                'SessionProvider: Backend verification failed due to network: $e',
+                'SessionProvider: Cannot stay offline after token refresh failure',
               );
+              await _clearSession();
+              return;
+            }
+          }
+        }
+
+        // No token refresh needed, check if user can stay logged in offline
+        final canStayOffline = await _authRepository.canStayLoggedInOffline();
+
+        if (canStayOffline) {
+          // User has valid local session and is within sync window
+          try {
+            // Try to validate session online (with timeout)
+            final isValid = await _authRepository.validateSession();
+            if (isValid) {
+              // Full authenticated state - online capabilities available
+              state = state.copyWith(
+                state: SessionState.authenticated,
+                user: userData,
+                errorMessage: null,
+              );
+            } else {
+              // Session validation failed, but keep offline access
               state = state.copyWith(
                 state: SessionState.authenticatedOffline,
                 user: userData,
                 errorMessage:
-                    'Backend sync required - please check your connection',
+                    'Limited offline access - please check your connection',
               );
             }
+          } catch (e) {
+            // Network error during validation - allow offline access
+            log(
+              'SessionProvider: Network error during validation, enabling offline mode: $e',
+            );
+            state = state.copyWith(
+              state: SessionState.authenticatedOffline,
+              user: userData,
+              errorMessage: 'Offline mode - limited functionality available',
+            );
           }
-          return;
+        } else {
+          // 7-day sync requirement not met - need backend verification
+          log(
+            'SessionProvider: 7-day sync requirement not met, attempting backend verification',
+          );
+          try {
+            final isValid = await _authRepository.validateSession();
+            if (isValid) {
+              // Backend verification successful
+              state = state.copyWith(
+                state: SessionState.authenticated,
+                user: userData,
+                errorMessage: null,
+              );
+            } else {
+              // Backend verification failed - clear session
+              log(
+                'SessionProvider: Backend verification failed, clearing session',
+              );
+              await _clearSession();
+            }
+          } catch (e) {
+            // Network error during backend verification
+            log(
+              'SessionProvider: Backend verification failed due to network: $e',
+            );
+            state = state.copyWith(
+              state: SessionState.authenticatedOffline,
+              user: userData,
+              errorMessage:
+                  'Backend sync required - please check your connection',
+            );
+          }
         }
+        return;
       }
 
-      // Check if we need to refresh tokens (only if we have network)
-      if (await _authRepository.needsTokenRefresh()) {
+      // No user data found - check if we need to refresh tokens
+      if (needsRefresh) {
         try {
           await _refreshToken();
           return;
         } catch (e) {
-          // Token refresh failed - check if we have local user data
-          final userData = await _authRepository.getCurrentUser();
-          if (userData != null) {
-            log('SessionProvider: Token refresh failed, enabling offline mode');
-            state = state.copyWith(
-              state: SessionState.authenticatedOffline,
-              user: userData,
-              errorMessage: 'Connection failed - offline mode enabled',
-            );
-            return;
-          }
+          // Token refresh failed and no user data
+          log('SessionProvider: Token refresh failed and no user data: $e');
         }
       }
 

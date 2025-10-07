@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
+import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_segment_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
@@ -40,6 +41,10 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
 
   // Track previous session state to detect changes
   WorkoutSessionEntity? _previousSession;
+
+  // Follow/interaction flags
+  bool _isFollowing = false; // when true, camera follows current location
+  bool _manualByUser = false; // set true on any user interaction
 
   @override
   void initState() {
@@ -87,8 +92,22 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
         _center = newCenter;
       });
 
+      // Add current location marker if no active session
+      final liveTrackingState = ref.read(liveTrackingProvider);
+      final session = liveTrackingState.currentSession;
+
+      if (session == null ||
+          session.status != WorkoutStatus.active ||
+          session.trackingPoints.isEmpty) {
+        _updateCurrentLocationMarker(newCenter, currentLocation, session);
+      }
+
       // Programmatically move the map to the user's current location
       _animatedMove(newCenter, _zoom);
+    } else {
+      // If we can't get current location, show error but don't fall back to Delhi
+      debugPrint('❌ Could not get current location for map initialization');
+      // Keep the default center but don't animate to it
     }
 
     // Listen to location updates
@@ -130,8 +149,10 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
     // Update tracking path
     _updateTrackingPath();
 
-    // Animate camera to follow current location
-    _animateToCurrentLocation(newLatLng);
+    // Follow current location only if following is enabled and user isn't interacting
+    if (_isFollowing && !_manualByUser) {
+      _animateToCurrentLocation(newLatLng);
+    }
   }
 
   bool _isValidLocationForPolyline(
@@ -274,6 +295,16 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
     _markers.removeWhere(
       (marker) => marker.key == const ValueKey('current_location'),
     );
+
+    // Only add current location marker if there's no active tracking session
+    // or if the session has no tracking points yet
+    if (session != null &&
+        session.status == WorkoutStatus.active &&
+        session.trackingPoints.isNotEmpty) {
+      // Don't show current location marker during active tracking
+      // The activity-specific markers (start, current position) will be shown instead
+      return;
+    }
 
     // Get dynamic color based on workout type and speed
     final markerColor = getCurrentLocationMarkerColor(point, session);
@@ -459,6 +490,17 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
                         initialZoom: _zoom,
                         minZoom: 3,
                         maxZoom: 19,
+                        onMapEvent: (event) {
+                          // Any user-driven map interaction disables following
+                          // and marks manual control.
+                          // We check for common interaction events and user source
+                          final isUserEvent =
+                              event.source != MapEventSource.mapController;
+                          if (isUserEvent) {
+                            _manualByUser = true;
+                            _isFollowing = false;
+                          }
+                        },
                         onTap: (tapPosition, point) {
                           // Handle map tap if needed
                         },
@@ -545,17 +587,100 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
   }
 
   void _centerOnCurrentLocation() async {
-    final currentLocation =
-        await LiveTrackingService.instance.getCurrentLocation();
-    if (currentLocation != null && _mapController != null) {
-      _animatedMove(
-        LatLng(currentLocation.latitude, currentLocation.longitude),
-        _zoom,
+    if (_mapController == null) {
+      _showErrorSnackBar('Map not ready. Please try again.');
+      return;
+    }
+
+    try {
+      // Center button enables following and clears manual override
+      _isFollowing = true;
+      _manualByUser = false;
+
+      // Check permissions first
+      final permissionStatus =
+          await LiveTrackingService.instance.checkPermissions();
+      if (permissionStatus != LocationServiceStatus.granted) {
+        _isFollowing = false;
+        _showErrorSnackBar(
+          LocationErrorHandler.getLocationErrorMessage(permissionStatus),
+        );
+        return;
+      }
+
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: spacingSm),
+              const Text('Getting your location...'),
+            ],
+          ),
+          backgroundColor: CustomAppColors.statusInfo,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(spacingMd),
+          duration: const Duration(seconds: 2),
+        ),
       );
+
+      final currentLocation =
+          await LiveTrackingService.instance.getCurrentLocation();
+
+      if (currentLocation != null) {
+        final newLatLng = LatLng(
+          currentLocation.latitude,
+          currentLocation.longitude,
+        );
+
+        // Add current location marker (respects activity marker precedence)
+        final liveTrackingState = ref.read(liveTrackingProvider);
+        final session = liveTrackingState.currentSession;
+        _updateCurrentLocationMarker(
+          newLatLng,
+          currentLocation,
+          session, // Pass actual session to respect marker logic
+        );
+
+        // Center on location without changing zoom
+        _animatedMove(newLatLng, _zoom);
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Centered on your location'),
+            backgroundColor: CustomAppColors.statusSuccess,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(spacingMd),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        _showErrorSnackBar(
+          'Unable to get your current location. Please check your location settings.',
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error centering on current location: $e');
+      _showErrorSnackBar('Failed to get your location. Please try again.');
     }
   }
 
   void _fitTrackingPath() {
+    // This is a user action, disable following
+    _manualByUser = true;
+    _isFollowing = false;
+
     final liveTrackingState = ref.read(liveTrackingProvider);
     final session = liveTrackingState.currentSession;
 
@@ -590,24 +715,31 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
   }
 
   void _zoomIn() {
+    // User action: disable following
+    _manualByUser = true;
+    _isFollowing = false;
     if (_mapController == null) return;
     final currentZoom = _mapController!.camera.zoom;
     _animatedMove(_mapController!.camera.center, currentZoom + 1);
   }
 
   void _zoomOut() {
+    // User action: disable following
+    _manualByUser = true;
+    _isFollowing = false;
     if (_mapController == null) return;
     final currentZoom = _mapController!.camera.zoom;
     _animatedMove(_mapController!.camera.center, currentZoom - 1);
   }
 
-  void _manualClearMap() {
-    print('🧹 Manual clear map triggered');
-    _clearMapData();
-  }
+  // Removed unused manual clear helper
 
   void _animatedMove(LatLng destLocation, double destZoom) {
     if (_mapController == null) return;
+
+    // Stop any ongoing animation first
+    _animationController.stop();
+    _animationController.reset();
 
     final latTween = Tween<double>(
       begin: _mapController!.camera.center.latitude,
@@ -641,6 +773,12 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
           status == AnimationStatus.dismissed) {
         _animationController.removeListener(listener);
         _animationController.reset();
+
+        // Ensure we're at the exact target location
+        if (status == AnimationStatus.completed) {
+          _mapController!.move(destLocation, destZoom);
+          debugPrint('✅ Animation completed - map locked at target location');
+        }
       }
     });
 

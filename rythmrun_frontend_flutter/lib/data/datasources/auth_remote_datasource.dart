@@ -62,10 +62,6 @@ class AuthRemoteDataSource {
     }
   }
 
-  Future<UserModel?> getCurrentUser() async {
-    return null;
-  }
-
   /// Refresh access token using the provided refresh token
   Future<AuthResponseModel> refreshToken(String refreshToken) async {
     try {
