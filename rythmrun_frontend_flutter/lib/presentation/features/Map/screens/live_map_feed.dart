@@ -510,7 +510,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
                           urlTemplate:
                               'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                           userAgentPackageName:
-                              'com.example.rythmrun_frontend_flutter',
+                              'com.github.cosmicsaurabh.rythmrun',
                           maxZoom: 19,
                         ),
                         PolylineLayer(polylines: _solidPolylines),
