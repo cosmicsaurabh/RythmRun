@@ -1,6 +1,6 @@
 # RythmRun Terms of Service
 
-**Last Updated: December 2024**
+**Last Updated: October 2025**
 
 ## Agreement to Terms
 
