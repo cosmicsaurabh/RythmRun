@@ -472,8 +472,7 @@ class _WorkoutHistoryMapViewerState
                   TileLayer(
                     urlTemplate:
                         'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName:
-                        'com.example.rythmrun_frontend_flutter',
+                    userAgentPackageName: 'com.github.cosmicsaurabh.rythmrun',
                     maxZoom: 19,
                   ),
 
