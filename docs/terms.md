@@ -182,7 +182,7 @@ By using RythmRun, you acknowledge that you have read, understood, and agree to 
 
 ---
 
-**Last Updated**: December 2024  
-**Effective Date**: [Date of first release]
+**Last Updated**: October 2025
+**Effective Date**: [01-June-2025]
 
 
