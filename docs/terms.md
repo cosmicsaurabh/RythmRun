@@ -138,7 +138,7 @@ The App may use or display third-party services (maps, analytics, etc.). We are 
 ## Dispute Resolution
 
 ### Governing Law
-These Terms are governed by the laws of [Your Jurisdiction], without regard to conflict of law principles.
+These Terms are governed by the laws of [INDIA], without regard to conflict of law principles.
 
 ### Dispute Process
 1. Contact us first to resolve any disputes
