@@ -1,0 +1,8 @@
+# GitHub Pages Configuration
+theme: jekyll-theme-minimal
+plugins:
+  - jekyll-relative-links
+
+# Optional: Set baseurl if your repo is not at root
+# baseurl: "/rythmrun"
+

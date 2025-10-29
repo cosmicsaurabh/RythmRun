@@ -10,6 +10,10 @@ backend.md
 frontend.md
 !README.md
 
+# ALLOWED: GitHub Pages documentation
+!docs/
+!docs/**
+
 # ALLOWED: Node.js backend directory and its contents
 !RythmRun_backend_nodejs/
 !RythmRun_backend_nodejs/**
