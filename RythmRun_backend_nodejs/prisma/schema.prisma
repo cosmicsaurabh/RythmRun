@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
@@ -15,110 +9,96 @@ datasource db {
 }
 
 model User {
-  id                Int       @id @default(autoincrement())
-  firstname         String?   @db.VarChar(255)
-  lastname          String?   @db.VarChar(255)
-  username          String    @unique @db.VarChar(255)
-  password          String    @db.VarChar(255)
-  profilePicturePath String?  @db.VarChar(255)
-  profilePictureType String?  @db.VarChar(100)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @default(now()) @updatedAt
-
-  // Relationships
-  activities        Activity[]
-  comments         Comment[]
-  likes           Like[]
-  friendsAsUser1  Friend[]    @relation("UserFriends")
-  friendsAsUser2  Friend[]    @relation("UserFriends2")
-  refreshToken    RefreshToken?  // One-to-one relationship
+  id                 Int           @id @default(autoincrement())
+  firstname          String?       @db.VarChar(255)
+  lastname           String?       @db.VarChar(255)
+  username           String        @unique @db.VarChar(255)
+  password           String        @db.VarChar(255)
+  profilePictureType String?       @db.VarChar(100)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @default(now()) @updatedAt
+  profilePicturePath String?       @db.VarChar(255)
+  activities         Activity[]
+  comments           Comment[]
+  friendsAsUser1     Friend[]      @relation("UserFriends")
+  friendsAsUser2     Friend[]      @relation("UserFriends2")
+  likes              Like[]
+  refreshToken       RefreshToken?
 }
 
 model Activity {
-  id          Int      @id @default(autoincrement())
+  id          Int        @id @default(autoincrement())
   userId      Int
-  type        String   @db.VarChar(50)  // RUN, WALK, CYCLE etc.
+  type        String     @db.VarChar(50)
   startTime   DateTime
   endTime     DateTime
-  distance    Float    // in meters
-  duration    Int      // in seconds
-  avgSpeed    Float    // in m/s
-  maxSpeed    Float    // in m/s
+  distance    Float
+  duration    Int
+  avgSpeed    Float
+  maxSpeed    Float
   calories    Int?
-  description String?  @db.Text
-  isPublic    Boolean @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt
-
-  // Relationships
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  locations   Location[]
+  description String?
+  isPublic    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @default(now()) @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   comments    Comment[]
   likes       Like[]
+  locations   Location[]
 }
 
 model Location {
-  id          Int      @id @default(autoincrement())
-  activityId  Int
-  latitude    Float
-  longitude   Float
-  altitude    Float?
-  timestamp   DateTime
-  accuracy    Float?
-  speed       Float?
-
-  // Relationship
-  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  activityId Int
+  latitude   Float
+  longitude  Float
+  altitude   Float?
+  timestamp  DateTime
+  accuracy   Float?
+  speed      Float?
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
 }
 
 model Comment {
-  id          Int      @id @default(autoincrement())
-  activityId  Int
-  userId      Int
-  content     String   @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt
-
-  // Relationships
-  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  activityId Int
+  userId     Int
+  content    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Like {
-  id          Int      @id @default(autoincrement())
-  activityId  Int
-  userId      Int
-  createdAt   DateTime @default(now())
-
-  // Relationships
-  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  activityId Int
+  userId     Int
+  createdAt  DateTime @default(now())
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([activityId, userId])
 }
 
 model Friend {
-  id          Int      @id @default(autoincrement())
-  user1Id     Int
-  user2Id     Int
-  status      String   @db.VarChar(20) // PENDING, ACCEPTED, REJECTED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt
-
-  // Relationships
-  user1       User     @relation("UserFriends", fields: [user1Id], references: [id], onDelete: Cascade)
-  user2       User     @relation("UserFriends2", fields: [user2Id], references: [id], onDelete: Cascade)
+  id        Int      @id @default(autoincrement())
+  user1Id   Int
+  user2Id   Int
+  status    String   @db.VarChar(20)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  user1     User     @relation("UserFriends", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2     User     @relation("UserFriends2", fields: [user2Id], references: [id], onDelete: Cascade)
 
   @@unique([user1Id, user2Id])
 }
 
 model RefreshToken {
-  id          Int      @id @default(autoincrement())
-  userId      Int      @unique  // One user can have only one refresh token
-  token       String   @unique @db.VarChar(512)
-  expiryDate  DateTime
-  createdAt   DateTime @default(now())
-
-  // Relationship
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  userId     Int      @unique
+  token      String   @unique @db.VarChar(512)
+  expiryDate DateTime
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
