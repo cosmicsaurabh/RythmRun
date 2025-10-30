@@ -10,13 +10,12 @@ If you’d like to delete your RythmRun account and associated data, please foll
 We’ll verify ownership via the sending email address. We may contact you if we need additional verification.
 
 ## What will be deleted
-- Your account and profile
+- Your account
 - Workout/activity records
-- Comments, likes, and social interactions
 - Stored preferences and settings
 
 ## What may be retained
-We may retain limited information for up to 90 days where required for:
+We may retain limited information for up to 60 days where required for:
 - Fraud prevention and security logs
 - Legal or regulatory compliance
 - Backup and disaster recovery (automatically purged on rotation)
