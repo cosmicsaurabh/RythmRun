@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +11,7 @@ import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_acti
 import 'package:rythmrun_frontend_flutter/presentation/features/settings/screens/settings_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -676,6 +679,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
   }
 
+  Future<void> _launchUrl(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (!await launchUrl(uri)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to launch URL'),
+            backgroundColor: CustomAppColors.statusError,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        log('Failed to launch URL');
+      }
+    }
+  }
+
   void _showAbout(BuildContext context) {
     showAboutDialog(
       context: context,
@@ -696,6 +716,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       children: [
         const Text(
           'Your fitness companion for tracking workouts and connecting with friends.',
+        ),
+        const SizedBox(height: spacingMd),
+        GestureDetector(
+          onTap: () {
+            _launchUrl(
+              'https://cosmicsaurabh.github.io/RythmRun/privacy-policy',
+            );
+          },
+          child: const Text(
+            'Privacy Policy',
+            style: TextStyle(
+              color: CustomAppColors.colorB,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+        const SizedBox(height: spacingSm),
+        GestureDetector(
+          onTap: () {
+            _launchUrl('https://cosmicsaurabh.github.io/RythmRun/terms');
+          },
+          child: const Text(
+            'Terms of Service',
+            style: TextStyle(
+              color: CustomAppColors.colorB,
+              decoration: TextDecoration.underline,
+            ),
+          ),
         ),
       ],
     );
