@@ -1,6 +1,6 @@
 # RythmRun Privacy Policy
 
-**Last Updated: December 2024**
+**Last Updated: October 2025**
 
 ## Introduction
 

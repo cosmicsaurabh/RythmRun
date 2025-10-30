@@ -8,7 +8,9 @@ class AppConfig {
   // Environment-specific configurations
   static const Map<String, String> _baseUrls = {
     // 'dev': 'http://192.168.1.59:8080/api', //room
-    'dev': 'http://192.168.29.9:8080/api', //raw
+    // 'dev': 'http://192.168.29.9:8080/api', //raw
+    'dev': 'https://rythmrun-production.up.railway.app/api', //testing
+
     'staging': 'https://rythmrun-production.up.railway.app/api', // staging
     'prod': 'https://rythmrun-production.up.railway.app/api', //prod
   };
