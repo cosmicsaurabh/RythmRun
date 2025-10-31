@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
@@ -31,6 +33,17 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (!await launchUrl(uri)) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Could not launch link')));
+      }
+    }
   }
 
   void _handleSubmit() {
@@ -227,6 +240,12 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                                         Theme.of(context).colorScheme.secondary,
                                     fontWeight: FontWeight.w600,
                                   ),
+                                  recognizer:
+                                      TapGestureRecognizer()
+                                        ..onTap =
+                                            () => _launchUrl(
+                                              'https://cosmicsaurabh.github.io/RythmRun/terms',
+                                            ),
                                 ),
                                 const TextSpan(text: ' and '),
                                 TextSpan(
@@ -236,6 +255,12 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                                         Theme.of(context).colorScheme.secondary,
                                     fontWeight: FontWeight.w600,
                                   ),
+                                  recognizer:
+                                      TapGestureRecognizer()
+                                        ..onTap =
+                                            () => _launchUrl(
+                                              'https://cosmicsaurabh.github.io/RythmRun/privacy-policy',
+                                            ),
                                 ),
                               ],
                             ),
