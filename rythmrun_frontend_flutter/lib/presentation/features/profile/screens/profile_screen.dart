@@ -270,6 +270,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildAchievementBanner(BuildContext context) {
+    return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.all(spacingLg),
       decoration: BoxDecoration(
