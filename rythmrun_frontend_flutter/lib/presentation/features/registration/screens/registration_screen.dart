@@ -19,11 +19,11 @@ class RegistrationScreen extends ConsumerStatefulWidget {
 
 class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _firstNameController = TextEditingController(text: 'Aaa');
-  final _lastNameController = TextEditingController(text: 'Bbb');
-  final _emailController = TextEditingController(text: 'A@b.com');
-  final _passwordController = TextEditingController(text: 'Aa1!Aa1!');
-  final _confirmPasswordController = TextEditingController(text: 'Aa1!Aa1!');
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   @override
   void dispose() {
