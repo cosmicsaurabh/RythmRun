@@ -10,6 +10,7 @@ import activityRoutes from './routes/activity.routes';
 import commentRoutes from './routes/comment.routes';
 import likeRoutes from './routes/like.routes';
 import friendRoutes from './routes/friend.routes';
+import avatarRoutes from './routes/avatar.routes';
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ app.use(helmet());
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/friends', friendRoutes);
+app.use('/api/avatar', avatarRoutes);
 
 // Simple direct routes instead of nested router
 app.use('/api/activities', activityRoutes);

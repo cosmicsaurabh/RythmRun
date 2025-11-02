@@ -10,14 +10,14 @@ datasource db {
 
 model User {
   id                 Int           @id @default(autoincrement())
-  firstname          String?       @db.VarChar(255)
-  lastname           String?       @db.VarChar(255)
-  username           String        @unique @db.VarChar(255)
-  password           String        @db.VarChar(255)
-  profilePictureType String?       @db.VarChar(100)
+  firstname          String?
+  lastname           String?
+  username           String        @unique
+  password           String
+  profilePicturePath String?
+  profilePictureType String?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @default(now()) @updatedAt
-  profilePicturePath String?       @db.VarChar(255)
   activities         Activity[]
   comments           Comment[]
   friendsAsUser1     Friend[]      @relation("UserFriends")
