@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/repositories/auth_repository.dart';
 import '../../../domain/entities/user_entity.dart';
 import '../../../core/di/injection_container.dart';
+import '../../../core/services/auth_persistence_service.dart';
 
 enum SessionState {
   initial,
@@ -61,6 +62,15 @@ class SessionNotifier extends StateNotifier<SessionData> {
       if (kDebugMode) {
         print('🔍 SessionProvider: User data exists: ${userData != null}');
         print('🔍 SessionProvider: Needs token refresh: $needsRefresh');
+        if (userData != null) {
+          print('🔍 SessionProvider: User ID: ${userData.id}');
+          print(
+            '🔍 SessionProvider: User profilePicturePath: ${userData.profilePicturePath}',
+          );
+          print(
+            '🔍 SessionProvider: User profilePictureType: ${userData.profilePictureType}',
+          );
+        }
       }
 
       // If we have user data, try to handle authentication
@@ -262,6 +272,30 @@ class SessionNotifier extends StateNotifier<SessionData> {
       user: user,
       errorMessage: null,
     );
+  }
+
+  void updateProfilePicture(String path, String type) {
+    if (state.user != null) {
+      final updatedUser = state.user!.copyWith(
+        profilePicturePath: path,
+        profilePictureType: type,
+      );
+
+      state = state.copyWith(user: updatedUser);
+
+      // Also update local storage to persist the change
+      AuthPersistenceService.updateUserData(updatedUser).catchError((e) {
+        log('[pfp-session] ERROR: Failed to update local storage: $e');
+      });
+
+      log(
+        '[pfp-session] Updated user profilePicturePath: ${state.user!.profilePicturePath}',
+      );
+    } else {
+      log(
+        '[pfp-session] WARNING - Cannot update profile picture, user is null',
+      );
+    }
   }
 
   /// Called to logout user

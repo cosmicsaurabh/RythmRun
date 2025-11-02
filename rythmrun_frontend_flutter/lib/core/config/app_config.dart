@@ -7,12 +7,17 @@ import 'package:flutter/foundation.dart';
 class AppConfig {
   // Environment-specific configurations
   static const Map<String, String> _baseUrls = {
-    // 'dev': 'http://192.168.1.59:8080/api', //room
+    'dev': 'http://192.168.1.37:8080/api', //room - updated IP
     // 'dev': 'http://192.168.29.9:8080/api', //raw
-    'dev': 'https://rythmrun-production.up.railway.app/api', //testing
-
-    'staging': 'https://rythmrun-production.up.railway.app/api', // staging
+    'staging': '', // staging
     'prod': 'https://rythmrun-production.up.railway.app/api', //prod
+  };
+
+  static const Map<String, String> _cloudfrontDomains = {
+    'dev':
+        'd2ixgo5od14vvq.cloudfront.net', // Production CloudFront for dev testing
+    'staging': 'somethingg.cloudfront.net', // Staging CloudFront domain
+    'prod': 'd2ixgo5od14vvq.cloudfront.net', // Production CloudFront domain
   };
 
   static const Map<String, int> _timeouts = {
@@ -43,6 +48,16 @@ class AppConfig {
     return url;
   }
 
+  /// Get the CloudFront domain for the current environment
+  static String get cloudfrontDomain {
+    final env = _environment;
+    final domain = _cloudfrontDomains[env];
+    if (domain == null || domain.isEmpty) {
+      throw Exception('No CloudFront domain configured for environment: $env');
+    }
+    return domain;
+  }
+
   /// Get the timeout duration for HTTP requests
   static Duration get timeout {
     final env = _environment;
@@ -69,13 +84,15 @@ class AppConfig {
 
   /// Print current configuration (useful for debugging)
   static void printConfig() {
-    log('=== App Configuration ===');
-    log('Environment: $environment');
-    log('Base URL: $baseUrl');
-    log('Timeout: ${timeout.inSeconds} seconds');
-    log('Debug Mode: $isDebug');
-    log('Release Mode: $isRelease');
-    log('Profile Mode: $isProfile');
-    log('========================');
+    if (isDebug) {
+      log('=== App Configuration ===');
+      log('Environment: $environment');
+      log('Base URL: $baseUrl');
+      log('Timeout: ${timeout.inSeconds} seconds');
+      log('Debug Mode: $isDebug');
+      log('Release Mode: $isRelease');
+      log('Profile Mode: $isProfile');
+      log('========================');
+    }
   }
 }
