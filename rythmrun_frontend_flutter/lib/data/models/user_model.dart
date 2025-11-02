@@ -6,6 +6,8 @@ class UserModel extends UserEntity {
     required super.firstName,
     required super.lastName,
     required super.email,
+    super.profilePicturePath,
+    super.profilePictureType,
     super.createdAt,
   });
 
@@ -15,6 +17,10 @@ class UserModel extends UserEntity {
       firstName: json['firstname'] ?? '', // Backend uses lowercase
       lastName: json['lastname'] ?? '', // Backend uses lowercase
       email: json['username'] ?? '', // Backend uses username field for email
+      profilePicturePath:
+          json['profilePicturePath'] as String?, // Profile picture S3 key
+      profilePictureType:
+          json['profilePictureType'] as String?, // Profile picture MIME type
       createdAt: null, // Not provided by backend in registration response
     );
   }
@@ -25,6 +31,8 @@ class UserModel extends UserEntity {
       'firstName': firstName,
       'lastName': lastName,
       'email': email,
+      'profilePicturePath': profilePicturePath,
+      'profilePictureType': profilePictureType,
       'createdAt': createdAt?.toIso8601String(),
     };
   }
@@ -35,6 +43,8 @@ class UserModel extends UserEntity {
       firstName: entity.firstName,
       lastName: entity.lastName,
       email: entity.email,
+      profilePicturePath: entity.profilePicturePath,
+      profilePictureType: entity.profilePictureType,
       createdAt: entity.createdAt,
     );
   }
@@ -45,6 +55,8 @@ class UserModel extends UserEntity {
       firstName: firstName,
       lastName: lastName,
       email: email,
+      profilePicturePath: profilePicturePath,
+      profilePictureType: profilePictureType,
       createdAt: createdAt,
     );
   }

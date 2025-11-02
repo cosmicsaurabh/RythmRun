@@ -1,13 +1,16 @@
 import 'dart:developer';
+// Removed dart:io import - no longer needed for temporary file caching
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
+import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/profile_menu_item.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/profile_stat_card.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_action_card.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/profile/providers/profile_view_model.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/settings/screens/settings_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
@@ -25,6 +28,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+
+  // Track profile picture path to prevent excessive logging
+  String? _lastLoggedProfilePicturePath;
 
   @override
   void initState() {
@@ -61,10 +67,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     super.dispose();
   }
 
+  /// Reset logging tracker when profile picture changes
+  void _resetLoggingTracker() {
+    _lastLoggedProfilePicturePath = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessionData = ref.watch(sessionProvider);
     final user = sessionData.user;
+
+    ref.listen<ProfileState>(profileViewModelProvider, (previous, next) {
+      if (next.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next.errorMessage!),
+            backgroundColor: CustomAppColors.statusError,
+          ),
+        );
+      }
+    });
+
+    // Listen for session changes to reset logging tracker when profile picture updates
+    ref.listen<SessionData>(sessionProvider, (previous, next) {
+      if (previous?.user?.profilePicturePath != next.user?.profilePicturePath) {
+        _resetLoggingTracker();
+      }
+    });
 
     return Scaffold(
       body:
@@ -78,66 +107,84 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                       opacity: _fadeAnimation,
                       child: SlideTransition(
                         position: _slideAnimation,
-                        child: CustomScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          slivers: [
-                            // Custom App Bar
-                            SliverAppBar(
-                              expandedHeight: 284,
-                              floating: false,
-                              pinned: false,
-                              backgroundColor: Colors.transparent,
-                              elevation: 0,
-                              flexibleSpace: FlexibleSpaceBar(
-                                background: _buildProfileHeader(context, user),
-                              ),
-                            ),
-
-                            // Content
-                            SliverPadding(
-                              padding: const EdgeInsets.fromLTRB(
-                                spacingLg,
-                                0,
-                                spacingLg,
-                                spacingLg,
-                              ),
-                              sliver: SliverList(
-                                delegate: SliverChildListDelegate([
-                                  const SizedBox(height: spacingLg),
-
-                                  // Achievement Banner
-                                  _buildAchievementBanner(context),
-                                  const SizedBox(height: spacing2xl),
-
-                                  // Statistics Cards
-                                  _buildStatsSection(context),
-                                  const SizedBox(height: spacing2xl),
-
-                                  // Quick Actions
-                                  _buildQuickActions(context),
-                                  const SizedBox(height: spacing2xl),
-
-                                  // Menu Section
-                                  _buildMenuSection(context, ref),
-                                  const SizedBox(height: spacingLg),
-
-                                  // Logout Button
-                                  _buildLogoutSection(context, ref),
-                                  const SizedBox(height: spacing2xl),
-                                ]),
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: child!,
                       ),
                     ),
                   );
                 },
+                child: _buildScrollContent(context, user),
               ),
     );
   }
 
+  /// Build the scroll content separately to optimize AnimatedBuilder performance
+  Widget _buildScrollContent(BuildContext context, user) {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        // Custom App Bar
+        SliverAppBar(
+          expandedHeight: 284,
+          floating: false,
+          pinned: false,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          flexibleSpace: FlexibleSpaceBar(
+            background: _buildProfileHeader(context, user),
+          ),
+        ),
+
+        // Content
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            spacingLg,
+            0,
+            spacingLg,
+            spacingLg,
+          ),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              const SizedBox(height: spacingLg),
+
+              // Achievement Banner
+              _buildAchievementBanner(context),
+              const SizedBox(height: spacing2xl),
+
+              // Statistics Cards
+              _buildStatsSection(context),
+              const SizedBox(height: spacing2xl),
+
+              // Quick Actions
+              _buildQuickActions(context),
+              const SizedBox(height: spacing2xl),
+
+              // Menu Section
+              _buildMenuSection(context, ref),
+              const SizedBox(height: spacingLg),
+
+              // Logout Button
+              _buildLogoutSection(context, ref),
+              const SizedBox(height: spacing2xl),
+            ]),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildProfileHeader(BuildContext context, user) {
+    final profileState = ref.watch(profileViewModelProvider);
+    final isLoading = profileState.isLoading;
+
+    // Only log when profile picture path changes to avoid spam
+    if (_lastLoggedProfilePicturePath != user.profilePicturePath) {
+      _lastLoggedProfilePicturePath = user.profilePicturePath;
+      log(
+        '[pfp-ui] Profile picture changed - User ID: ${user.id}, Path: ${user.profilePicturePath}',
+        name: 'ProfileScreen',
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(spacingXl),
       decoration: BoxDecoration(
@@ -161,32 +208,65 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           // Profile Picture with Glow Effect
           Hero(
             tag: 'profile-avatar',
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: CustomAppColors.white, width: 4),
-                boxShadow: [
-                  BoxShadow(
-                    color: CustomAppColors.white.withOpacity(0.3),
-                    blurRadius: 20,
-                    spreadRadius: 5,
+            child: GestureDetector(
+              onTap:
+                  isLoading
+                      ? null
+                      : () =>
+                          ref
+                              .read(profileViewModelProvider.notifier)
+                              .pickAndUploadImage(),
+              child: Stack(
+                children: [
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: CustomAppColors.white,
+                        width: 4,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: CustomAppColors.white.withOpacity(0.3),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: _buildProfileAvatar(user.profilePicturePath),
                   ),
+                  if (isLoading)
+                    Positioned.fill(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          CustomAppColors.white,
+                        ),
+                      ),
+                    )
+                  else
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(spacingSm),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: CustomAppColors.colorA,
+                          border: Border.all(
+                            color: CustomAppColors.white,
+                            width: 2,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.edit,
+                          color: CustomAppColors.white,
+                          size: 16,
+                        ),
+                      ),
+                    ),
                 ],
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    CustomAppColors.white.withOpacity(0.3),
-                    CustomAppColors.white.withOpacity(0.1),
-                  ],
-                ),
-              ),
-              child: const Icon(
-                personIcon,
-                size: 60,
-                color: CustomAppColors.white,
               ),
             ),
           ),
@@ -271,64 +351,64 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   Widget _buildAchievementBanner(BuildContext context) {
     return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.all(spacingLg),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            CustomAppColors.statusSuccess.withOpacity(0.1),
-            CustomAppColors.statusInfo.withOpacity(0.1),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(radiusLg),
-        border: Border.all(
-          color: CustomAppColors.statusSuccess.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(spacingSm),
-            decoration: BoxDecoration(
-              color: CustomAppColors.statusSuccess.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(radiusSm),
-            ),
-            child: const Icon(
-              emojiEventsIcon,
-              color: CustomAppColors.statusSuccess,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: spacingLg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Weekly Goal Achieved! 🎉',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: CustomAppColors.statusSuccess,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'You\'ve completed 5 workouts this week',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.color?.withOpacity(0.7),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    // return Container(
+    //   padding: const EdgeInsets.all(spacingLg),
+    //   decoration: BoxDecoration(
+    //     gradient: LinearGradient(
+    //       begin: Alignment.topLeft,
+    //       end: Alignment.bottomRight,
+    //       colors: [
+    //         CustomAppColors.statusSuccess.withOpacity(0.1),
+    //         CustomAppColors.statusInfo.withOpacity(0.1),
+    //       ],
+    //     ),
+    //     borderRadius: BorderRadius.circular(radiusLg),
+    //     border: Border.all(
+    //       color: CustomAppColors.statusSuccess.withOpacity(0.3),
+    //       width: 1,
+    //     ),
+    //   ),
+    //   child: Row(
+    //     children: [
+    //       Container(
+    //         padding: const EdgeInsets.all(spacingSm),
+    //         decoration: BoxDecoration(
+    //           color: CustomAppColors.statusSuccess.withOpacity(0.2),
+    //           borderRadius: BorderRadius.circular(radiusSm),
+    //         ),
+    //         child: const Icon(
+    //           emojiEventsIcon,
+    //           color: CustomAppColors.statusSuccess,
+    //           size: 24,
+    //         ),
+    //       ),
+    //       const SizedBox(width: spacingLg),
+    //       Expanded(
+    //         child: Column(
+    //           crossAxisAlignment: CrossAxisAlignment.start,
+    //           children: [
+    //             Text(
+    //               'Weekly Goal Achieved! 🎉',
+    //               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+    //                 fontWeight: FontWeight.bold,
+    //                 color: CustomAppColors.statusSuccess,
+    //               ),
+    //             ),
+    //             const SizedBox(height: 2),
+    //             Text(
+    //               'You\'ve completed 5 workouts this week',
+    //               style: Theme.of(context).textTheme.bodySmall?.copyWith(
+    //                 color: Theme.of(
+    //                   context,
+    //                 ).textTheme.bodySmall?.color?.withOpacity(0.7),
+    //               ),
+    //             ),
+    //           ],
+    //         ),
+    //       ),
+    //     ],
+    //   ),
+    // );
   }
 
   Widget _buildStatsSection(BuildContext context) {
@@ -779,6 +859,80 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               ),
             ],
           ),
+    );
+  }
+
+  /// Get the CloudFront URL for the profile picture
+  String? _getCloudFrontUrl(String? profilePicturePath) {
+    if (profilePicturePath == null) return null;
+    return 'https://${AppConfig.cloudfrontDomain}/$profilePicturePath';
+  }
+
+  /// Build profile avatar with loading state
+  Widget _buildProfileAvatar(String? profilePicturePath) {
+    final cloudFrontUrl = _getCloudFrontUrl(profilePicturePath);
+
+    if (cloudFrontUrl != null) {
+      return CircleAvatar(
+        radius: 58,
+        backgroundColor: CustomAppColors.colorA.withOpacity(0.3),
+        child: ClipOval(
+          child: Image.network(
+            cloudFrontUrl,
+            width: 116,
+            height: 116,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) {
+                // Image loaded successfully
+                return child;
+              }
+              // Show Cupertino loading indicator while loading
+              return Container(
+                width: 116,
+                height: 116,
+                decoration: BoxDecoration(
+                  color: CustomAppColors.colorA.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: CupertinoActivityIndicator(
+                    color: CustomAppColors.white,
+                    radius: 15,
+                  ),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              // Show error placeholder if image fails to load
+              log(
+                '[pfp-ui] ERROR: Failed to load image from $cloudFrontUrl - $error',
+                name: 'ProfileScreen',
+              );
+              return Container(
+                width: 116,
+                height: 116,
+                decoration: BoxDecoration(
+                  color: CustomAppColors.colorA.withOpacity(0.3),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.error_outline,
+                  size: 40,
+                  color: CustomAppColors.white,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    // No profile picture - show default placeholder
+    return CircleAvatar(
+      radius: 58,
+      backgroundColor: CustomAppColors.colorA.withOpacity(0.3),
+      child: const Icon(Icons.person, size: 60, color: CustomAppColors.white),
     );
   }
 }

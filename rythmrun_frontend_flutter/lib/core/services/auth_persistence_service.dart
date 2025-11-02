@@ -74,6 +74,8 @@ class AuthPersistenceService {
         firstName: userData['firstName'] as String,
         lastName: userData['lastName'] as String,
         email: userData['email'] as String,
+        profilePicturePath: userData['profilePicturePath'] as String?,
+        profilePictureType: userData['profilePictureType'] as String?,
         createdAt:
             userData['createdAt'] != null
                 ? DateTime.parse(userData['createdAt'] as String)
@@ -201,6 +203,25 @@ class AuthPersistenceService {
       _delete(_userDataKey),
       _delete(_lastBackendSyncKey),
     ]);
+  }
+
+  /// Update user data in local storage
+  static Future<void> updateUserData(UserEntity user) async {
+    final userJson = {
+      'id': user.id,
+      'firstName': user.firstName,
+      'lastName': user.lastName,
+      'email': user.email,
+      'profilePicturePath': user.profilePicturePath,
+      'profilePictureType': user.profilePictureType,
+    };
+
+    await _write(_userDataKey, json.encode(userJson));
+
+    if (kDebugMode) {
+      print('✅ AuthPersistenceService: User data updated in local storage');
+      print('   Profile picture path: ${user.profilePicturePath}');
+    }
   }
 
   /// Clear only user data (keep tokens for logout API call)
