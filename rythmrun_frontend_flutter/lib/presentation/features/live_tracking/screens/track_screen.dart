@@ -25,6 +25,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
   late Animation<double> _opacityAnimation;
   late Animation<double> _scaleAnimation;
   bool _isCardExpanded = false;
+  bool _isActiveWorkoutExpanded = false;
 
   @override
   void initState() {
@@ -505,114 +506,366 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     LiveTrackingState state,
     LiveTrackingNotifier notifier,
   ) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Header with expand/collapse button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Workout Type
+              Text(
+                state.currentSession!.type.name.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onPrimary.withOpacity(0.8),
+                  letterSpacing: 1.0,
+                ),
+              ),
+              // Expand/Collapse button
+              IconButton(
+                icon: Icon(
+                  _isActiveWorkoutExpanded
+                      ? Icons.expand_less
+                      : Icons.expand_more,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _isActiveWorkoutExpanded = !_isActiveWorkoutExpanded;
+                  });
+                },
+                tooltip: _isActiveWorkoutExpanded ? 'Collapse' : 'Expand',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          const SizedBox(height: spacingXs),
+
+          // Collapsed view - always visible
+          _buildCollapsedActiveWorkoutView(state),
+
+          // Expanded view - shown when expanded
+          if (_isActiveWorkoutExpanded) ...[
+            const SizedBox(height: spacingMd),
+            _buildExpandedActiveWorkoutView(state),
+          ],
+
+          const SizedBox(height: spacingXs),
+
+          // Controls - always visible
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              if (state.isTracking)
+                _buildControlButton(
+                  icon: Icons.pause,
+                  label: 'Pause',
+                  onPressed: () => notifier.pauseWorkout(),
+                )
+              else if (state.isPaused)
+                _buildControlButton(
+                  icon: Icons.play_arrow,
+                  label: 'Resume',
+                  onPressed: () => notifier.resumeWorkout(),
+                ),
+              _buildControlButton(
+                icon: Icons.stop,
+                label: 'Finish',
+                onPressed: () => _showStopConfirmation(notifier),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCollapsedActiveWorkoutView(LiveTrackingState state) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Workout Type
-        Text(
-          state.currentSession!.type.name.toUpperCase(),
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
-            letterSpacing: 1.2,
+        // Time - more compact
+        Expanded(
+          child: Text(
+            state.formattedElapsedTime,
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
           ),
         ),
-        const SizedBox(height: spacingSm),
-
-        // Time
-        Text(
-          state.formattedElapsedTime,
-          style: TextStyle(
-            fontSize: 48,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.onPrimary,
-          ),
+        // Divider
+        Container(
+          width: 1,
+          height: 40,
+          margin: const EdgeInsets.symmetric(horizontal: spacingMd),
+          color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.3),
         ),
-        const SizedBox(height: spacingSm),
-
-        // Distance and Pace
-        Row(
-          // mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            Expanded(
-              child: _buildMetricColumn(
+        // Distance and Pace - compact horizontal layout
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildCompactMetric(
                 label: 'Distance',
                 value: state.formattedDistance,
                 icon: Icons.straighten,
               ),
-            ),
-            Container(
-              width: 1,
-              height: 30,
-              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.3),
-            ),
-            Expanded(
-              child: _buildMetricColumn(
+              Container(
+                width: 1,
+                height: 20,
+                color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+              ),
+              _buildCompactMetric(
                 label: 'Pace',
                 value: state.formattedPace,
                 icon: Icons.speed,
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: spacingSm),
-
-        // Controls
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            if (state.isTracking)
-              _buildControlButton(
-                icon: Icons.pause,
-                label: 'Pause',
-                onPressed: () => notifier.pauseWorkout(),
-              )
-            else if (state.isPaused)
-              _buildControlButton(
-                icon: Icons.play_arrow,
-                label: 'Resume',
-                onPressed: () => notifier.resumeWorkout(),
-              ),
-            _buildControlButton(
-              icon: Icons.stop,
-              label: 'Finish',
-              onPressed: () => _showStopConfirmation(notifier),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildMetricColumn({
+  Widget _buildCompactMetric({
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
+            size: 18,
+          ),
+          const SizedBox(height: spacingXs),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpandedActiveWorkoutView(LiveTrackingState state) {
+    final session = state.currentSession!;
+    final hasElevation =
+        session.elevationGain != null && session.elevationGain! > 0;
+    final hasCalories = session.calories != null;
+    final maxSpeedKmh =
+        session.maxSpeed > 0
+            ? (session.maxSpeed * 3.6).toStringAsFixed(1)
+            : '0.0';
+
+    return Container(
+      padding: const EdgeInsets.all(spacingMd),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(radiusMd),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Additional metrics grid
+          Row(
+            children: [
+              Expanded(
+                child: _buildDetailMetric(
+                  label: 'Avg Speed',
+                  value: state.formattedAverageSpeed,
+                  icon: Icons.trending_up,
+                ),
+              ),
+              const SizedBox(width: spacingMd),
+              Expanded(
+                child: _buildDetailMetric(
+                  label: 'Max Speed',
+                  value: '$maxSpeedKmh km/h',
+                  icon: Icons.speed,
+                ),
+              ),
+            ],
+          ),
+          if (hasElevation || hasCalories) ...[
+            const SizedBox(height: spacingMd),
+            Row(
+              children: [
+                if (hasElevation)
+                  Expanded(
+                    child: _buildDetailMetric(
+                      label: 'Elevation',
+                      value: '${session.elevationGain!.toStringAsFixed(0)} m',
+                      icon: Icons.terrain,
+                    ),
+                  ),
+                if (hasElevation && hasCalories)
+                  const SizedBox(width: spacingMd),
+                if (hasCalories)
+                  Expanded(
+                    child: _buildDetailMetric(
+                      label: 'Calories',
+                      value: '${session.calories}',
+                      icon: Icons.local_fire_department,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: spacingMd),
+          // Session info
+          Divider(
+            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+            height: 1,
+          ),
+          const SizedBox(height: spacingSm),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildInfoRow(
+                icon: Icons.access_time,
+                label: 'Started',
+                value: _formatTime(session.startTime),
+              ),
+              if (session.pausedDuration != null &&
+                  session.pausedDuration!.inSeconds > 0)
+                _buildInfoRow(
+                  icon: Icons.pause_circle_outline,
+                  label: 'Paused',
+                  value: _formatDuration(session.pausedDuration!),
+                ),
+            ],
+          ),
+          const SizedBox(height: spacingXs),
+          _buildInfoRow(
+            icon: Icons.location_on,
+            label: 'Points',
+            value: '${session.trackingPoints.length}',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailMetric({
     required String label,
     required String value,
     required IconData icon,
   }) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: Theme.of(context).colorScheme.onPrimary, size: 24),
-        // const SizedBox(height: spacingSm),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
-            fontWeight: FontWeight.w500,
-          ),
+        Row(
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+            ),
+            const SizedBox(width: spacingXs),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
-        // const SizedBox(height: spacingSm),
+        const SizedBox(height: spacingXs),
         Text(
           value,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
             color: Theme.of(context).colorScheme.onPrimary,
           ),
         ),
       ],
     );
+  }
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 14,
+          color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.6),
+        ),
+        const SizedBox(width: spacingXs),
+        Text(
+          '$label: ',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.6),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatTime(DateTime? time) {
+    if (time == null) return '--:--';
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds.remainder(60);
+    if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    }
+    return '${seconds}s';
   }
 
   Widget _buildControlButton({
