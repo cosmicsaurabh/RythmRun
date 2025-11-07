@@ -22,19 +22,28 @@ class TrackScreen extends ConsumerStatefulWidget {
 class _TrackScreenState extends ConsumerState<TrackScreen>
     with TickerProviderStateMixin {
   late AnimationController _cardAnimationController;
-  late Animation<double> _cardAnimation;
+  late Animation<double> _opacityAnimation;
+  late Animation<double> _scaleAnimation;
   bool _isCardExpanded = false;
 
   @override
   void initState() {
     super.initState();
     _cardAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 500),
       vsync: this,
     );
-    _cardAnimation = CurvedAnimation(
-      parent: _cardAnimationController,
-      curve: Curves.easeInOutCubic,
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _cardAnimationController,
+        curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
+      ),
+    );
+    _scaleAnimation = Tween<double>(begin: 0.95, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _cardAnimationController,
+        curve: Curves.easeOutCubic,
+      ),
     );
   }
 
@@ -73,7 +82,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
       liveTrackingNotifier.checkPermissions();
     }
 
-    // Expand the card regardless
+    // Expand the card
     setState(() {
       _isCardExpanded = true;
     });
@@ -101,15 +110,6 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             title: const Text('Track Workouts'),
             automaticallyImplyLeading: false,
             elevation: 0,
-            actions:
-                _isCardExpanded
-                    ? [
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: _collapseCard,
-                      ),
-                    ]
-                    : null,
           ),
           body: Stack(
             // crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,65 +133,66 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                     right: spacingLg,
                   ),
                   child: AnimatedBuilder(
-                    animation: _cardAnimation,
+                    animation: _cardAnimationController,
                     builder: (context, child) {
-                      return Container(
-                        // width: double.infinity,
-                        padding: const EdgeInsets.all(spacingXl),
-                        decoration: BoxDecoration(
-                          boxShadow: [
-                            // First shadow layer (e.g. black-100 token)
-                            BoxShadow(
-                              color: Colors.black.withOpacity(
-                                0.1,
-                              ), // adjust opacity to match --sds-color-black-100
-                              offset: const Offset(
-                                0,
-                                4,
-                              ), // replace 4 with your token for --sds-size-depth-100 (y-offset)
-                              blurRadius: 4, // same token for blur
-                              spreadRadius:
-                                  -1, // replace -1 with your token for --sds-size-depth-negative-025
-                            ),
-                            // Second shadow layer (e.g. black-200 token), if needed
-                            BoxShadow(
-                              color: Colors.black.withOpacity(
-                                0.2,
-                              ), // adjust for --sds-color-black-200
-                              offset: const Offset(0, 4),
-                              blurRadius: 4,
-                              spreadRadius: -1,
-                            ),
-                          ],
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              Theme.of(context).colorScheme.primary,
-                              Theme.of(
-                                context,
-                              ).colorScheme.primary.withOpacity(0.6),
+                      return Transform.scale(
+                        scale: _isCardExpanded ? _scaleAnimation.value : 1.0,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                offset: const Offset(0, 8),
+                                blurRadius: 16,
+                                spreadRadius: -2,
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                offset: const Offset(0, 4),
+                                blurRadius: 8,
+                                spreadRadius: -1,
+                              ),
                             ],
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Theme.of(context).colorScheme.primary,
+                                Theme.of(
+                                  context,
+                                ).colorScheme.primary.withOpacity(0.75),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(radiusXl),
                           ),
-                          borderRadius: BorderRadius.circular(radiusLg),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(radiusXl),
+                            child: AnimatedSize(
+                              duration: const Duration(milliseconds: 500),
+                              curve: Curves.easeInOutCubic,
+                              child: Opacity(
+                                opacity:
+                                    _isCardExpanded
+                                        ? _opacityAnimation.value
+                                        : 1.0,
+                                child: Padding(
+                                  padding: EdgeInsets.all(
+                                    _isCardExpanded ? spacingXl : spacingLg,
+                                  ),
+                                  child: _buildCardContent(
+                                    liveTrackingState,
+                                    liveTrackingNotifier,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        child:
-                            liveTrackingState.hasActiveSession
-                                ? _buildActiveWorkoutContent(
-                                  liveTrackingState,
-                                  liveTrackingNotifier,
-                                )
-                                : _isCardExpanded
-                                ? _buildExpandedContent(
-                                  liveTrackingState,
-                                  liveTrackingNotifier,
-                                )
-                                : _buildCollapsedContent(liveTrackingState),
                       );
                     },
                   ),
                 ),
-              ), // const SizedBox(height: spacingLg),
+              ),
               if (liveTrackingState.isLoading)
                 Positioned(
                   top: spacingLg,
@@ -211,56 +212,76 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     );
   }
 
+  Widget _buildCardContent(
+    LiveTrackingState liveTrackingState,
+    LiveTrackingNotifier liveTrackingNotifier,
+  ) {
+    if (liveTrackingState.hasActiveSession) {
+      return _buildActiveWorkoutContent(
+        liveTrackingState,
+        liveTrackingNotifier,
+      );
+    }
+
+    if (_isCardExpanded) {
+      return _buildExpandedContent(liveTrackingState, liveTrackingNotifier);
+    }
+
+    return _buildCollapsedContent(liveTrackingState);
+  }
+
   Widget _buildCollapsedContent(LiveTrackingState liveTrackingState) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          runningIcon,
-          size: 48,
-          color: Theme.of(context).colorScheme.onPrimary,
-        ),
-        const SizedBox(height: spacingMd),
-        Text(
-          'Ready to Track?',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.onPrimary,
-          ),
-        ),
-        const SizedBox(height: spacingSm),
-        Text(
-          'Track your runs, walks, and bike rides with GPS precision.',
-          style: TextStyle(fontSize: 16, color: CustomAppColors.secondaryText),
-        ),
-        const SizedBox(height: spacingLg),
-        ElevatedButton(
-          onPressed: _onStartTrackingPressed,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.onPrimary,
-            foregroundColor: Theme.of(context).colorScheme.primary,
-            padding: const EdgeInsets.symmetric(
-              horizontal: spacingXl,
-              vertical: spacingMd,
-            ),
-            shape: RoundedRectangleBorder(
+    return InkWell(
+      onTap: _onStartTrackingPressed,
+      borderRadius: BorderRadius.circular(radiusXl),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(spacingMd),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
               borderRadius: BorderRadius.circular(radiusMd),
             ),
+            child: Icon(
+              runningIcon,
+              size: 32,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
           ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(playArrowIcon),
-              SizedBox(width: spacingSm),
-              Text(
-                'Start Tracking',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ],
+          const SizedBox(width: spacingLg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Ready to Track?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
+                const SizedBox(height: spacingXs),
+                Text(
+                  'Tap to start your workout',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onPrimary.withOpacity(0.8),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+          Icon(
+            Icons.arrow_forward_ios,
+            size: 20,
+            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+          ),
+        ],
+      ),
     );
   }
 
@@ -268,11 +289,28 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     LiveTrackingState liveTrackingState,
     LiveTrackingNotifier liveTrackingNotifier,
   ) {
-    if (!liveTrackingState.hasLocationPermission) {
-      return _buildPermissionContent(liveTrackingNotifier, liveTrackingState);
-    }
-
-    return _buildWorkoutTypeSelection(liveTrackingNotifier);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Drag handle
+        GestureDetector(
+          onTap: _collapseCard,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: spacingMd),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        if (!liveTrackingState.hasLocationPermission)
+          _buildPermissionContent(liveTrackingNotifier, liveTrackingState)
+        else
+          _buildWorkoutTypeSelection(liveTrackingNotifier),
+      ],
+    );
   }
 
   Widget _buildPermissionContent(
@@ -295,9 +333,21 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             : 'RythmRun needs location access to track your workouts with GPS precision.';
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(icon, size: 64, color: Theme.of(context).colorScheme.onPrimary),
+        Container(
+          padding: const EdgeInsets.all(spacingLg),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icon,
+            size: 56,
+            color: Theme.of(context).colorScheme.onPrimary,
+          ),
+        ),
         const SizedBox(height: spacingLg),
         Text(
           title,
@@ -313,8 +363,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           description,
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 16,
-            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
+            fontSize: 15,
+            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.85),
+            height: 1.4,
           ),
         ),
         const SizedBox(height: spacingXl),
@@ -341,6 +392,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
               horizontal: spacingXl,
               vertical: spacingMd,
             ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(radiusLg),
+            ),
           ),
         ),
       ],
@@ -349,7 +403,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
 
   Widget _buildWorkoutTypeSelection(LiveTrackingNotifier notifier) {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           'Choose Workout Type',
@@ -363,9 +417,10 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
-          crossAxisSpacing: spacingSm,
-          mainAxisSpacing: spacingSm,
-          childAspectRatio: 1.6,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: spacingMd,
+          mainAxisSpacing: spacingMd,
+          childAspectRatio: 1.5,
           children: [
             _buildWorkoutTypeCard(
               icon: Icons.directions_run,
@@ -398,26 +453,43 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     required String title,
     required VoidCallback onTap,
   }) {
-    return Card(
-      color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+    return Material(
+      color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.25),
+      borderRadius: BorderRadius.circular(radiusLg),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(radiusMd),
-        child: Padding(
+        borderRadius: BorderRadius.circular(radiusLg),
+        child: Container(
           padding: const EdgeInsets.all(spacingMd),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radiusLg),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+              width: 1,
+            ),
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 32,
-                color: Theme.of(context).colorScheme.onPrimary,
+              Container(
+                padding: const EdgeInsets.all(spacingSm),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onPrimary.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(radiusMd),
+                ),
+                child: Icon(
+                  icon,
+                  size: 28,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                ),
               ),
               const SizedBox(height: spacingSm),
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                   color: Theme.of(context).colorScheme.onPrimary,
                 ),
