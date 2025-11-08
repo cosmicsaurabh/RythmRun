@@ -161,10 +161,7 @@ final ColorScheme colorSchemeLight = ColorScheme.light(
   surface:
       CustomAppColors
           .surfaceBackgroundLight, // Main background for components like cards, sheets
-  onSurface: CustomAppColors.primaryTextLight, // Text/icons on surfaces
-  background: CustomAppColors.surfaceBackgroundLight, // General app background
-  onBackground:
-      CustomAppColors.primaryTextLight, // Text/icons on general app background
+  onSurface: CustomAppColors.primaryTextLight, // Text/icons on general app background
   error: CustomAppColors.statusDanger, // For error states
   onError: CustomAppColors.white, // Text/icons on error color
 );
@@ -280,7 +277,7 @@ final ThemeData lightTheme = ThemeData(
   textTheme: lightTextTheme,
   appBarTheme: AppBarTheme(
     elevation: 0,
-    color:
+    backgroundColor:
         colorSchemeLight.surface, // AppBar background from ColorScheme surface
     iconTheme: IconThemeData(
       color: colorSchemeLight.onSurface,
@@ -415,13 +412,7 @@ final ColorScheme colorSchemeDark = ColorScheme.dark(
       CustomAppColors
           .surfaceBackgroundDark, // Main background for components like cards, sheets in dark mode
   onSurface:
-      CustomAppColors.primaryTextDark, // Text/icons on surfaces in dark mode
-  background:
-      CustomAppColors
-          .surfaceBackgroundDark, // General app background for dark mode
-  onBackground:
-      CustomAppColors
-          .primaryTextDark, // Text/icons on general app background for dark mode
+      CustomAppColors.primaryTextDark, // Text/icons on general app background for dark mode
   error: CustomAppColors.statusDanger, // For error states
   onError: CustomAppColors.white, // Text/icons on error color
 );
@@ -537,7 +528,7 @@ final ThemeData darkTheme = ThemeData(
   textTheme: darkTextTheme,
   appBarTheme: AppBarTheme(
     elevation: 0,
-    color:
+    backgroundColor:
         colorSchemeDark.surface, // AppBar background from ColorScheme surface
     iconTheme: IconThemeData(
       color: colorSchemeDark.onSurface,

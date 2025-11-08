@@ -52,7 +52,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
     final workoutsState = ref.watch(trackingHistoryProvider);
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: CustomScrollView(
         controller: _scrollController,
         slivers: [
@@ -971,7 +971,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
     final minutes = pace.floor();
     final seconds = ((pace - minutes) * 60).round();
 
-    return '${minutes}:${seconds.toString().padLeft(2, '0')} /km';
+    return '$minutes:${seconds.toString().padLeft(2, '0')} /km';
   }
 
   Future<bool> _showDeleteConfirmation(BuildContext context) async {

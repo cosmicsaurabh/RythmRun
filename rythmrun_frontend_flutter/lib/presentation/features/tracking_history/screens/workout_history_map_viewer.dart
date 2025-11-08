@@ -41,7 +41,7 @@ class _WorkoutHistoryMapViewerState
 
   // Default camera position
   LatLng _center = const LatLng(28.6139, 77.2090); // New Delhi coordinates
-  double _zoom = 16.0;
+  final double _zoom = 16.0;
 
   @override
   void initState() {

@@ -21,7 +21,7 @@ class TrackingHistoryDetailsScreen extends ConsumerStatefulWidget {
 
 class _TrackingHistoryDetailsScreenState
     extends ConsumerState<TrackingHistoryDetailsScreen> {
-  bool _showMapTiles = true;
+  final bool _showMapTiles = true;
 
   @override
   void initState() {
@@ -536,7 +536,7 @@ class _TrackingHistoryDetailsScreenState
             width: double.infinity,
             padding: const EdgeInsets.all(spacingMd),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.background,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(radiusMd),
               border: Border.all(color: Colors.grey.withOpacity(0.2), width: 1),
             ),
@@ -600,7 +600,7 @@ class _TrackingHistoryDetailsScreenState
     if (pace == null || pace == 0) return '--:--';
     final minutes = pace.floor();
     final seconds = ((pace - minutes) * 60).round();
-    return '${minutes}:${seconds.toString().padLeft(2, '0')} /km';
+    return '$minutes:${seconds.toString().padLeft(2, '0')} /km';
   }
 
   String _getWorkoutTypeString(WorkoutType type) {

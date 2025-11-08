@@ -28,8 +28,9 @@ int estimateCalories({
   required double userWeightKg,
   double averageSpeedKmh = 8.0, // default running speed
 }) {
-  if (duration.inSeconds <= 0 || distanceInKm <= 0 || userWeightKg <= 0)
+  if (duration.inSeconds <= 0 || distanceInKm <= 0 || userWeightKg <= 0) {
     return 0;
+  }
 
   // MET values for different activities
   double met;

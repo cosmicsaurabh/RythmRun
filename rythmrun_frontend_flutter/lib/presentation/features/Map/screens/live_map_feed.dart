@@ -37,7 +37,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
 
   // Default camera position (San Francisco)
   LatLng _center = const LatLng(28.6139, 77.2090); // Default to Delhi
-  double _zoom = 16.0;
+  final double _zoom = 16.0;
 
   // Track previous session state to detect changes
   WorkoutSessionEntity? _previousSession;
