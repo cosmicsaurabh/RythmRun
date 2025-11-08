@@ -4,7 +4,6 @@ import 'package:rythmrun_frontend_flutter/data/models/change_password_response_m
 import '../../core/config/app_config.dart';
 import '../../core/config/api_endpoints.dart';
 import '../../core/network/http_client.dart';
-import '../models/user_model.dart';
 import '../models/auth_response_model.dart';
 import '../models/registration_request_model.dart';
 

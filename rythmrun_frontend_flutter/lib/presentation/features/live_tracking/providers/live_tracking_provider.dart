@@ -172,14 +172,15 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
       isTracking: false,
     );
 
-    log('⏸️ Workout paused at ${_pausedTime}');
+    log('⏸️ Workout paused at $_pausedTime');
   }
 
   /// Resume the paused workout
   Future<void> resumeWorkout() async {
     if (state.currentSession == null ||
-        state.currentSession!.status != WorkoutStatus.paused)
+        state.currentSession!.status != WorkoutStatus.paused) {
       return;
+    }
 
     try {
       final resumeTime = DateTime.now();

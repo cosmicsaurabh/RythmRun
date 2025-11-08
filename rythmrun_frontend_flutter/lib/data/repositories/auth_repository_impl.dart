@@ -239,6 +239,7 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   /// Debug method to print stored data (only for development)
+  @override
   Future<void> printStoredData() async {
     await _localDataSource.printStoredData();
   }

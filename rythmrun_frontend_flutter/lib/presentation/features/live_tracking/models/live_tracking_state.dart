@@ -101,8 +101,9 @@ class LiveTrackingState {
 
   /// Get average speed in km/h
   String get formattedAverageSpeed {
-    if (currentSession == null || currentSession!.averageSpeed <= 0)
+    if (currentSession == null || currentSession!.averageSpeed <= 0) {
       return '0.0 km/h';
+    }
     double kmh = currentSession!.averageSpeed * 3.6; // m/s to km/h
     return '${kmh.toStringAsFixed(1)} km/h';
   }
