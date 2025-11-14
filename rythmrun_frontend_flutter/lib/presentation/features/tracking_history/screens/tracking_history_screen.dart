@@ -6,6 +6,7 @@ import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/models/tracking_history_state.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/screens/tracking_history_details_screen.dart';
+import 'package:rythmrun_frontend_flutter/presentation/shared/widgets/connectivity_badge.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 import '../providers/tracking_history_provider.dart';
 
@@ -116,18 +117,25 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
                         ),
                       ],
                     ),
-                    // Filter toggle button
-                    IconButton(
-                      onPressed: () => _showFilterBottomSheet(context, ref),
-                      icon: Icon(
-                        state.hasFilters
-                            ? Icons.filter_alt
-                            : Icons.filter_alt_outlined,
-                        color:
+                    // Connectivity badge and filter toggle button
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const ConnectivityBadgeCompact(),
+                        const SizedBox(width: spacingSm),
+                        IconButton(
+                          onPressed: () => _showFilterBottomSheet(context, ref),
+                          icon: Icon(
                             state.hasFilters
-                                ? CustomAppColors.progressSky
-                                : CustomAppColors.secondaryText,
-                      ),
+                                ? Icons.filter_alt
+                                : Icons.filter_alt_outlined,
+                            color:
+                                state.hasFilters
+                                    ? CustomAppColors.progressSky
+                                    : CustomAppColors.secondaryText,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

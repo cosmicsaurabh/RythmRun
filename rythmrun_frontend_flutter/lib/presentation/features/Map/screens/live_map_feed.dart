@@ -14,7 +14,6 @@ import 'package:rythmrun_frontend_flutter/presentation/common/widgets/map_contro
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_segment_builder.dart';
-import 'package:rythmrun_frontend_flutter/presentation/features/Map/widgets/offline_map_widget.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
@@ -448,140 +447,127 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
         // Check for session state changes
         _handleSessionStateChanges(liveTrackingState.currentSession);
 
-        // Determine if the app is in offline mode
-        final isOffline =
-            sessionData.state == SessionState.authenticatedOffline;
-
         // Debug: Print session state
         print('🗺️ LiveMapFeed: Session state: ${sessionData.state.name}');
-        print('🗺️ LiveMapFeed: Is offline: $isOffline');
         print(
           '🗺️ LiveMapFeed: Current session: ${liveTrackingState.currentSession?.id}',
         );
 
-        return isOffline
-            ? OfflineMapWidget(
-              workout: liveTrackingState.currentSession,
-              markers: _markers,
-              mapController: _mapController,
-              center: _center,
-              zoom: _zoom,
-            )
-            : Container(
-              height: double.infinity, // Adjust height as needed
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(radiusLg),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+        // Always use online flow - TileLayer will handle offline gracefully
+        return Container(
+          height: double.infinity, // Adjust height as needed
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radiusLg),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              child: ClipRRect(
-                // borderRadius: BorderRadius.circular(radiusLg),
-                child: Stack(
+            ],
+          ),
+          child: ClipRRect(
+            // borderRadius: BorderRadius.circular(radiusLg),
+            child: Stack(
+              children: [
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: _center,
+                    initialZoom: _zoom,
+                    minZoom: 3,
+                    maxZoom: 19,
+                    onMapEvent: (event) {
+                      // Any user-driven map interaction disables following
+                      // and marks manual control.
+                      // We check for common interaction events and user source
+                      final isUserEvent =
+                          event.source != MapEventSource.mapController;
+                      if (isUserEvent) {
+                        _manualByUser = true;
+                        _isFollowing = false;
+                      }
+                    },
+                    onTap: (tapPosition, point) {
+                      // Handle map tap if needed
+                    },
+                  ),
                   children: [
-                    FlutterMap(
-                      mapController: _mapController,
-                      options: MapOptions(
-                        initialCenter: _center,
-                        initialZoom: _zoom,
-                        minZoom: 3,
-                        maxZoom: 19,
-                        onMapEvent: (event) {
-                          // Any user-driven map interaction disables following
-                          // and marks manual control.
-                          // We check for common interaction events and user source
-                          final isUserEvent =
-                              event.source != MapEventSource.mapController;
-                          if (isUserEvent) {
-                            _manualByUser = true;
-                            _isFollowing = false;
-                          }
-                        },
-                        onTap: (tapPosition, point) {
-                          // Handle map tap if needed
-                        },
-                      ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName:
-                              'com.github.cosmicsaurabh.rythmrun',
-                          maxZoom: 19,
-                        ),
-                        PolylineLayer(polylines: _solidPolylines),
-                        PolylineLayer(polylines: _dashedPolylines),
-                        MarkerLayer(markers: _markers),
-                      ],
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.github.cosmicsaurabh.rythmrun',
+                      maxZoom: 19,
                     ),
-
-                    // Map controls overlay
-                    Positioned(
-                      bottom: spacingMd,
-                      right: spacingMd,
-                      child: Column(
-                        children: [
-                          buildMapControlButton(
-                            icon: Icons.my_location,
-                            onPressed: _centerOnCurrentLocation,
-                            tooltip: 'Center on current location',
-                          ),
-                          const SizedBox(height: spacingSm),
-                          buildMapControlButton(
-                            icon: Icons.fit_screen,
-                            onPressed: _fitTrackingPath,
-                            tooltip: 'Fit tracking path',
-                          ),
-                          const SizedBox(height: spacingSm),
-                          buildMapControlButton(
-                            icon: Icons.zoom_in,
-                            onPressed: _zoomIn,
-                            tooltip: 'Zoom in',
-                          ),
-                          const SizedBox(height: spacingSm),
-                          buildMapControlButton(
-                            icon: Icons.zoom_out,
-                            onPressed: _zoomOut,
-                            tooltip: 'Zoom out',
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Status overlay
-                    if (liveTrackingState.isLoading)
-                      const Positioned(
-                        top: spacingMd,
-                        left: spacingMd,
-                        right: spacingMd,
-                        child: Card(
-                          child: Padding(
-                            padding: EdgeInsets.all(spacingSm),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CupertinoActivityIndicator(),
-                                ),
-                                SizedBox(width: spacingSm),
-                                Text('Loading location...'),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                    // Error overlay is now handled by the SnackBar
+                    PolylineLayer(polylines: _solidPolylines),
+                    PolylineLayer(polylines: _dashedPolylines),
+                    MarkerLayer(markers: _markers),
                   ],
                 ),
-              ),
-            );
+
+                // Map controls overlay
+                Positioned(
+                  bottom: spacingMd,
+                  right: spacingMd,
+                  child: Column(
+                    children: [
+                      buildMapControlButton(
+                        icon: Icons.my_location,
+                        onPressed: _centerOnCurrentLocation,
+                        tooltip: 'Center on current location',
+                      ),
+                      const SizedBox(height: spacingSm),
+                      buildMapControlButton(
+                        icon: Icons.fit_screen,
+                        onPressed: _fitTrackingPath,
+                        tooltip: 'Fit tracking path',
+                      ),
+                      const SizedBox(height: spacingSm),
+                      buildMapControlButton(
+                        icon: Icons.zoom_in,
+                        onPressed: _zoomIn,
+                        tooltip: 'Zoom in',
+                      ),
+                      const SizedBox(height: spacingSm),
+                      buildMapControlButton(
+                        icon: Icons.zoom_out,
+                        onPressed: _zoomOut,
+                        tooltip: 'Zoom out',
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Status overlay
+                if (liveTrackingState.isLoading)
+                  const Positioned(
+                    top: spacingMd,
+                    left: spacingMd,
+                    right: spacingMd,
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(spacingSm),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CupertinoActivityIndicator(),
+                            ),
+                            SizedBox(width: spacingSm),
+                            Text('Loading location...'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Error overlay is now handled by the SnackBar
+              ],
+            ),
+          ),
+        );
       },
     );
   }

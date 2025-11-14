@@ -10,6 +10,7 @@ import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.da
 import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed.dart';
+import 'package:rythmrun_frontend_flutter/presentation/shared/widgets/connectivity_badge.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 class TrackScreen extends ConsumerStatefulWidget {
@@ -111,6 +112,10 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             title: const Text('Track Workouts'),
             automaticallyImplyLeading: false,
             elevation: 0,
+            actions: const [
+              ConnectivityBadge(),
+              SizedBox(width: spacingMd),
+            ],
           ),
           body: Stack(
             // crossAxisAlignment: CrossAxisAlignment.start,

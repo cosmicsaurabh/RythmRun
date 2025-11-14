@@ -5,6 +5,7 @@ import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/models/app_settings.dart';
 import '../../../common/providers/settings_provider.dart';
+import '../../../shared/widgets/connectivity_badge.dart';
 import '../providers/change_password_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -19,6 +20,10 @@ class SettingsScreen extends ConsumerWidget {
         title: const Text('Settings'),
         elevation: 0,
         backgroundColor: Colors.transparent,
+        actions: const [
+          ConnectivityBadge(),
+          SizedBox(width: spacingMd),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(spacingLg),
