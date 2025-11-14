@@ -6,10 +6,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/map_controller_button.dart';
-import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_segment_builder.dart';
-import 'package:rythmrun_frontend_flutter/presentation/features/Map/widgets/offline_map_widget.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 class WorkoutHistoryMapViewer extends ConsumerStatefulWidget {
@@ -280,44 +278,6 @@ class _WorkoutHistoryMapViewerState
     _animatedMove(target.center, target.zoom);
   }
 
-  void _fitWorkoutToMap() {
-    if (widget.workout.trackingPoints.isEmpty || _mapController == null) return;
-
-    try {
-      // Calculate bounds for all tracking points
-      double minLat = widget.workout.trackingPoints.first.latitude;
-      double maxLat = widget.workout.trackingPoints.first.latitude;
-      double minLng = widget.workout.trackingPoints.first.longitude;
-      double maxLng = widget.workout.trackingPoints.first.longitude;
-
-      for (final point in widget.workout.trackingPoints) {
-        minLat = minLat < point.latitude ? minLat : point.latitude;
-        maxLat = maxLat > point.latitude ? maxLat : point.latitude;
-        minLng = minLng < point.longitude ? minLng : point.longitude;
-        maxLng = maxLng > point.longitude ? maxLng : point.longitude;
-      }
-
-      final bounds = LatLngBounds(
-        LatLng(minLat, minLng),
-        LatLng(maxLat, maxLng),
-      );
-
-      _mapController!.fitCamera(
-        CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
-      );
-    } catch (e) {
-      debugPrint('⚠️ Error fitting map to workout: $e');
-      // Fallback to centering on first point
-      if (widget.workout.trackingPoints.isNotEmpty) {
-        final startPoint = widget.workout.trackingPoints.first;
-        _mapController!.move(
-          LatLng(startPoint.latitude, startPoint.longitude),
-          _zoom,
-        );
-      }
-    }
-  }
-
   void _toggleMapTiles() {
     setState(() {
       _showMapTiles = !_showMapTiles;
@@ -393,9 +353,6 @@ class _WorkoutHistoryMapViewerState
 
   @override
   Widget build(BuildContext context) {
-    final sessionData = ref.watch(sessionProvider);
-    final isOffline = sessionData.state == SessionState.authenticatedOffline;
-
     // Show loading state if map controller is not ready
     if (_mapController == null) {
       return Container(
@@ -433,17 +390,7 @@ class _WorkoutHistoryMapViewerState
       );
     }
 
-    // Use offline map widget when offline
-    if (isOffline) {
-      return OfflineMapWidget(
-        workout: widget.workout,
-        markers: _markers,
-        mapController: _mapController,
-        center: _center,
-        zoom: _zoom,
-      );
-    }
-
+    // Always use online flow - TileLayer will handle offline gracefully
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radiusLg),
