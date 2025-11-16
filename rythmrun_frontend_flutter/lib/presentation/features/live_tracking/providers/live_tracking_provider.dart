@@ -69,6 +69,30 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
     }
   }
 
+  /// Request location service to be enabled (shows system dialog on Android)
+  /// After requesting, re-checks permissions to update state
+  Future<void> requestLocationService() async {
+    try {
+      state = state.copyWith(isLoading: true);
+      final serviceEnabled =
+          await _liveTrackingRepository.requestLocationService();
+
+      // Re-check permissions after requesting service
+      // This will update the state with the new permission status
+      await checkPermissions();
+
+      if (serviceEnabled) {
+        log('✅ Location service enabled successfully');
+      }
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Failed to request location service: $e',
+      );
+      log('❌ Failed to request location service: $e');
+    }
+  }
+
   /// Start a new workout session
   Future<void> startWorkout(WorkoutType type) async {
     try {

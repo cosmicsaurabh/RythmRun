@@ -608,6 +608,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.1"
+  location:
+    dependency: "direct main"
+    description:
+      name: location
+      sha256: ee57923720163324416ce0306b701db6d845d2c1a3bf44d25b607cbddbaa3973
+      url: "https://pub.dev"
+    source: hosted
+    version: "7.0.1"
+  location_platform_interface:
+    dependency: transitive
+    description:
+      name: location_platform_interface
+      sha256: "1e535ccc8b4a9612de4e4319871136b45d2b5d1fb0c2a8bf99687242bf7ca5f7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.0"
+  location_web:
+    dependency: transitive
+    description:
+      name: location_web
+      sha256: e6435cfd175b0f6e94d6fdc43c104d13cec7e27b21a8cee00bd9516a3d6a4c81
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.4"
   logger:
     dependency: transitive
     description:
@@ -644,10 +668,10 @@ packages:
     dependency: transitive
     description:
       name: meta
-      sha256: e3641ec5d63ebf0d9b41bd43201a66e3fc79a65db5f61fc181f04cd27aab950c
+      sha256: "23f08335362185a5ea2ad3a4e597f1375e78bce8a040df5c600c8d3552ef2394"
       url: "https://pub.dev"
     source: hosted
-    version: "1.16.0"
+    version: "1.17.0"
   mgrs_dart:
     dependency: transitive
     description:
@@ -1049,10 +1073,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "522f00f556e73044315fa4585ec3270f1808a4b186c936e612cab0b565ff1e00"
+      sha256: ab2726c1a94d3176a45960b6234466ec367179b87dd74f1611adb1f3b5fb9d55
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.6"
+    version: "0.7.7"
   typed_data:
     dependency: transitive
     description:

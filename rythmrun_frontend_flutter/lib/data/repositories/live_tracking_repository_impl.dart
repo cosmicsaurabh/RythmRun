@@ -35,4 +35,9 @@ class LiveTrackingRepositoryImpl implements LiveTrackingRepository {
   ) {
     return LiveTrackingService.calculateDistance(point1, point2);
   }
+
+  @override
+  Future<bool> requestLocationService() async {
+    return await LiveTrackingService.instance.requestLocationService();
+  }
 }

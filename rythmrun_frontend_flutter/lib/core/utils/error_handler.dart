@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../network/http_client.dart';
+import '../config/app_config.dart';
 
 class ErrorHandler {
   /// Converts any exception to a user-friendly error message
@@ -33,6 +34,10 @@ class ErrorHandler {
     }
 
     if (exception is NetworkException) {
+      if (AppConfig.isDebug) {
+        final baseUrl = AppConfig.baseUrl;
+        return 'Network error connecting to dev server at $baseUrl. Please check your connection and ensure the server is running.';
+      }
       return 'Network error occurred. Please check your connection and try again.';
     }
 
@@ -44,11 +49,27 @@ class ErrorHandler {
         message.contains('Connection refused') ||
         message.contains('Connection timed out') ||
         message.contains('Network is unreachable')) {
+      // Provide more helpful messages in debug mode
+      if (AppConfig.isDebug) {
+        final baseUrl = AppConfig.baseUrl;
+        if (message.contains('Connection refused')) {
+          return 'Unable to connect to dev server at $baseUrl. Please ensure the server is running and accessible.';
+        } else if (message.contains('Connection timed out')) {
+          return 'Connection to dev server at $baseUrl timed out. Please check your network connection.';
+        } else {
+          return 'Unable to connect to dev server at $baseUrl. Please check your network connection and ensure the server is running.';
+        }
+      }
+      // Production message
       return 'Unable to connect to server. Please check your internet connection and try again.';
     }
 
     // Handle timeout errors
     if (message.contains('TimeoutException') || message.contains('timeout')) {
+      if (AppConfig.isDebug) {
+        final baseUrl = AppConfig.baseUrl;
+        return 'Connection to dev server at $baseUrl timed out. Please check your network connection.';
+      }
       return 'Connection timeout. Please check your internet connection and try again.';
     }
 

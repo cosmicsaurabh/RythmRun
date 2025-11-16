@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:location/location.dart' as location_plugin;
 import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 
@@ -211,6 +213,48 @@ class LiveTrackingService {
     } catch (e) {
       debugPrint('❌ Failed to get current elevation: $e');
       return null;
+    }
+  }
+
+  /// Request location service to be enabled (shows system dialog on Android)
+  /// Returns true if location service was enabled, false otherwise
+  /// On iOS, this will open location settings
+  Future<bool> requestLocationService() async {
+    try {
+      // Only use location plugin's requestService on Android
+      // On iOS, fall back to opening settings
+      if (Platform.isAndroid) {
+        final location = location_plugin.Location();
+        bool serviceEnabled = await location.serviceEnabled();
+        
+        if (!serviceEnabled) {
+          // This shows the Samsung-style system dialog with "Turn on" button
+          serviceEnabled = await location.requestService();
+          if (serviceEnabled) {
+            log('✅ Location service enabled via system dialog');
+            return true;
+          } else {
+            log('❌ User declined to enable location service');
+            return false;
+          }
+        } else {
+          // Already enabled
+          return true;
+        }
+      } else {
+        // iOS: open location settings
+        await Geolocator.openLocationSettings();
+        return false; // We can't know if user enabled it, so return false
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to request location service: $e');
+      // Fallback: open location settings
+      try {
+        await Geolocator.openLocationSettings();
+      } catch (_) {
+        // Ignore errors opening settings
+      }
+      return false;
     }
   }
 }
