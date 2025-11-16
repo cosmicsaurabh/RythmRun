@@ -15,4 +15,8 @@ abstract class LiveTrackingRepository {
     TrackingPointEntity point2,
   );
   Future<double?> getCurrentElevation();
+
+  /// Request location service to be enabled (shows system dialog on Android)
+  /// Returns true if location service was enabled, false otherwise
+  Future<bool> requestLocationService();
 }

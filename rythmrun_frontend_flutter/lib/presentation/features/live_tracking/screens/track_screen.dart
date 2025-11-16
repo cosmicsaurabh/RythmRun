@@ -376,11 +376,13 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
         ),
         const SizedBox(height: spacingXl),
         ElevatedButton.icon(
-          onPressed: () {
+          onPressed: () async {
             if (LocationErrorHandler.isLocationServicesDisabled(
               locationStatus,
             )) {
-              _showLocationSettingsDialog();
+              // On Android: shows system dialog with "Turn on" button
+              // On iOS: opens location settings
+              await notifier.requestLocationService();
             } else {
               notifier.checkPermissions();
             }
@@ -936,38 +938,4 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     );
   }
 
-  void _showLocationSettingsDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Enable Location Services'),
-            content: const Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'To track your workouts, please enable location services:',
-                ),
-                SizedBox(height: 12),
-                Text('1. Open your device Settings'),
-                Text('2. Go to Privacy & Security'),
-                Text('3. Tap Location Services'),
-                Text('4. Turn on Location Services'),
-                Text('5. Return to RythmRun and try again'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Got it'),
-              ),
-            ],
-          ),
-    );
-  }
 }
