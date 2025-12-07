@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rythmrun_frontend_flutter/features/ads/service/ads_providers.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/landing_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/login/screens/login_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/registration/screens/registration_screen.dart';
@@ -28,6 +29,7 @@ class RythmRunApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.read(adsServiceProvider).initialize();
     final settings = ref.watch(settingsProvider);
 
     return MaterialApp(
