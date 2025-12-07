@@ -28,6 +28,7 @@ class ActivityBannerAdSlot extends ConsumerWidget {
     }
 
     return Container(
+      constraints: const BoxConstraints(maxHeight: 70),
       color: backgroundColor ?? Theme.of(context).colorScheme.surface,
       padding: padding,
       alignment: Alignment.center,
