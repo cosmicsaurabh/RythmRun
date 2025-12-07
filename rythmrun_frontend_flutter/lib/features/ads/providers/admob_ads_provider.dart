@@ -205,16 +205,16 @@ class AdmobAdsProvider implements AdsProvider {
     return switch (placement) {
       AdsPlacement.startOfDayOffer =>
         isAndroid
-            ? 'ca-app-pub-3940256099942544/5224354917'
-            : 'ca-app-pub-3940256099942544/1712485313',
+            ? 'ca-app-pub-9575153117176686/1433176172'
+            : 'ca-app-pub-3940256099942544/1712485313', // iOS test ID - replace when you have iOS
       AdsPlacement.postActivityUnskippable =>
         isAndroid
-            ? 'ca-app-pub-3940256099942544/1033173712'
-            : 'ca-app-pub-3940256099942544/4411468910',
+            ? 'ca-app-pub-9575153117176686/9279876606'
+            : 'ca-app-pub-3940256099942544/4411468910', // iOS test ID - replace when you have iOS
       AdsPlacement.activityBanner =>
         isAndroid
-            ? 'ca-app-pub-3940256099942544/6300978111'
-            : 'ca-app-pub-3940256099942544/2934735716',
+            ? 'ca-app-pub-9575153117176686/5180849497'
+            : 'ca-app-pub-3940256099942544/2934735716', // iOS test ID - replace when you have iOS
     };
   }
 }
