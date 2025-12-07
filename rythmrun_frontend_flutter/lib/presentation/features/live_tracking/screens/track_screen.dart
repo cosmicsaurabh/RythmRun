@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/features/ads/core/ads_result.dart';
+import 'package:rythmrun_frontend_flutter/features/ads/presentation/banner_ad_widget.dart';
+import 'package:rythmrun_frontend_flutter/features/ads/service/ads_providers.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
@@ -112,11 +115,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             title: const Text('Track Workouts'),
             automaticallyImplyLeading: false,
             elevation: 0,
-            actions: const [
-              ConnectivityBadge(),
-              SizedBox(width: spacingMd),
-            ],
+            actions: const [ConnectivityBadge(), SizedBox(width: spacingMd)],
           ),
+          bottomNavigationBar: const ActivityBannerAdSlot(),
           body: Stack(
             // crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -926,6 +927,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                   Navigator.pop(context);
                   await notifier.stopWorkout();
                   ref.read(trackingHistoryProvider.notifier).refresh();
+                  await _showPostActivityAd();
                   _collapseCard();
                 },
                 style: ElevatedButton.styleFrom(
@@ -938,4 +940,19 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     );
   }
 
+  Future<void> _showPostActivityAd() async {
+    final adsService = ref.read(adsServiceProvider);
+    final result = await adsService.showPostActivityAd();
+    if (!mounted) return;
+
+    if (result.status == AdsResultStatus.failed ||
+        result.status == AdsResultStatus.unavailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.errorMessage ?? 'No ad available right now.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
 }

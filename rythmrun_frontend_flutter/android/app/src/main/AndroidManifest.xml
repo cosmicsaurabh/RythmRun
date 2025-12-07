@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
     
+    <!-- Required for Google Mobile Ads on Android 13+ -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+    
     <application
         android:label="RythmRun"
         android:name="${applicationName}"
@@ -35,6 +38,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        
+        <!-- AdMob App ID - Production -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-9575153117176686~2854069054" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
