@@ -6,6 +6,7 @@ import 'package:rythmrun_frontend_flutter/features/ads/service/ads_providers.dar
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/screens/track_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/screens/tracking_history_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/profile/screens/profile_screen.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/fitness_calculator/screens/fitness_tools_screen.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 // Provider for managing the current tab index
@@ -89,6 +90,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final List<Widget> screens = [
       const TrackScreen(),
       const ActivitiesScreen(),
+      const FitnessToolsScreen(),
       const ProfileScreen(),
     ];
 
@@ -103,6 +105,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(trackChangesIcon), label: 'Track'),
           BottomNavigationBarItem(icon: Icon(listAltIcon), label: 'Activities'),
+          BottomNavigationBarItem(icon: Icon(fitnessIcon), label: 'Tools'),
           BottomNavigationBarItem(icon: Icon(personIcon), label: 'Profile'),
         ],
       ),
