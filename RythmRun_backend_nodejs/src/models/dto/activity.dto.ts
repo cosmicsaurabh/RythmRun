@@ -39,6 +39,27 @@ export class CreateActivityDto {
     @IsOptional()
     isPublic?: boolean;
 
+    @IsNumber()
+    @IsOptional()
+    @Min(0)
+    pausedDuration?: number;
+
+    @IsString()
+    @IsOptional()
+    name?: string;
+
+    @IsNumber()
+    @IsOptional()
+    elevationGain?: number;
+
+    @IsNumber()
+    @IsOptional()
+    elevationLoss?: number;
+
+    @IsArray()
+    @IsOptional()
+    statusChanges?: StatusChangeDto[];
+
     @IsArray()
     locations!: LocationDto[];
 }
@@ -64,6 +85,18 @@ export class LocationDto {
     @IsNumber()
     @IsOptional()
     speed?: number;
+
+    @IsNumber()
+    @IsOptional()
+    heading?: number;
+}
+
+export class StatusChangeDto {
+    @IsString()
+    status!: string;
+
+    @IsDateString()
+    timestamp!: string;
 }
 
 export class GetActivitiesQueryDto {
@@ -135,6 +168,27 @@ export class UpdateActivityDto {
     @IsBoolean()
     @IsOptional()
     isPublic?: boolean;
+
+    @IsNumber()
+    @IsOptional()
+    @Min(0)
+    pausedDuration?: number;
+
+    @IsString()
+    @IsOptional()
+    name?: string;
+
+    @IsNumber()
+    @IsOptional()
+    elevationGain?: number;
+
+    @IsNumber()
+    @IsOptional()
+    elevationLoss?: number;
+
+    @IsArray()
+    @IsOptional()
+    statusChanges?: StatusChangeDto[];
 
     @IsArray()
     @IsOptional()

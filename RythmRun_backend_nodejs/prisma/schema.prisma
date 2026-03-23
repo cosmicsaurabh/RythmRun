@@ -38,13 +38,18 @@ model Activity {
   maxSpeed    Float
   calories    Int?
   description String?
-  isPublic    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @default(now()) @updatedAt
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  comments    Comment[]
-  likes       Like[]
-  locations   Location[]
+  isPublic        Boolean        @default(true)
+  pausedDuration  Int?
+  name            String?
+  elevationGain   Float?
+  elevationLoss   Float?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @default(now()) @updatedAt
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments        Comment[]
+  likes           Like[]
+  locations       Location[]
+  statusChanges   StatusChange[]
 }
 
 model Location {
@@ -56,6 +61,15 @@ model Location {
   timestamp  DateTime
   accuracy   Float?
   speed      Float?
+  heading    Float?
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+}
+
+model StatusChange {
+  id         Int      @id @default(autoincrement())
+  activityId Int
+  status     String   @db.VarChar(20)
+  timestamp  DateTime
   activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
 }
 
