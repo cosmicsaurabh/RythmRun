@@ -36,6 +36,7 @@ async function main() {
   const activity1 = await prisma.activity.create({
     data: {
       userId: user1.id,
+      clientSyncId: `seed-${user1.id}-20240324-morning-run`,
       type: 'RUN',
       startTime: new Date('2024-03-24T08:00:00Z'),
       endTime: new Date('2024-03-24T09:00:00Z'),

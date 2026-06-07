@@ -7,6 +7,16 @@ export class ActivityService {
     private readonly DEFAULT_PAGE = 1;
     private readonly DEFAULT_LIMIT = 10;
     private readonly MAX_LIMIT = 50; // Add maximum limit to prevent large queries
+    private readonly activityInclude = {
+        locations: true,
+        statusChanges: true,
+        _count: {
+            select: {
+                comments: true,
+                likes: true
+            }
+        }
+    } as const;
 
     constructor(
         @inject("PrismaClient") private prisma: PrismaClient
@@ -15,10 +25,25 @@ export class ActivityService {
     async createActivity(userId: number, dto: CreateActivityDto) {
         // Create activity with its locations in a transaction
         return await this.prisma.$transaction(async (tx) => {
+            const existingActivity = await tx.activity.findUnique({
+                where: {
+                    userId_clientSyncId: {
+                        userId,
+                        clientSyncId: dto.clientSyncId
+                    }
+                },
+                include: this.activityInclude
+            });
+
+            if (existingActivity) {
+                return existingActivity;
+            }
+
             // Create the activity
             const activity = await tx.activity.create({
                 data: {
                     userId,
+                    clientSyncId: dto.clientSyncId,
                     type: dto.type,
                     startTime: new Date(dto.startTime),
                     endTime: new Date(dto.endTime),
@@ -66,16 +91,7 @@ export class ActivityService {
             // Return activity with its locations and status changes
             return await tx.activity.findUnique({
                 where: { id: activity.id },
-                include: {
-                    locations: true,
-                    statusChanges: true,
-                    _count: {
-                        select: {
-                            comments: true,
-                            likes: true
-                        }
-                    }
-                }
+                include: this.activityInclude
             });
         });
     }
@@ -105,16 +121,7 @@ export class ActivityService {
         const [activities, total] = await Promise.all([
             this.prisma.activity.findMany({
                 where,
-                include: {
-                    locations: true,
-                    statusChanges: true,
-                    _count: {
-                        select: {
-                            comments: true,
-                            likes: true
-                        }
-                    }
-                },
+                include: this.activityInclude,
                 orderBy: {
                     startTime: 'desc'
                 },
@@ -215,16 +222,7 @@ export class ActivityService {
             // Return updated activity with its locations and status changes
             return await tx.activity.findUnique({
                 where: { id: activityId },
-                include: {
-                    locations: true,
-                    statusChanges: true,
-                    _count: {
-                        select: {
-                            comments: true,
-                            likes: true
-                        }
-                    }
-                }
+                include: this.activityInclude
             });
         });
     }
@@ -261,6 +259,7 @@ export class ActivityService {
                 ]
             },
             include: {
+                ...this.activityInclude,
                 user: {
                     select: {
                         id: true,
@@ -269,14 +268,6 @@ export class ActivityService {
                         lastname: true,
                         profilePicturePath: true,
                         profilePictureType: true
-                    }
-                },
-                locations: true,
-                statusChanges: true,
-                _count: {
-                    select: {
-                        comments: true,
-                        likes: true
                     }
                 }
             }

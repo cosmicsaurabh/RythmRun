@@ -40,6 +40,7 @@ describe('ActivityService', () => {
   const userId = 1;
 
   const baseActivityDto: CreateActivityDto = {
+    clientSyncId: 'rr-00000001-0001-0001-abcd-1234567890ab',
     type: 'running',
     startTime: '2026-03-22T10:00:00.000Z',
     endTime: '2026-03-22T10:30:00.000Z',
@@ -90,6 +91,7 @@ describe('ActivityService', () => {
   const mockActivityReturn = {
     id: 1,
     userId: 1,
+    clientSyncId: 'rr-00000001-0001-0001-abcd-1234567890ab',
     type: 'running',
     startTime: new Date('2026-03-22T10:00:00.000Z'),
     endTime: new Date('2026-03-22T10:30:00.000Z'),
@@ -135,6 +137,7 @@ describe('ActivityService', () => {
 
   describe('createActivity', () => {
     it('should create activity with all new sync fields', async () => {
+      mockTx.activity.findUnique.mockResolvedValueOnce(null);
       mockTx.activity.create.mockResolvedValue({ id: 1 });
       mockTx.location.createMany.mockResolvedValue({ count: 1 });
       mockTx.statusChange.createMany.mockResolvedValue({ count: 4 });
@@ -142,8 +145,19 @@ describe('ActivityService', () => {
 
       const result = await service.createActivity(userId, fullActivityDto);
 
+      expect(mockTx.activity.findUnique).toHaveBeenNthCalledWith(1, {
+        where: {
+          userId_clientSyncId: {
+            userId,
+            clientSyncId: fullActivityDto.clientSyncId,
+          },
+        },
+        include: expect.any(Object),
+      });
+
       // Verify activity.create was called with new fields
       const createData = mockTx.activity.create.mock.calls[0][0].data;
+      expect(createData.clientSyncId).toBe(fullActivityDto.clientSyncId);
       expect(createData.pausedDuration).toBe(120);
       expect(createData.name).toBe('Morning Jog');
       expect(createData.elevationGain).toBe(45.5);
@@ -168,6 +182,7 @@ describe('ActivityService', () => {
     });
 
     it('should create activity without optional sync fields (backward compat)', async () => {
+      mockTx.activity.findUnique.mockResolvedValueOnce(null);
       mockTx.activity.create.mockResolvedValue({ id: 2 });
       mockTx.location.createMany.mockResolvedValue({ count: 1 });
       mockTx.activity.findUnique.mockResolvedValue({
@@ -205,12 +220,24 @@ describe('ActivityService', () => {
         locations: [],
       };
 
+      mockTx.activity.findUnique.mockResolvedValueOnce(null);
       mockTx.activity.create.mockResolvedValue({ id: 3 });
       mockTx.activity.findUnique.mockResolvedValue({ ...mockActivityReturn, id: 3, locations: [] });
 
       await service.createActivity(userId, dto);
 
       expect(mockTx.location.createMany).not.toHaveBeenCalled();
+    });
+
+    it('should return the existing activity when clientSyncId already exists', async () => {
+      mockTx.activity.findUnique.mockResolvedValue(mockActivityReturn);
+
+      const result = await service.createActivity(userId, fullActivityDto);
+
+      expect(mockTx.activity.create).not.toHaveBeenCalled();
+      expect(mockTx.location.createMany).not.toHaveBeenCalled();
+      expect(mockTx.statusChange.createMany).not.toHaveBeenCalled();
+      expect(result).toEqual(mockActivityReturn);
     });
   });
 

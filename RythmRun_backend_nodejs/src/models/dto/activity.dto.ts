@@ -2,6 +2,9 @@ import { IsString, IsOptional, IsBoolean, IsNumber, IsDateString, Min, IsArray }
 
 export class CreateActivityDto {
     @IsString()
+    clientSyncId!: string;
+
+    @IsString()
     type!: string;
 
     @IsDateString()
