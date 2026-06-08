@@ -7,6 +7,16 @@ export class ActivityService {
     private readonly DEFAULT_PAGE = 1;
     private readonly DEFAULT_LIMIT = 10;
     private readonly MAX_LIMIT = 50; // Add maximum limit to prevent large queries
+    private readonly activityInclude = {
+        locations: true,
+        statusChanges: true,
+        _count: {
+            select: {
+                comments: true,
+                likes: true
+            }
+        }
+    } as const;
 
     constructor(
         @inject("PrismaClient") private prisma: PrismaClient
@@ -15,10 +25,25 @@ export class ActivityService {
     async createActivity(userId: number, dto: CreateActivityDto) {
         // Create activity with its locations in a transaction
         return await this.prisma.$transaction(async (tx) => {
+            const existingActivity = await tx.activity.findUnique({
+                where: {
+                    userId_clientSyncId: {
+                        userId,
+                        clientSyncId: dto.clientSyncId
+                    }
+                },
+                include: this.activityInclude
+            });
+
+            if (existingActivity) {
+                return existingActivity;
+            }
+
             // Create the activity
             const activity = await tx.activity.create({
                 data: {
                     userId,
+                    clientSyncId: dto.clientSyncId,
                     type: dto.type,
                     startTime: new Date(dto.startTime),
                     endTime: new Date(dto.endTime),
@@ -28,7 +53,11 @@ export class ActivityService {
                     maxSpeed: dto.maxSpeed,
                     calories: dto.calories,
                     description: dto.description,
-                    isPublic: dto.isPublic ?? true, // Default to true if not provided
+                    isPublic: dto.isPublic ?? true,
+                    pausedDuration: dto.pausedDuration,
+                    name: dto.name,
+                    elevationGain: dto.elevationGain,
+                    elevationLoss: dto.elevationLoss,
                 }
             });
 
@@ -42,23 +71,27 @@ export class ActivityService {
                         altitude: loc.altitude,
                         timestamp: new Date(loc.timestamp),
                         accuracy: loc.accuracy,
-                        speed: loc.speed
+                        speed: loc.speed,
+                        heading: loc.heading,
                     }))
                 });
             }
 
-            // Return activity with its locations
+            // Create status changes
+            if (dto.statusChanges && dto.statusChanges.length > 0) {
+                await tx.statusChange.createMany({
+                    data: dto.statusChanges.map(sc => ({
+                        activityId: activity.id,
+                        status: sc.status,
+                        timestamp: new Date(sc.timestamp),
+                    }))
+                });
+            }
+
+            // Return activity with its locations and status changes
             return await tx.activity.findUnique({
                 where: { id: activity.id },
-                include: {
-                    locations: true,
-                    _count: {
-                        select: {
-                            comments: true,
-                            likes: true
-                        }
-                    }
-                }
+                include: this.activityInclude
             });
         });
     }
@@ -88,15 +121,7 @@ export class ActivityService {
         const [activities, total] = await Promise.all([
             this.prisma.activity.findMany({
                 where,
-                include: {
-                    locations: true,
-                    _count: {
-                        select: {
-                            comments: true,
-                            likes: true
-                        }
-                    }
-                },
+                include: this.activityInclude,
                 orderBy: {
                     startTime: 'desc'
                 },
@@ -154,18 +179,20 @@ export class ActivityService {
                     maxSpeed: dto.maxSpeed,
                     calories: dto.calories,
                     description: dto.description,
-                    isPublic: dto.isPublic
+                    isPublic: dto.isPublic,
+                    pausedDuration: dto.pausedDuration,
+                    name: dto.name,
+                    elevationGain: dto.elevationGain,
+                    elevationLoss: dto.elevationLoss,
                 }
             });
 
             // If locations are provided, update them
             if (dto.locations && dto.locations.length > 0) {
-                // Delete existing locations
                 await tx.location.deleteMany({
                     where: { activityId }
                 });
 
-                // Create new locations
                 await tx.location.createMany({
                     data: dto.locations.map(loc => ({
                         activityId,
@@ -174,23 +201,28 @@ export class ActivityService {
                         altitude: loc.altitude,
                         timestamp: new Date(loc.timestamp),
                         accuracy: loc.accuracy,
-                        speed: loc.speed
+                        speed: loc.speed,
+                        heading: loc.heading,
                     }))
                 });
             }
 
-            // Return updated activity with its locations
+            // Replace status changes
+            await tx.statusChange.deleteMany({ where: { activityId } });
+            if (dto.statusChanges && dto.statusChanges.length > 0) {
+                await tx.statusChange.createMany({
+                    data: dto.statusChanges.map(sc => ({
+                        activityId,
+                        status: sc.status,
+                        timestamp: new Date(sc.timestamp),
+                    }))
+                });
+            }
+
+            // Return updated activity with its locations and status changes
             return await tx.activity.findUnique({
                 where: { id: activityId },
-                include: {
-                    locations: true,
-                    _count: {
-                        select: {
-                            comments: true,
-                            likes: true
-                        }
-                    }
-                }
+                include: this.activityInclude
             });
         });
     }
@@ -227,6 +259,7 @@ export class ActivityService {
                 ]
             },
             include: {
+                ...this.activityInclude,
                 user: {
                     select: {
                         id: true,
@@ -235,13 +268,6 @@ export class ActivityService {
                         lastname: true,
                         profilePicturePath: true,
                         profilePictureType: true
-                    }
-                },
-                locations: true,
-                _count: {
-                    select: {
-                        comments: true,
-                        likes: true
                     }
                 }
             }
