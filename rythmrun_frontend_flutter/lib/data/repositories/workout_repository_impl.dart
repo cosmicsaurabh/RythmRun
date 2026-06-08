@@ -1,8 +1,12 @@
 import 'dart:developer';
 
+import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
+import 'package:rythmrun_frontend_flutter/data/datasources/activity_remote_datasource.dart';
+import 'package:rythmrun_frontend_flutter/data/datasources/auth_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/workout_local_datasource.dart';
+import 'package:rythmrun_frontend_flutter/data/models/activity_sync_model.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/auth_repository.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/workout_repository.dart';
@@ -10,12 +14,19 @@ import 'package:rythmrun_frontend_flutter/domain/repositories/workout_repository
 class WorkoutRepositoryImpl implements WorkoutRepository {
   final WorkoutLocalDataSource _localDataSource;
   final AuthRepository _authRepository;
+  final ActivityRemoteDataSource _remoteDataSource;
+  final AuthLocalDataSource _authLocalDataSource;
+  bool _isSyncing = false;
 
-  WorkoutRepositoryImpl(this._localDataSource, this._authRepository);
+  WorkoutRepositoryImpl(
+    this._localDataSource,
+    this._authRepository,
+    this._remoteDataSource,
+    this._authLocalDataSource,
+  );
 
   /// Get current user ID from auth repository
   /// Returns null only if no user data is available locally
-  @override
   Future<int?> getCurrentUserId() async {
     final user = await _authRepository.getCurrentUser();
     return user?.id != null ? EnsureTypeHelper.ensureInt(user!.id) : null;
@@ -36,8 +47,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
         workout,
       );
 
-      // TODO: Try to sync with server (fire and forget)
-      // Don't wait for sync to complete
+      // Fire-and-forget sync. Local save remains the source of truth.
       syncWorkouts().catchError((e) {
         log('Failed to sync workout: $e');
       });
@@ -110,12 +120,128 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
 
   @override
   Future<void> syncWorkouts() async {
-    // TODO: Implement server sync
-    // For now, this is a placeholder
-    // 1. Get unsynced workouts
-    // 2. Send to server
-    // 3. Mark as synced on success
-    log('Workout sync not implemented yet');
+    if (_isSyncing) {
+      return;
+    }
+
+    _isSyncing = true;
+
+    try {
+      final userId = await getCurrentUserId();
+      if (userId == null) {
+        return;
+      }
+
+      await _localDataSource.ensureClientSyncIds();
+
+      final initialAuthHeaders = await _authLocalDataSource.getAuthHeaders();
+      if (initialAuthHeaders == null) {
+        return;
+      }
+      var authHeaders = initialAuthHeaders;
+
+      final unsyncedWorkouts = await _localDataSource
+          .getUnsyncedWorkoutsFromLocalDatabase(userId);
+
+      for (final workout in unsyncedWorkouts) {
+        final localWorkoutId = _parseLocalWorkoutId(workout.id);
+        if (localWorkoutId == null) {
+          log('Skipping workout with invalid local ID: ${workout.id}');
+          continue;
+        }
+
+        if (workout.endTime == null) {
+          continue;
+        }
+
+        if (workout.remoteActivityId != null) {
+          await _localDataSource.markWorkoutAsSyncedInLocalDatabase(
+            localWorkoutId,
+          );
+          continue;
+        }
+
+        try {
+          await _pushWorkout(workout, localWorkoutId, authHeaders);
+        } on UnauthorizedException catch (_) {
+          final refreshedAuthHeaders = await _refreshAuthHeaders();
+          if (refreshedAuthHeaders == null) {
+            log(
+              'Workout sync halted after auth refresh failed for ${workout.id}',
+            );
+            return;
+          }
+          authHeaders = refreshedAuthHeaders;
+
+          try {
+            await _pushWorkout(workout, localWorkoutId, authHeaders);
+          } catch (retryError) {
+            log(
+              'Failed to sync workout ${workout.id} after auth refresh: '
+              '$retryError',
+            );
+          }
+        } on ForbiddenException catch (_) {
+          final refreshedAuthHeaders = await _refreshAuthHeaders();
+          if (refreshedAuthHeaders == null) {
+            log(
+              'Workout sync halted after auth refresh failed for ${workout.id}',
+            );
+            return;
+          }
+          authHeaders = refreshedAuthHeaders;
+
+          try {
+            await _pushWorkout(workout, localWorkoutId, authHeaders);
+          } catch (retryError) {
+            log(
+              'Failed to sync workout ${workout.id} after auth refresh: '
+              '$retryError',
+            );
+          }
+        } catch (e) {
+          log('Failed to sync workout ${workout.id}: $e');
+        }
+      }
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+  Future<void> _pushWorkout(
+    WorkoutSessionEntity workout,
+    int localWorkoutId,
+    Map<String, String> authHeaders,
+  ) async {
+    final activityJson = ActivitySyncModel.toJson(workout);
+    final remoteActivityId = await _remoteDataSource.createActivity(
+      activityJson,
+      authHeaders,
+    );
+
+    await _localDataSource.updateRemoteActivityId(
+      localWorkoutId,
+      remoteActivityId,
+    );
+    await _localDataSource.markWorkoutAsSyncedInLocalDatabase(localWorkoutId);
+  }
+
+  Future<Map<String, String>?> _refreshAuthHeaders() async {
+    try {
+      await _authRepository.refreshToken();
+      return await _authLocalDataSource.getAuthHeaders();
+    } catch (e) {
+      log('Failed to refresh auth token during workout sync: $e');
+      return null;
+    }
+  }
+
+  int? _parseLocalWorkoutId(String? workoutId) {
+    if (workoutId == null || workoutId.trim().isEmpty) {
+      return null;
+    }
+
+    return int.tryParse(workoutId);
   }
 
   // ==================== NEW PAGINATION & STATS METHODS ====================
