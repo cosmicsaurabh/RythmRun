@@ -7,4 +7,7 @@ class ApiEndpoints {
   static const String refreshToken = '/users/refresh-token';
   static const String profile = '/users/profile';
   static const String changePassword = '/users/change-password';
+
+  // Activity endpoints
+  static const String activities = '/activities';
 }

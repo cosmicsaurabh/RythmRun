@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
+import 'package:rythmrun_frontend_flutter/data/datasources/activity_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/avatar_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/avatar_repository_impl.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/live_tracking_repository_impl.dart';
@@ -48,6 +49,13 @@ final avatarRemoteDataSourceProvider = Provider<AvatarRemoteDataSource>((ref) {
   return AvatarRemoteDataSourceImpl(httpClient);
 });
 
+final activityRemoteDataSourceProvider = Provider<ActivityRemoteDataSource>((
+  ref,
+) {
+  final httpClient = ref.watch(httpClientProvider);
+  return ActivityRemoteDataSource(httpClient: httpClient);
+});
+
 // Repository
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   final remoteDataSource = ref.watch(authRemoteDataSourceProvider);
@@ -65,7 +73,14 @@ final avatarRepositoryProvider = Provider<AvatarRepository>((ref) {
 final workoutRepositoryProvider = Provider<WorkoutRepository>((ref) {
   final localDataSource = ref.watch(workoutLocalDataSourceProvider);
   final authRepository = ref.watch(authRepositoryProvider);
-  return WorkoutRepositoryImpl(localDataSource, authRepository);
+  final activityRemoteDataSource = ref.watch(activityRemoteDataSourceProvider);
+  final authLocalDataSource = ref.watch(authLocalDataSourceProvider);
+  return WorkoutRepositoryImpl(
+    localDataSource,
+    authRepository,
+    activityRemoteDataSource,
+    authLocalDataSource,
+  );
 });
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {

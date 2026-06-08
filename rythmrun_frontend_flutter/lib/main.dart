@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/features/ads/service/ads_providers.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/connectivity_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/landing_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/login/screens/login_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/registration/screens/registration_screen.dart';
@@ -9,7 +10,10 @@ import 'package:rythmrun_frontend_flutter/presentation/features/home/screens/hom
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/settings_provider.dart';
 import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
+import 'package:rythmrun_frontend_flutter/core/di/injection_container.dart';
+import 'package:rythmrun_frontend_flutter/core/services/connectivity_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/settings_service.dart';
+import 'package:rythmrun_frontend_flutter/core/utils/feature_gate.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
@@ -30,7 +34,53 @@ class RythmRunApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.read(adsServiceProvider).initialize();
+    ref.listen<SessionData>(sessionProvider, (previous, next) {
+      final hadSyncAccess = FeatureGate.isFeatureAvailable(
+        'sync_workouts',
+        previous?.state ?? SessionState.initial,
+      );
+      final hasSyncAccess = FeatureGate.isFeatureAvailable(
+        'sync_workouts',
+        next.state,
+      );
+
+      if (!hadSyncAccess && hasSyncAccess) {
+        ref.read(workoutRepositoryProvider).syncWorkouts().catchError((error) {
+          debugPrint('Workout sync on session restore failed: $error');
+        });
+      }
+    });
+    ref.listen<AsyncValue<ConnectivityStatus>>(connectivityStatusProvider, (
+      previous,
+      next,
+    ) {
+      final previousStatus = previous?.valueOrNull;
+      final nextStatus = next.valueOrNull;
+
+      if (previousStatus == ConnectivityStatus.connected ||
+          nextStatus != ConnectivityStatus.connected) {
+        return;
+      }
+
+      final sessionState = ref.read(sessionStateProvider);
+      final hasSyncAccess = FeatureGate.isFeatureAvailable(
+        'sync_workouts',
+        sessionState,
+      );
+      if (!hasSyncAccess) {
+        if (sessionState == SessionState.authenticatedOffline) {
+          ref.read(sessionProvider.notifier).refreshSession();
+        }
+        return;
+      }
+
+      ref.read(workoutRepositoryProvider).syncWorkouts().catchError((error) {
+        debugPrint('Workout sync on reconnect failed: $error');
+      });
+    });
+
     final settings = ref.watch(settingsProvider);
+    ref.watch(connectivityStatusProvider);
 
     return MaterialApp(
       title: 'RythmRun',

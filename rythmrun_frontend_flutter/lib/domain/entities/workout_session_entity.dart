@@ -7,6 +7,8 @@ enum WorkoutStatus { notStarted, active, paused, completed }
 
 class WorkoutSessionEntity {
   final String? id; // null for new sessions, set after saving
+  final String clientSyncId;
+  final int? remoteActivityId;
   final WorkoutType type;
   final WorkoutStatus status;
   final DateTime? startTime;
@@ -33,6 +35,8 @@ class WorkoutSessionEntity {
 
   const WorkoutSessionEntity({
     this.id,
+    required this.clientSyncId,
+    this.remoteActivityId,
     required this.type,
     required this.status,
     this.startTime,
@@ -75,6 +79,8 @@ class WorkoutSessionEntity {
   /// Create a copy with updated values
   WorkoutSessionEntity copyWith({
     String? id,
+    String? clientSyncId,
+    int? remoteActivityId,
     WorkoutType? type,
     WorkoutStatus? status,
     DateTime? startTime,
@@ -95,6 +101,8 @@ class WorkoutSessionEntity {
   }) {
     return WorkoutSessionEntity(
       id: id ?? this.id,
+      clientSyncId: clientSyncId ?? this.clientSyncId,
+      remoteActivityId: remoteActivityId ?? this.remoteActivityId,
       type: type ?? this.type,
       status: status ?? this.status,
       startTime: startTime ?? this.startTime,
@@ -117,6 +125,8 @@ class WorkoutSessionEntity {
 
   @override
   String toString() {
-    return 'WorkoutSessionEntity{id: $id, type: $type, status: $status, distance: ${totalDistance}m}';
+    return 'WorkoutSessionEntity{id: $id, clientSyncId: $clientSyncId, '
+        'remoteActivityId: $remoteActivityId, type: $type, status: $status, '
+        'distance: ${totalDistance}m}';
   }
 }

@@ -36,6 +36,14 @@ class WorkoutLocalDataSource {
     await _localDbService.markWorkoutAsSyncedInLocalDatabase(workoutId);
   }
 
+  Future<void> updateRemoteActivityId(int localId, int remoteId) async {
+    await _localDbService.updateRemoteActivityId(localId, remoteId);
+  }
+
+  Future<void> ensureClientSyncIds() async {
+    await _localDbService.ensureClientSyncIds();
+  }
+
   Future<void> clearAllDataFromLocalDatabase() async {
     await _localDbService.clearAllDataFromLocalDatabase();
   }

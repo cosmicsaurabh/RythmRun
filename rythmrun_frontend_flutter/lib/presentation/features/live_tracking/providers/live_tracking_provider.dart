@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/core/di/injection_container.dart';
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/calculation_helper.dart';
+import 'package:rythmrun_frontend_flutter/core/utils/client_sync_id_generator.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
@@ -131,6 +132,10 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
 
       // Create new workout session
       final newSession = WorkoutSessionEntity(
+        clientSyncId: ClientSyncIdGenerator.generate(
+          startTime: startTime,
+          userId: int.parse(userId.toString()),
+        ),
         type: type,
         status: WorkoutStatus.active,
         startTime: startTime,

@@ -1,4 +1,5 @@
 import 'package:path/path.dart';
+import 'package:rythmrun_frontend_flutter/core/utils/client_sync_id_generator.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
@@ -7,7 +8,7 @@ import 'package:sqflite/sqflite.dart';
 
 class LocalDbService {
   static const String _databaseName = 'rythmrun_workouts.db';
-  static const int _databaseVersion = 2; // Incremented for status changes table
+  static const int _databaseVersion = 3;
 
   // Table names
   static const String _workoutsTable = 'workouts';
@@ -22,14 +23,18 @@ class LocalDbService {
   }
 
   Future<Database> _initDatabase() async {
-    String path = join(await getDatabasesPath(), _databaseName);
-
-    return await openDatabase(
+    final path = join(await getDatabasesPath(), _databaseName);
+    final db = await openDatabase(
       path,
       version: _databaseVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
+
+    await _ensureSyncColumns(db);
+    await _ensureClientSyncIdsOnDatabase(db);
+
+    return db;
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -48,6 +53,11 @@ class LocalDbService {
           FOREIGN KEY (workout_id) REFERENCES $_workoutsTable (id) ON DELETE CASCADE
         )
       ''');
+    }
+
+    if (oldVersion < 3) {
+      await _ensureSyncColumns(db);
+      await _ensureClientSyncIdsOnDatabase(db);
     }
   }
 
@@ -71,6 +81,8 @@ class LocalDbService {
         user_id INTEGER NOT NULL,
         name TEXT,
         notes TEXT,
+        remote_activity_id INTEGER,
+        client_sync_id TEXT NOT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         synced INTEGER DEFAULT 0
       )
@@ -110,6 +122,14 @@ class LocalDbService {
 
     return await db.transaction((txn) async {
       // Insert workout
+      final clientSyncId =
+          workout.clientSyncId.trim().isNotEmpty
+              ? workout.clientSyncId
+              : ClientSyncIdGenerator.generate(
+                startTime: workout.startTime,
+                userId: workout.userId,
+              );
+
       final workoutId = await txn.insert(_workoutsTable, {
         'type': workout.type.name,
         'status': workout.status.name,
@@ -126,6 +146,9 @@ class LocalDbService {
         'user_id': workout.userId,
         'name': workout.name,
         'notes': workout.notes,
+        'remote_activity_id': workout.remoteActivityId,
+        'client_sync_id': clientSyncId,
+        'synced': workout.remoteActivityId != null ? 1 : 0,
       });
 
       // Insert tracking points
@@ -289,6 +312,23 @@ class LocalDbService {
     );
   }
 
+  /// Update remote activity ID after successful push
+  Future<void> updateRemoteActivityId(int localId, int remoteId) async {
+    final db = await database;
+    await db.update(
+      _workoutsTable,
+      {'remote_activity_id': remoteId},
+      where: 'id = ?',
+      whereArgs: [localId],
+    );
+  }
+
+  /// Backfill missing client sync IDs for older local rows
+  Future<void> ensureClientSyncIds() async {
+    final db = await database;
+    await _ensureClientSyncIdsOnDatabase(db);
+  }
+
   /// Map database results to entity
   WorkoutSessionEntity _mapToWorkoutEntity(
     Map<String, dynamic> workoutMap,
@@ -299,12 +339,12 @@ class LocalDbService {
     List<TrackingPointEntity> trackingPoints =
         pointsMap.map((point) {
           return TrackingPointEntity(
-            latitude: point['latitude'] as double,
-            longitude: point['longitude'] as double,
-            altitude: point['altitude'] as double?,
-            accuracy: point['accuracy'] as double?,
-            speed: point['speed'] as double?,
-            heading: point['heading'] as double?,
+            latitude: _toRequiredDouble(point['latitude']),
+            longitude: _toRequiredDouble(point['longitude']),
+            altitude: _toNullableDouble(point['altitude']),
+            accuracy: _toNullableDouble(point['accuracy']),
+            speed: _toNullableDouble(point['speed']),
+            heading: _toNullableDouble(point['heading']),
             timestamp: DateTime.parse(point['timestamp'] as String),
           );
         }).toList();
@@ -333,14 +373,32 @@ class LocalDbService {
       orElse: () => WorkoutStatus.completed,
     );
 
+    final userId = EnsureTypeHelper.ensureInt(workoutMap['user_id']);
+    final localWorkoutId = EnsureTypeHelper.ensureInt(workoutMap['id']);
+    final startTime =
+        workoutMap['start_time'] != null
+            ? DateTime.parse(workoutMap['start_time'] as String)
+            : null;
+    final clientSyncIdValue = (workoutMap['client_sync_id'] as String?)?.trim();
+    final remoteActivityIdValue = workoutMap['remote_activity_id'];
+
     return WorkoutSessionEntity(
-      id: workoutMap['id'].toString(),
+      id: localWorkoutId.toString(),
+      clientSyncId:
+          clientSyncIdValue != null && clientSyncIdValue.isNotEmpty
+              ? clientSyncIdValue
+              : ClientSyncIdGenerator.legacyFromLocalRow(
+                localWorkoutId: localWorkoutId,
+                userId: userId,
+                startTime: startTime,
+              ),
+      remoteActivityId:
+          remoteActivityIdValue != null
+              ? EnsureTypeHelper.ensureInt(remoteActivityIdValue)
+              : null,
       type: type,
       status: status,
-      startTime:
-          workoutMap['start_time'] != null
-              ? DateTime.parse(workoutMap['start_time'] as String)
-              : null,
+      startTime: startTime,
       endTime:
           workoutMap['end_time'] != null
               ? DateTime.parse(workoutMap['end_time'] as String)
@@ -349,14 +407,14 @@ class LocalDbService {
           workoutMap['paused_duration'] != null
               ? Duration(seconds: workoutMap['paused_duration'] as int)
               : null,
-      totalDistance: (workoutMap['total_distance'] as num).toDouble(),
-      averageSpeed: (workoutMap['average_speed'] as num).toDouble(),
-      maxSpeed: (workoutMap['max_speed'] as num).toDouble(),
-      averagePace: workoutMap['average_pace'] as double?,
+      totalDistance: _toRequiredDouble(workoutMap['total_distance']),
+      averageSpeed: _toRequiredDouble(workoutMap['average_speed']),
+      maxSpeed: _toRequiredDouble(workoutMap['max_speed']),
+      averagePace: _toNullableDouble(workoutMap['average_pace']),
       calories: workoutMap['calories'] as int?,
-      elevationGain: workoutMap['elevation_gain'] as double?,
-      elevationLoss: workoutMap['elevation_loss'] as double?,
-      userId: workoutMap['user_id'] as int,
+      elevationGain: _toNullableDouble(workoutMap['elevation_gain']),
+      elevationLoss: _toNullableDouble(workoutMap['elevation_loss']),
+      userId: userId,
       name: workoutMap['name'] as String?,
       notes: workoutMap['notes'] as String?,
       trackingPoints: trackingPoints,
@@ -367,8 +425,92 @@ class LocalDbService {
   /// Clear all data (useful for logout)
   Future<void> clearAllDataFromLocalDatabase() async {
     final db = await database;
+    await db.delete(_statusChangesTable);
     await db.delete(_trackingPointsTable);
     await db.delete(_workoutsTable);
+  }
+
+  Future<void> _ensureSyncColumns(Database db) async {
+    if (!await _hasColumn(db, _workoutsTable, 'remote_activity_id')) {
+      await db.execute(
+        'ALTER TABLE $_workoutsTable ADD COLUMN remote_activity_id INTEGER',
+      );
+    }
+
+    if (!await _hasColumn(db, _workoutsTable, 'client_sync_id')) {
+      await db.execute(
+        'ALTER TABLE $_workoutsTable ADD COLUMN client_sync_id TEXT',
+      );
+    }
+  }
+
+  Future<void> _ensureClientSyncIdsOnDatabase(Database db) async {
+    final workoutsMissingClientSyncId = await db.query(
+      _workoutsTable,
+      columns: ['id', 'user_id', 'start_time'],
+      where: 'client_sync_id IS NULL OR TRIM(client_sync_id) = ?',
+      whereArgs: [''],
+    );
+
+    if (workoutsMissingClientSyncId.isEmpty) {
+      return;
+    }
+
+    final batch = db.batch();
+
+    for (final workout in workoutsMissingClientSyncId) {
+      final localWorkoutId = EnsureTypeHelper.ensureInt(workout['id']);
+      final userId = EnsureTypeHelper.ensureInt(workout['user_id']);
+      final startTime =
+          workout['start_time'] != null
+              ? DateTime.tryParse(workout['start_time'] as String)
+              : null;
+
+      batch.update(
+        _workoutsTable,
+        {
+          'client_sync_id': ClientSyncIdGenerator.legacyFromLocalRow(
+            localWorkoutId: localWorkoutId,
+            userId: userId,
+            startTime: startTime,
+          ),
+        },
+        where: 'id = ?',
+        whereArgs: [localWorkoutId],
+      );
+    }
+
+    await batch.commit(noResult: true);
+  }
+
+  Future<bool> _hasColumn(
+    Database db,
+    String tableName,
+    String columnName,
+  ) async {
+    final result = await db.rawQuery('PRAGMA table_info($tableName)');
+
+    return result.any((column) => column['name'] == columnName);
+  }
+
+  double _toRequiredDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return EnsureTypeHelper.formatAndEnsureDouble(value);
+  }
+
+  double? _toNullableDouble(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return EnsureTypeHelper.formatAndEnsureDouble(value);
   }
 
   // ==================== SQL-BASED TOTALS & PAGINATION ====================
