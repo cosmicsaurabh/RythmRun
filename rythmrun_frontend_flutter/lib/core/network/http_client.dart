@@ -102,7 +102,7 @@ class AppHttpClient {
           case 500:
             throw ServerException(errorMessage);
           default:
-            throw HttpException('HTTP ${response.statusCode}: $errorMessage');
+            throw HttpStatusException(response.statusCode, errorMessage);
         }
       } on SocketException catch (e) {
         attempts++;
@@ -136,6 +136,16 @@ class AppHttpClient {
 }
 
 /// Custom exceptions for better error handling
+class HttpStatusException implements Exception {
+  final int statusCode;
+  final String message;
+
+  const HttpStatusException(this.statusCode, this.message);
+
+  @override
+  String toString() => 'HttpStatusException($statusCode): $message';
+}
+
 class NetworkException implements Exception {
   final String message;
   NetworkException(this.message);
@@ -144,33 +154,29 @@ class NetworkException implements Exception {
   String toString() => 'NetworkException: $message';
 }
 
-class UnauthorizedException implements Exception {
-  final String message;
-  UnauthorizedException(this.message);
+class UnauthorizedException extends HttpStatusException {
+  UnauthorizedException(String message) : super(401, message);
 
   @override
   String toString() => 'UnauthorizedException: $message';
 }
 
-class ForbiddenException implements Exception {
-  final String message;
-  ForbiddenException(this.message);
+class ForbiddenException extends HttpStatusException {
+  ForbiddenException(String message) : super(403, message);
 
   @override
   String toString() => 'ForbiddenException: $message';
 }
 
-class NotFoundException implements Exception {
-  final String message;
-  NotFoundException(this.message);
+class NotFoundException extends HttpStatusException {
+  NotFoundException(String message) : super(404, message);
 
   @override
   String toString() => 'NotFoundException: $message';
 }
 
-class ServerException implements Exception {
-  final String message;
-  ServerException(this.message);
+class ServerException extends HttpStatusException {
+  ServerException(String message) : super(500, message);
 
   @override
   String toString() => 'ServerException: $message';
