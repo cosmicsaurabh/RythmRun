@@ -88,6 +88,9 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   Future<void> deleteWorkout(int workoutId) async {
     try {
       await _localDataSource.deleteWorkoutFromLocalDatabase(workoutId);
+      syncWorkouts().catchError((e) {
+        log('Failed to sync workout delete: $e');
+      });
     } catch (e) {
       throw Exception('Failed to delete workout: $e');
     }
@@ -139,6 +142,19 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
         return;
       }
       var authHeaders = initialAuthHeaders;
+
+      await _localDataSource.resetStaleWorkoutDeletes(
+        DateTime.now().subtract(const Duration(minutes: 15)),
+      );
+
+      final deleteSyncAuthHeaders = await _syncPendingWorkoutDeletes(
+        userId,
+        authHeaders,
+      );
+      if (deleteSyncAuthHeaders == null) {
+        return;
+      }
+      authHeaders = deleteSyncAuthHeaders;
 
       final unsyncedWorkouts = await _localDataSource
           .getUnsyncedWorkoutsFromLocalDatabase(userId);
@@ -224,6 +240,107 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
       remoteActivityId,
     );
     await _localDataSource.markWorkoutAsSyncedInLocalDatabase(localWorkoutId);
+  }
+
+  Future<Map<String, String>?> _syncPendingWorkoutDeletes(
+    int userId,
+    Map<String, String> authHeaders,
+  ) async {
+    var currentAuthHeaders = authHeaders;
+    final pendingDeletes = await _localDataSource.getWorkoutDeletesReadyForSync(
+      userId,
+      DateTime.now(),
+    );
+
+    for (final deleteEntry in pendingDeletes) {
+      try {
+        await _deleteRemoteWorkout(deleteEntry, currentAuthHeaders);
+      } on UnauthorizedException catch (_) {
+        final refreshedAuthHeaders = await _refreshAuthHeaders();
+        if (refreshedAuthHeaders == null) {
+          log(
+            'Workout delete sync halted after auth refresh failed for '
+            '${deleteEntry.remoteActivityId}',
+          );
+          await _markWorkoutDeleteRetrying(deleteEntry, 'Auth refresh failed');
+          return null;
+        }
+        currentAuthHeaders = refreshedAuthHeaders;
+
+        try {
+          await _deleteRemoteWorkout(deleteEntry, currentAuthHeaders);
+        } catch (retryError) {
+          await _markWorkoutDeleteRetrying(deleteEntry, retryError);
+        }
+      } on ForbiddenException catch (_) {
+        final refreshedAuthHeaders = await _refreshAuthHeaders();
+        if (refreshedAuthHeaders == null) {
+          log(
+            'Workout delete sync halted after auth refresh failed for '
+            '${deleteEntry.remoteActivityId}',
+          );
+          await _markWorkoutDeleteRetrying(deleteEntry, 'Auth refresh failed');
+          return null;
+        }
+        currentAuthHeaders = refreshedAuthHeaders;
+
+        try {
+          await _deleteRemoteWorkout(deleteEntry, currentAuthHeaders);
+        } catch (retryError) {
+          await _markWorkoutDeleteRetrying(deleteEntry, retryError);
+        }
+      } catch (error) {
+        await _markWorkoutDeleteRetrying(deleteEntry, error);
+      }
+    }
+
+    return currentAuthHeaders;
+  }
+
+  Future<void> _deleteRemoteWorkout(
+    WorkoutDeleteQueueEntry deleteEntry,
+    Map<String, String> authHeaders,
+  ) async {
+    await _localDataSource.markWorkoutDeleteDeleting(deleteEntry.id);
+
+    try {
+      await _remoteDataSource.deleteActivity(
+        deleteEntry.remoteActivityId,
+        authHeaders,
+      );
+    } on NotFoundException {
+      // Idempotent success: the server-side activity is already gone.
+    }
+
+    await _localDataSource.completeWorkoutDelete(
+      queueId: deleteEntry.id,
+      localWorkoutId: deleteEntry.localWorkoutId,
+    );
+  }
+
+  Future<void> _markWorkoutDeleteRetrying(
+    WorkoutDeleteQueueEntry deleteEntry,
+    Object error,
+  ) async {
+    final retryCount = deleteEntry.retryCount + 1;
+    await _localDataSource.markWorkoutDeleteRetrying(
+      queueId: deleteEntry.id,
+      retryCount: retryCount,
+      error: error.toString(),
+      nextRetryAt: DateTime.now().add(_workoutDeleteRetryDelay(retryCount)),
+    );
+    log(
+      'Failed to delete remote workout ${deleteEntry.remoteActivityId}: $error',
+    );
+  }
+
+  Duration _workoutDeleteRetryDelay(int retryCount) {
+    if (retryCount <= 1) return const Duration(seconds: 30);
+    if (retryCount == 2) return const Duration(minutes: 2);
+    if (retryCount == 3) return const Duration(minutes: 5);
+    if (retryCount == 4) return const Duration(minutes: 15);
+    if (retryCount == 5) return const Duration(hours: 1);
+    return const Duration(hours: 6);
   }
 
   Future<Map<String, String>?> _refreshAuthHeaders() async {

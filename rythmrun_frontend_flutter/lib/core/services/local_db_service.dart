@@ -14,6 +14,7 @@ class LocalDbService {
   static const String _workoutsTable = 'workouts';
   static const String _trackingPointsTable = 'tracking_points';
   static const String _statusChangesTable = 'status_changes';
+  static const String _workoutDeleteQueueTable = 'workout_delete_queue';
 
   Database? _database;
 
@@ -32,6 +33,7 @@ class LocalDbService {
     );
 
     await _ensureSyncColumns(db);
+    await _ensureWorkoutDeleteSupport(db);
     await _ensureClientSyncIdsOnDatabase(db);
 
     return db;
@@ -83,6 +85,7 @@ class LocalDbService {
         notes TEXT,
         remote_activity_id INTEGER,
         client_sync_id TEXT NOT NULL,
+        deleted_locally INTEGER DEFAULT 0,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         synced INTEGER DEFAULT 0
       )
@@ -194,7 +197,7 @@ class LocalDbService {
 
     final workouts = await db.query(
       _workoutsTable,
-      where: 'user_id = ?',
+      where: 'user_id = ? AND deleted_locally = 0',
       whereArgs: [userId],
       orderBy: 'start_time DESC',
     );
@@ -234,7 +237,7 @@ class LocalDbService {
 
     final workouts = await db.query(
       _workoutsTable,
-      where: 'id = ?',
+      where: 'id = ? AND deleted_locally = 0',
       whereArgs: [workoutId],
       limit: 1,
     );
@@ -261,7 +264,51 @@ class LocalDbService {
   /// Delete a workout
   Future<void> deleteWorkoutFromLocalDatabase(int workoutId) async {
     final db = await database;
-    await db.delete(_workoutsTable, where: 'id = ?', whereArgs: [workoutId]);
+    await db.transaction((txn) async {
+      final workouts = await txn.query(
+        _workoutsTable,
+        columns: ['id', 'remote_activity_id', 'user_id'],
+        where: 'id = ?',
+        whereArgs: [workoutId],
+        limit: 1,
+      );
+
+      if (workouts.isEmpty) {
+        return;
+      }
+
+      final workout = workouts.first;
+      final remoteActivityId = workout['remote_activity_id'];
+
+      if (remoteActivityId == null) {
+        await txn.delete(
+          _workoutsTable,
+          where: 'id = ?',
+          whereArgs: [workoutId],
+        );
+        return;
+      }
+
+      final now = DateTime.now().toIso8601String();
+      await txn.insert(_workoutDeleteQueueTable, {
+        'local_workout_id': workoutId,
+        'remote_activity_id': EnsureTypeHelper.ensureInt(remoteActivityId),
+        'user_id': EnsureTypeHelper.ensureInt(workout['user_id']),
+        'status': WorkoutDeleteQueueStatus.queued.name,
+        'retry_count': 0,
+        'last_error': null,
+        'next_retry_at': null,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      await txn.update(
+        _workoutsTable,
+        {'deleted_locally': 1, 'synced': 1},
+        where: 'id = ?',
+        whereArgs: [workoutId],
+      );
+    });
   }
 
   /// Get unsynced workouts
@@ -272,7 +319,7 @@ class LocalDbService {
 
     final workouts = await db.query(
       _workoutsTable,
-      where: 'user_id = ? AND synced = 0',
+      where: 'user_id = ? AND synced = 0 AND deleted_locally = 0',
       whereArgs: [userId],
       orderBy: 'start_time ASC',
     );
@@ -320,6 +367,99 @@ class LocalDbService {
       {'remote_activity_id': remoteId},
       where: 'id = ?',
       whereArgs: [localId],
+    );
+  }
+
+  Future<List<WorkoutDeleteQueueEntry>> getWorkoutDeletesReadyForSync(
+    int userId,
+    DateTime now,
+  ) async {
+    final db = await database;
+    final rows = await db.query(
+      _workoutDeleteQueueTable,
+      where: '''
+        user_id = ?
+        AND status IN (?, ?)
+        AND (next_retry_at IS NULL OR next_retry_at <= ?)
+      ''',
+      whereArgs: [
+        userId,
+        WorkoutDeleteQueueStatus.queued.name,
+        WorkoutDeleteQueueStatus.retrying.name,
+        now.toIso8601String(),
+      ],
+      orderBy: 'created_at ASC',
+    );
+
+    return rows.map(WorkoutDeleteQueueEntry.fromMap).toList();
+  }
+
+  Future<void> markWorkoutDeleteDeleting(int queueId) async {
+    final db = await database;
+    await db.update(
+      _workoutDeleteQueueTable,
+      {
+        'status': WorkoutDeleteQueueStatus.deleting.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [queueId],
+    );
+  }
+
+  Future<void> markWorkoutDeleteRetrying({
+    required int queueId,
+    required int retryCount,
+    required String error,
+    required DateTime nextRetryAt,
+  }) async {
+    final db = await database;
+    await db.update(
+      _workoutDeleteQueueTable,
+      {
+        'status': WorkoutDeleteQueueStatus.retrying.name,
+        'retry_count': retryCount,
+        'last_error': error,
+        'next_retry_at': nextRetryAt.toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [queueId],
+    );
+  }
+
+  Future<void> completeWorkoutDelete({
+    required int queueId,
+    required int localWorkoutId,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete(
+        _workoutsTable,
+        where: 'id = ?',
+        whereArgs: [localWorkoutId],
+      );
+      await txn.delete(
+        _workoutDeleteQueueTable,
+        where: 'id = ?',
+        whereArgs: [queueId],
+      );
+    });
+  }
+
+  Future<void> resetStaleWorkoutDeletes(DateTime staleBefore) async {
+    final db = await database;
+    await db.update(
+      _workoutDeleteQueueTable,
+      {
+        'status': WorkoutDeleteQueueStatus.queued.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'status = ? AND updated_at < ?',
+      whereArgs: [
+        WorkoutDeleteQueueStatus.deleting.name,
+        staleBefore.toIso8601String(),
+      ],
     );
   }
 
@@ -425,6 +565,7 @@ class LocalDbService {
   /// Clear all data (useful for logout)
   Future<void> clearAllDataFromLocalDatabase() async {
     final db = await database;
+    await db.delete(_workoutDeleteQueueTable);
     await db.delete(_statusChangesTable);
     await db.delete(_trackingPointsTable);
     await db.delete(_workoutsTable);
@@ -442,6 +583,35 @@ class LocalDbService {
         'ALTER TABLE $_workoutsTable ADD COLUMN client_sync_id TEXT',
       );
     }
+  }
+
+  Future<void> _ensureWorkoutDeleteSupport(Database db) async {
+    if (!await _hasColumn(db, _workoutsTable, 'deleted_locally')) {
+      await db.execute(
+        'ALTER TABLE $_workoutsTable ADD COLUMN deleted_locally INTEGER DEFAULT 0',
+      );
+    }
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_workoutDeleteQueueTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        local_workout_id INTEGER NOT NULL,
+        remote_activity_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        retry_count INTEGER DEFAULT 0,
+        last_error TEXT,
+        next_retry_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(remote_activity_id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_workout_delete_queue_user_status
+      ON $_workoutDeleteQueueTable(user_id, status, next_retry_at)
+      ''');
   }
 
   Future<void> _ensureClientSyncIdsOnDatabase(Database db) async {
@@ -525,7 +695,7 @@ class LocalDbService {
     final db = await database;
 
     // Build where clause
-    final whereConditions = <String>['user_id = ?'];
+    final whereConditions = <String>['user_id = ?', 'deleted_locally = 0'];
     final whereArgs = <dynamic>[userId];
 
     if (workoutType != null) {
@@ -626,7 +796,7 @@ class LocalDbService {
             THEN (julianday(end_time) - julianday(start_time)) * 86400 
             ELSE 0 END) as avg_duration_seconds
       FROM $_workoutsTable 
-      WHERE user_id = ?
+      WHERE user_id = ? AND deleted_locally = 0
       GROUP BY type
     ''',
       [userId],
@@ -685,7 +855,7 @@ class LocalDbService {
     final db = await database;
 
     // Build where clause
-    final whereConditions = <String>['user_id = ?'];
+    final whereConditions = <String>['user_id = ?', 'deleted_locally = 0'];
     final whereArgs = <dynamic>[userId];
 
     if (workoutType != null) {
@@ -784,7 +954,7 @@ class LocalDbService {
       '''
       SELECT COUNT(*) as count 
       FROM $_workoutsTable 
-      WHERE user_id = ?
+      WHERE user_id = ? AND deleted_locally = 0
     ''',
       [userId],
     );
@@ -794,6 +964,55 @@ class LocalDbService {
 }
 
 // ==================== DATA MODELS ====================
+
+enum WorkoutDeleteQueueStatus { queued, deleting, retrying, deleted, failed }
+
+class WorkoutDeleteQueueEntry {
+  final int id;
+  final int localWorkoutId;
+  final int remoteActivityId;
+  final int userId;
+  final WorkoutDeleteQueueStatus status;
+  final int retryCount;
+  final String? lastError;
+  final DateTime? nextRetryAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const WorkoutDeleteQueueEntry({
+    required this.id,
+    required this.localWorkoutId,
+    required this.remoteActivityId,
+    required this.userId,
+    required this.status,
+    required this.retryCount,
+    this.lastError,
+    this.nextRetryAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory WorkoutDeleteQueueEntry.fromMap(Map<String, dynamic> map) {
+    return WorkoutDeleteQueueEntry(
+      id: EnsureTypeHelper.ensureInt(map['id']),
+      localWorkoutId: EnsureTypeHelper.ensureInt(map['local_workout_id']),
+      remoteActivityId: EnsureTypeHelper.ensureInt(map['remote_activity_id']),
+      userId: EnsureTypeHelper.ensureInt(map['user_id']),
+      status: WorkoutDeleteQueueStatus.values.firstWhere(
+        (status) => status.name == map['status'],
+        orElse: () => WorkoutDeleteQueueStatus.queued,
+      ),
+      retryCount: EnsureTypeHelper.ensureInt(map['retry_count']),
+      lastError: map['last_error'] as String?,
+      nextRetryAt:
+          map['next_retry_at'] != null
+              ? DateTime.tryParse(map['next_retry_at'] as String)
+              : null,
+      createdAt: DateTime.parse(map['created_at'] as String),
+      updatedAt: DateTime.parse(map['updated_at'] as String),
+    );
+  }
+}
 
 /// Workout statistics model
 class WorkoutStatistics {

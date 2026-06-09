@@ -38,4 +38,15 @@ class ActivityRemoteDataSource {
 
     throw Exception('Activity response did not contain a valid ID');
   }
+
+  Future<void> deleteActivity(
+    int activityId,
+    Map<String, String> authHeaders,
+  ) async {
+    await _httpClient.delete(
+      AppConfig.getUrl('${ApiEndpoints.activities}/$activityId'),
+      headers: authHeaders,
+      maxRetries: 0,
+    );
+  }
 }
