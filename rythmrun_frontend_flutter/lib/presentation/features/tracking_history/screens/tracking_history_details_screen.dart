@@ -7,6 +7,7 @@ import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_acti
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_details_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/screens/workout_history_map_viewer.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/widgets/activity_image_strip.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 class TrackingHistoryDetailsScreen extends ConsumerStatefulWidget {
@@ -118,6 +119,12 @@ class _TrackingHistoryDetailsScreenState
                             showControls: true,
                           ),
                         ),
+                      ),
+
+                      const SizedBox(height: spacingMd),
+
+                      ActivityImageStrip(
+                        workout: state.workout ?? widget.workout,
                       ),
 
                       const SizedBox(height: spacingMd),
