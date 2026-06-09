@@ -8,6 +8,7 @@ import os from 'os';
 import { container } from './config/container';
 import userRoutes from './routes/user.routes';
 import activityRoutes from './routes/activity.routes';
+import activityImageRoutes from './routes/activity-image.routes';
 import commentRoutes from './routes/comment.routes';
 import likeRoutes from './routes/like.routes';
 import friendRoutes from './routes/friend.routes';
@@ -28,6 +29,7 @@ app.use('/api/friends', friendRoutes);
 app.use('/api/avatar', avatarRoutes);
 
 // Simple direct routes instead of nested router
+app.use('/api/activities/:activityId/images', activityImageRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/activities/:activityId/comments', commentRoutes);
 app.use('/api/activities/:activityId/likes', likeRoutes);
