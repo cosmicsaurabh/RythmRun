@@ -45,8 +45,8 @@ class RythmRunApp extends ConsumerWidget {
       );
 
       if (!hadSyncAccess && hasSyncAccess) {
-        ref.read(workoutRepositoryProvider).syncWorkouts().catchError((error) {
-          debugPrint('Workout sync on session restore failed: $error');
+        ref.read(syncCoordinatorProvider).syncAll().catchError((error) {
+          debugPrint('Sync on session restore failed: $error');
         });
       }
     });
@@ -74,8 +74,8 @@ class RythmRunApp extends ConsumerWidget {
         return;
       }
 
-      ref.read(workoutRepositoryProvider).syncWorkouts().catchError((error) {
-        debugPrint('Workout sync on reconnect failed: $error');
+      ref.read(syncCoordinatorProvider).syncAll().catchError((error) {
+        debugPrint('Sync on reconnect failed: $error');
       });
     });
 

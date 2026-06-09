@@ -14,6 +14,10 @@ class ActivityImageLocalDataSource {
     return _localDbService.getWorkoutImages(workoutId);
   }
 
+  Future<ActivityImageEntity?> getWorkoutImage(int localImageId) {
+    return _localDbService.getWorkoutImage(localImageId);
+  }
+
   Future<List<ActivityImageEntity>> getImagesReadyForSync(
     int userId,
     DateTime now,
@@ -75,6 +79,14 @@ class ActivityImageLocalDataSource {
     return _localDbService.markImageDeleteQueued(localImageId);
   }
 
+  Future<void> markImageReplaceQueued(int localImageId) {
+    return _localDbService.markImageReplaceQueued(localImageId);
+  }
+
+  Future<void> markReplaceQueuedImagesDeleteQueued(int workoutId) {
+    return _localDbService.markReplaceQueuedImagesDeleteQueued(workoutId);
+  }
+
   Future<void> markImageDeleting(int localImageId) {
     return _localDbService.markImageDeleting(localImageId);
   }
@@ -96,6 +108,24 @@ class ActivityImageLocalDataSource {
       remoteImageId: remoteImageId,
       remoteUrl: remoteUrl,
       remoteUrlExpiresAt: remoteUrlExpiresAt,
+    );
+  }
+
+  Future<void> updateRemoteImageMetadata({
+    required int localImageId,
+    required int remoteActivityId,
+    required int remoteImageId,
+    required String remoteUrl,
+    required DateTime? remoteUrlExpiresAt,
+    required String s3Key,
+  }) {
+    return _localDbService.updateRemoteImageMetadata(
+      localImageId: localImageId,
+      remoteActivityId: remoteActivityId,
+      remoteImageId: remoteImageId,
+      remoteUrl: remoteUrl,
+      remoteUrlExpiresAt: remoteUrlExpiresAt,
+      s3Key: s3Key,
     );
   }
 }

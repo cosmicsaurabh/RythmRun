@@ -1,10 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rythmrun_frontend_flutter/core/services/activity_image_file_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
+import 'package:rythmrun_frontend_flutter/core/services/sync_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_local_datasource.dart';
+import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/avatar_remote_datasource.dart';
+import 'package:rythmrun_frontend_flutter/data/repositories/activity_image_repository_impl.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/avatar_repository_impl.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/live_tracking_repository_impl.dart';
+import 'package:rythmrun_frontend_flutter/domain/repositories/activity_image_repository.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/avatar_repository.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/live_tracking_repository.dart';
 import '../network/http_client.dart';
@@ -40,6 +45,12 @@ final localDbServiceProvider = Provider<LocalDbService>((ref) {
   return LocalDbService();
 });
 
+final activityImageFileServiceProvider = Provider<ActivityImageFileService>((
+  ref,
+) {
+  return ActivityImageFileService();
+});
+
 final workoutLocalDataSourceProvider = Provider<WorkoutLocalDataSource>((ref) {
   final localDbService = ref.watch(localDbServiceProvider);
   return WorkoutLocalDataSource(localDbService);
@@ -49,6 +60,12 @@ final activityImageLocalDataSourceProvider =
     Provider<ActivityImageLocalDataSource>((ref) {
       final localDbService = ref.watch(localDbServiceProvider);
       return ActivityImageLocalDataSource(localDbService);
+    });
+
+final activityImageRemoteDataSourceProvider =
+    Provider<ActivityImageRemoteDataSource>((ref) {
+      final httpClient = ref.watch(httpClientProvider);
+      return ActivityImageRemoteDataSource(httpClient: httpClient);
     });
 
 final avatarRemoteDataSourceProvider = Provider<AvatarRemoteDataSource>((ref) {
@@ -87,6 +104,26 @@ final workoutRepositoryProvider = Provider<WorkoutRepository>((ref) {
     authRepository,
     activityRemoteDataSource,
     authLocalDataSource,
+  );
+});
+
+final activityImageRepositoryProvider = Provider<ActivityImageRepository>((
+  ref,
+) {
+  return ActivityImageRepositoryImpl(
+    localDataSource: ref.watch(activityImageLocalDataSourceProvider),
+    remoteDataSource: ref.watch(activityImageRemoteDataSourceProvider),
+    fileService: ref.watch(activityImageFileServiceProvider),
+    authRepository: ref.watch(authRepositoryProvider),
+    authLocalDataSource: ref.watch(authLocalDataSourceProvider),
+    workoutLocalDataSource: ref.watch(workoutLocalDataSourceProvider),
+  );
+});
+
+final syncCoordinatorProvider = Provider<SyncCoordinator>((ref) {
+  return SyncCoordinator(
+    ref.watch(workoutRepositoryProvider),
+    ref.watch(activityImageRepositoryProvider),
   );
 });
 

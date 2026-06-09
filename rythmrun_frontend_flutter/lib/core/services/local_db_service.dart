@@ -491,6 +491,22 @@ class LocalDbService {
     return rows.map(_mapToActivityImageEntity).toList();
   }
 
+  Future<ActivityImageEntity?> getWorkoutImage(int localImageId) async {
+    final db = await database;
+    final rows = await db.query(
+      _workoutImagesTable,
+      where: 'id = ?',
+      whereArgs: [localImageId],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    return _mapToActivityImageEntity(rows.first);
+  }
+
   Future<List<ActivityImageEntity>> getImagesReadyForSync(
     int userId,
     DateTime now,
@@ -607,6 +623,26 @@ class LocalDbService {
     );
   }
 
+  Future<void> markImageReplaceQueued(int localImageId) async {
+    await _updateWorkoutImageStatus(
+      localImageId,
+      ActivityImageSyncStatus.replaceQueued,
+    );
+  }
+
+  Future<void> markReplaceQueuedImagesDeleteQueued(int workoutId) async {
+    final db = await database;
+    await db.update(
+      _workoutImagesTable,
+      {
+        'status': ActivityImageSyncStatus.deleteQueued.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'workout_id = ? AND status = ?',
+      whereArgs: [workoutId, ActivityImageSyncStatus.replaceQueued.name],
+    );
+  }
+
   Future<void> markImageDeleting(int localImageId) async {
     await _updateWorkoutImageStatus(
       localImageId,
@@ -662,6 +698,34 @@ class LocalDbService {
       },
       where: 'remote_image_id = ?',
       whereArgs: [remoteImageId],
+    );
+  }
+
+  Future<void> updateRemoteImageMetadata({
+    required int localImageId,
+    required int remoteActivityId,
+    required int remoteImageId,
+    required String remoteUrl,
+    required DateTime? remoteUrlExpiresAt,
+    required String s3Key,
+  }) async {
+    final db = await database;
+    await db.update(
+      _workoutImagesTable,
+      {
+        'remote_activity_id': remoteActivityId,
+        'remote_image_id': remoteImageId,
+        'remote_url': remoteUrl,
+        'remote_url_expires_at': remoteUrlExpiresAt?.toIso8601String(),
+        's3_key': s3Key,
+        'status': ActivityImageSyncStatus.uploaded.name,
+        'retry_count': 0,
+        'last_error': null,
+        'next_retry_at': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [localImageId],
     );
   }
 
