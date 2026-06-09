@@ -1,6 +1,18 @@
 import 'reflect-metadata';
+
+jest.mock('../services/s3.service', () => ({
+  __esModule: true,
+  default: {
+    getActivityImageReadUrl: jest.fn((key: string) => ({
+      url: `https://signed.example.com/${key}`,
+      urlExpiresAt: '2026-06-09T10:15:00.000Z',
+    })),
+  },
+}));
+
 import { ActivityService } from '../services/activity.service';
 import { CreateActivityDto, UpdateActivityDto } from '../models/dto/activity.dto';
+import s3Service from '../services/s3.service';
 
 // Mock Prisma transaction helper
 function createMockPrisma() {
@@ -125,6 +137,7 @@ describe('ActivityService', () => {
       { id: 3, activityId: 1, status: 'active', timestamp: new Date('2026-03-22T10:12:00.000Z') },
       { id: 4, activityId: 1, status: 'completed', timestamp: new Date('2026-03-22T10:30:00.000Z') },
     ],
+    images: [],
     _count: { comments: 0, likes: 0 },
   };
 
@@ -252,10 +265,61 @@ describe('ActivityService', () => {
       const findManyArgs = prisma.activity.findMany.mock.calls[0][0];
       expect(findManyArgs.include.statusChanges).toBe(true);
       expect(findManyArgs.include.locations).toBe(true);
+      expect(findManyArgs.include.images).toEqual({
+        where: {
+          status: 'UPLOADED',
+          deletedAt: null,
+        },
+        orderBy: {
+          sortOrder: 'asc',
+        },
+      });
 
       expect(result.activities).toHaveLength(1);
       expect(result.activities[0].statusChanges).toHaveLength(4);
       expect(result.pagination.total).toBe(1);
+    });
+
+    it('should add signed image URLs to results', async () => {
+      const activityWithImage = {
+        ...mockActivityReturn,
+        images: [
+          {
+            id: 10,
+            activityId: 1,
+            userId: 1,
+            clientImageId: 'img_client_123456',
+            s3Key: 'activity-images/1/1/img_client_123456.jpg',
+            contentType: 'image/jpeg',
+            sizeBytes: 1024,
+            checksumSha256: null,
+            width: 800,
+            height: 600,
+            sortOrder: 0,
+            caption: 'Finish line',
+            status: 'UPLOADED',
+            uploadedAt: new Date('2026-06-09T10:00:00.000Z'),
+            deletedAt: null,
+            createdAt: new Date('2026-06-09T10:00:00.000Z'),
+            updatedAt: new Date('2026-06-09T10:00:00.000Z'),
+          },
+        ],
+      };
+
+      prisma.activity.findMany.mockResolvedValue([activityWithImage]);
+      prisma.activity.count.mockResolvedValue(1);
+
+      const result = await service.getActivities(userId, { page: 1, limit: 10 });
+      const image = result.activities[0].images[0] as any;
+
+      expect(s3Service.getActivityImageReadUrl).toHaveBeenCalledWith(
+        'activity-images/1/1/img_client_123456.jpg',
+      );
+      expect(image.url).toBe(
+        'https://signed.example.com/activity-images/1/1/img_client_123456.jpg',
+      );
+      expect(image.urlExpiresAt).toBe('2026-06-09T10:15:00.000Z');
+      expect(image.s3Key).toBeUndefined();
     });
   });
 
@@ -268,6 +332,10 @@ describe('ActivityService', () => {
       const findFirstArgs = prisma.activity.findFirst.mock.calls[0][0];
       expect(findFirstArgs.include.statusChanges).toBe(true);
       expect(findFirstArgs.include.locations).toBe(true);
+      expect(findFirstArgs.include.images.where).toEqual({
+        status: 'UPLOADED',
+        deletedAt: null,
+      });
 
       expect(result.statusChanges).toHaveLength(4);
       expect(result.pausedDuration).toBe(120);

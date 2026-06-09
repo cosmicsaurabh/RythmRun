@@ -1,6 +1,16 @@
 import { PrismaClient } from '../../generated/prisma';
 import { GetActivitiesQueryDto, CreateActivityDto, UpdateActivityDto } from '../models/dto/activity.dto';
 import { injectable, inject } from "tsyringe";
+import s3Service from './s3.service';
+
+type ActivityImageWithS3Key = {
+    s3Key: string;
+    [key: string]: unknown;
+};
+
+type ActivityWithImages = {
+    images?: ActivityImageWithS3Key[] | null;
+};
 
 @injectable()
 export class ActivityService {
@@ -10,6 +20,15 @@ export class ActivityService {
     private readonly activityInclude = {
         locations: true,
         statusChanges: true,
+        images: {
+            where: {
+                status: 'UPLOADED',
+                deletedAt: null
+            },
+            orderBy: {
+                sortOrder: 'asc'
+            }
+        },
         _count: {
             select: {
                 comments: true,
@@ -24,7 +43,7 @@ export class ActivityService {
 
     async createActivity(userId: number, dto: CreateActivityDto) {
         // Create activity with its locations in a transaction
-        return await this.prisma.$transaction(async (tx) => {
+        const activity = await this.prisma.$transaction(async (tx) => {
             const existingActivity = await tx.activity.findUnique({
                 where: {
                     userId_clientSyncId: {
@@ -94,6 +113,8 @@ export class ActivityService {
                 include: this.activityInclude
             });
         });
+
+        return this.addImageUrls(activity);
     }
 
     async getActivities(userId: number, query: GetActivitiesQueryDto) {
@@ -137,7 +158,7 @@ export class ActivityService {
         const hasPreviousPage = page > 1;
 
         return {
-            activities,
+            activities: activities.map((activity) => this.addImageUrls(activity)),
             pagination: {
                 total,
                 totalPages,
@@ -165,7 +186,7 @@ export class ActivityService {
         }
 
         // Update activity with its locations in a transaction
-        return await this.prisma.$transaction(async (tx) => {
+        const activity = await this.prisma.$transaction(async (tx) => {
             // Update the activity
             const activity = await tx.activity.update({
                 where: { id: activityId },
@@ -225,6 +246,8 @@ export class ActivityService {
                 include: this.activityInclude
             });
         });
+
+        return this.addImageUrls(activity);
     }
 
     async deleteActivity(userId: number, activityId: number) {
@@ -277,6 +300,20 @@ export class ActivityService {
             throw new Error('Activity not found or access denied');
         }
 
-        return activity;
+        return this.addImageUrls(activity);
     }
-} 
+
+    private addImageUrls<T extends ActivityWithImages | null>(activity: T): T {
+        if (!activity || !Array.isArray(activity.images)) {
+            return activity;
+        }
+
+        return {
+            ...activity,
+            images: activity.images.map(({ s3Key, ...image }) => ({
+                ...image,
+                ...s3Service.getActivityImageReadUrl(s3Key)
+            }))
+        } as T;
+    }
+}
