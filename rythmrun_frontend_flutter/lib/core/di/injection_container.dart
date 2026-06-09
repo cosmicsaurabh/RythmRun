@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
+import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/avatar_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/avatar_repository_impl.dart';
@@ -43,6 +44,12 @@ final workoutLocalDataSourceProvider = Provider<WorkoutLocalDataSource>((ref) {
   final localDbService = ref.watch(localDbServiceProvider);
   return WorkoutLocalDataSource(localDbService);
 });
+
+final activityImageLocalDataSourceProvider =
+    Provider<ActivityImageLocalDataSource>((ref) {
+      final localDbService = ref.watch(localDbServiceProvider);
+      return ActivityImageLocalDataSource(localDbService);
+    });
 
 final avatarRemoteDataSourceProvider = Provider<AvatarRemoteDataSource>((ref) {
   final httpClient = ref.watch(httpClientProvider);

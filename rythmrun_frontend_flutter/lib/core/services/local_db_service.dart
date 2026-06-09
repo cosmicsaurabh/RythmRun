@@ -1,6 +1,7 @@
 import 'package:path/path.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/client_sync_id_generator.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/activity_image_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/status_change_event_entity.dart';
@@ -8,13 +9,14 @@ import 'package:sqflite/sqflite.dart';
 
 class LocalDbService {
   static const String _databaseName = 'rythmrun_workouts.db';
-  static const int _databaseVersion = 3;
+  static const int _databaseVersion = 4;
 
   // Table names
   static const String _workoutsTable = 'workouts';
   static const String _trackingPointsTable = 'tracking_points';
   static const String _statusChangesTable = 'status_changes';
   static const String _workoutDeleteQueueTable = 'workout_delete_queue';
+  static const String _workoutImagesTable = 'workout_images';
 
   Database? _database;
 
@@ -34,6 +36,7 @@ class LocalDbService {
 
     await _ensureSyncColumns(db);
     await _ensureWorkoutDeleteSupport(db);
+    await _ensureWorkoutImageSupport(db);
     await _ensureClientSyncIdsOnDatabase(db);
 
     return db;
@@ -60,6 +63,11 @@ class LocalDbService {
     if (oldVersion < 3) {
       await _ensureSyncColumns(db);
       await _ensureClientSyncIdsOnDatabase(db);
+    }
+
+    if (oldVersion < 4) {
+      await _ensureWorkoutDeleteSupport(db);
+      await _ensureWorkoutImageSupport(db);
     }
   }
 
@@ -117,6 +125,9 @@ class LocalDbService {
         FOREIGN KEY (workout_id) REFERENCES $_workoutsTable (id) ON DELETE CASCADE
       )
     ''');
+
+    await _createWorkoutDeleteQueueTable(db);
+    await _createWorkoutImagesTable(db);
   }
 
   /// Save a completed workout session
@@ -463,6 +474,197 @@ class LocalDbService {
     );
   }
 
+  Future<int> insertWorkoutImage(ActivityImageEntity image) async {
+    final db = await database;
+    return await db.insert(_workoutImagesTable, _activityImageToMap(image));
+  }
+
+  Future<List<ActivityImageEntity>> getWorkoutImages(int workoutId) async {
+    final db = await database;
+    final rows = await db.query(
+      _workoutImagesTable,
+      where: 'workout_id = ? AND status != ?',
+      whereArgs: [workoutId, ActivityImageSyncStatus.deleted.name],
+      orderBy: 'sort_order ASC, created_at ASC',
+    );
+
+    return rows.map(_mapToActivityImageEntity).toList();
+  }
+
+  Future<List<ActivityImageEntity>> getImagesReadyForSync(
+    int userId,
+    DateTime now,
+  ) async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT wi.*
+      FROM $_workoutImagesTable wi
+      JOIN $_workoutsTable w ON w.id = wi.workout_id
+      WHERE w.user_id = ?
+      AND wi.status IN (?, ?, ?, ?)
+      AND (wi.next_retry_at IS NULL OR wi.next_retry_at <= ?)
+      ORDER BY wi.created_at ASC
+    ''',
+      [
+        userId,
+        ActivityImageSyncStatus.queued.name,
+        ActivityImageSyncStatus.waitingForActivitySync.name,
+        ActivityImageSyncStatus.retrying.name,
+        ActivityImageSyncStatus.deleteQueued.name,
+        now.toIso8601String(),
+      ],
+    );
+
+    return rows.map(_mapToActivityImageEntity).toList();
+  }
+
+  Future<void> markImageUploading(int localImageId) async {
+    await _updateWorkoutImageStatus(
+      localImageId,
+      ActivityImageSyncStatus.uploading,
+      clearRetryState: true,
+    );
+  }
+
+  Future<void> markImageWaitingForActivitySync(int localImageId) async {
+    await _updateWorkoutImageStatus(
+      localImageId,
+      ActivityImageSyncStatus.waitingForActivitySync,
+    );
+  }
+
+  Future<void> markImageUploaded({
+    required int localImageId,
+    required int remoteActivityId,
+    required int remoteImageId,
+    required String remoteUrl,
+    required DateTime? remoteUrlExpiresAt,
+    required String s3Key,
+  }) async {
+    final db = await database;
+    await db.update(
+      _workoutImagesTable,
+      {
+        'remote_activity_id': remoteActivityId,
+        'remote_image_id': remoteImageId,
+        'remote_url': remoteUrl,
+        'remote_url_expires_at': remoteUrlExpiresAt?.toIso8601String(),
+        's3_key': s3Key,
+        'status': ActivityImageSyncStatus.uploaded.name,
+        'retry_count': 0,
+        'last_error': null,
+        'next_retry_at': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [localImageId],
+    );
+  }
+
+  Future<void> markImageRetrying({
+    required int localImageId,
+    required String error,
+    required DateTime nextRetryAt,
+    required int retryCount,
+  }) async {
+    final db = await database;
+    await db.update(
+      _workoutImagesTable,
+      {
+        'status': ActivityImageSyncStatus.retrying.name,
+        'retry_count': retryCount,
+        'last_error': error,
+        'next_retry_at': nextRetryAt.toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [localImageId],
+    );
+  }
+
+  Future<void> markImageFailed({
+    required int localImageId,
+    required String error,
+  }) async {
+    final db = await database;
+    await db.update(
+      _workoutImagesTable,
+      {
+        'status': ActivityImageSyncStatus.failed.name,
+        'last_error': error,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [localImageId],
+    );
+  }
+
+  Future<void> markImageDeleteQueued(int localImageId) async {
+    await _updateWorkoutImageStatus(
+      localImageId,
+      ActivityImageSyncStatus.deleteQueued,
+    );
+  }
+
+  Future<void> markImageDeleting(int localImageId) async {
+    await _updateWorkoutImageStatus(
+      localImageId,
+      ActivityImageSyncStatus.deleting,
+    );
+  }
+
+  Future<void> markImageDeleted(int localImageId) async {
+    await _updateWorkoutImageStatus(
+      localImageId,
+      ActivityImageSyncStatus.deleted,
+      clearRetryState: true,
+    );
+  }
+
+  Future<void> resetStaleUploadingImages(DateTime staleBefore) async {
+    final db = await database;
+    await db.rawUpdate(
+      '''
+      UPDATE $_workoutImagesTable
+      SET status = CASE
+        WHEN status = ? THEN ?
+        ELSE ?
+      END,
+      updated_at = ?
+      WHERE status IN (?, ?)
+      AND updated_at < ?
+    ''',
+      [
+        ActivityImageSyncStatus.deleting.name,
+        ActivityImageSyncStatus.deleteQueued.name,
+        ActivityImageSyncStatus.queued.name,
+        DateTime.now().toIso8601String(),
+        ActivityImageSyncStatus.uploading.name,
+        ActivityImageSyncStatus.deleting.name,
+        staleBefore.toIso8601String(),
+      ],
+    );
+  }
+
+  Future<void> updateRemoteImageUrl({
+    required int remoteImageId,
+    required String remoteUrl,
+    required DateTime? remoteUrlExpiresAt,
+  }) async {
+    final db = await database;
+    await db.update(
+      _workoutImagesTable,
+      {
+        'remote_url': remoteUrl,
+        'remote_url_expires_at': remoteUrlExpiresAt?.toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'remote_image_id = ?',
+      whereArgs: [remoteImageId],
+    );
+  }
+
   /// Backfill missing client sync IDs for older local rows
   Future<void> ensureClientSyncIds() async {
     final db = await database;
@@ -562,9 +764,65 @@ class LocalDbService {
     );
   }
 
+  Map<String, Object?> _activityImageToMap(ActivityImageEntity image) {
+    return {
+      'workout_id': image.localWorkoutId,
+      'remote_activity_id': image.remoteActivityId,
+      'remote_image_id': image.remoteImageId,
+      'client_image_id': image.clientImageId,
+      'local_path': image.localPath,
+      'thumbnail_path': image.thumbnailPath,
+      'remote_url': image.remoteUrl,
+      'remote_url_expires_at': image.remoteUrlExpiresAt?.toIso8601String(),
+      's3_key': image.s3Key,
+      'content_type': image.contentType,
+      'size_bytes': image.sizeBytes,
+      'checksum_sha256': image.checksumSha256,
+      'width': image.width,
+      'height': image.height,
+      'sort_order': image.sortOrder,
+      'caption': image.caption,
+      'status': image.status.name,
+      'retry_count': image.retryCount,
+      'last_error': image.lastError,
+      'next_retry_at': image.nextRetryAt?.toIso8601String(),
+      'created_at': image.createdAt.toIso8601String(),
+      'updated_at': image.updatedAt.toIso8601String(),
+    };
+  }
+
+  ActivityImageEntity _mapToActivityImageEntity(Map<String, dynamic> map) {
+    return ActivityImageEntity(
+      localId: _toNullableInt(map['id']),
+      localWorkoutId: EnsureTypeHelper.ensureInt(map['workout_id']),
+      remoteActivityId: _toNullableInt(map['remote_activity_id']),
+      remoteImageId: _toNullableInt(map['remote_image_id']),
+      clientImageId: map['client_image_id'] as String,
+      localPath: map['local_path'] as String,
+      thumbnailPath: map['thumbnail_path'] as String?,
+      remoteUrl: map['remote_url'] as String?,
+      remoteUrlExpiresAt: _toNullableDateTime(map['remote_url_expires_at']),
+      s3Key: map['s3_key'] as String?,
+      contentType: map['content_type'] as String,
+      sizeBytes: EnsureTypeHelper.ensureInt(map['size_bytes']),
+      checksumSha256: map['checksum_sha256'] as String?,
+      width: _toNullableInt(map['width']),
+      height: _toNullableInt(map['height']),
+      sortOrder: EnsureTypeHelper.ensureInt(map['sort_order']),
+      caption: map['caption'] as String?,
+      status: activityImageSyncStatusFromName(map['status'] as String?),
+      retryCount: EnsureTypeHelper.ensureInt(map['retry_count']),
+      lastError: map['last_error'] as String?,
+      nextRetryAt: _toNullableDateTime(map['next_retry_at']),
+      createdAt: _toRequiredDateTime(map['created_at']),
+      updatedAt: _toRequiredDateTime(map['updated_at']),
+    );
+  }
+
   /// Clear all data (useful for logout)
   Future<void> clearAllDataFromLocalDatabase() async {
     final db = await database;
+    await db.delete(_workoutImagesTable);
     await db.delete(_workoutDeleteQueueTable);
     await db.delete(_statusChangesTable);
     await db.delete(_trackingPointsTable);
@@ -592,6 +850,14 @@ class LocalDbService {
       );
     }
 
+    await _createWorkoutDeleteQueueTable(db);
+  }
+
+  Future<void> _ensureWorkoutImageSupport(Database db) async {
+    await _createWorkoutImagesTable(db);
+  }
+
+  Future<void> _createWorkoutDeleteQueueTable(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS $_workoutDeleteQueueTable (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -612,6 +878,53 @@ class LocalDbService {
       CREATE INDEX IF NOT EXISTS idx_workout_delete_queue_user_status
       ON $_workoutDeleteQueueTable(user_id, status, next_retry_at)
       ''');
+  }
+
+  Future<void> _createWorkoutImagesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_workoutImagesTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workout_id INTEGER NOT NULL,
+        remote_activity_id INTEGER,
+        remote_image_id INTEGER,
+        client_image_id TEXT NOT NULL,
+        local_path TEXT NOT NULL,
+        thumbnail_path TEXT,
+        remote_url TEXT,
+        remote_url_expires_at TEXT,
+        s3_key TEXT,
+        content_type TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        checksum_sha256 TEXT,
+        width INTEGER,
+        height INTEGER,
+        sort_order INTEGER DEFAULT 0,
+        caption TEXT,
+        status TEXT NOT NULL,
+        retry_count INTEGER DEFAULT 0,
+        last_error TEXT,
+        next_retry_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workout_id) REFERENCES $_workoutsTable (id) ON DELETE CASCADE,
+        UNIQUE(workout_id, client_image_id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_workout_images_workout_id
+      ON $_workoutImagesTable(workout_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_workout_images_status_next_retry
+      ON $_workoutImagesTable(status, next_retry_at)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_workout_images_remote_activity_id
+      ON $_workoutImagesTable(remote_activity_id)
+    ''');
   }
 
   Future<void> _ensureClientSyncIdsOnDatabase(Database db) async {
@@ -681,6 +994,50 @@ class LocalDbService {
     }
 
     return EnsureTypeHelper.formatAndEnsureDouble(value);
+  }
+
+  int? _toNullableInt(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    return EnsureTypeHelper.ensureInt(value);
+  }
+
+  DateTime? _toNullableDateTime(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    return DateTime.tryParse(value as String);
+  }
+
+  DateTime _toRequiredDateTime(dynamic value) {
+    if (value is String) {
+      return DateTime.tryParse(value) ?? DateTime.now();
+    }
+
+    return DateTime.now();
+  }
+
+  Future<void> _updateWorkoutImageStatus(
+    int localImageId,
+    ActivityImageSyncStatus status, {
+    bool clearRetryState = false,
+  }) async {
+    final db = await database;
+    await db.update(
+      _workoutImagesTable,
+      {
+        'status': status.name,
+        if (clearRetryState) 'retry_count': 0,
+        if (clearRetryState) 'last_error': null,
+        if (clearRetryState) 'next_retry_at': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [localImageId],
+    );
   }
 
   // ==================== SQL-BASED TOTALS & PAGINATION ====================
