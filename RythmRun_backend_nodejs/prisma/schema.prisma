@@ -19,6 +19,7 @@ model User {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @default(now()) @updatedAt
   activities         Activity[]
+  activityImages     ActivityImage[]
   comments           Comment[]
   friendsAsUser1     Friend[]      @relation("UserFriends")
   friendsAsUser2     Friend[]      @relation("UserFriends2")
@@ -51,8 +52,45 @@ model Activity {
   likes          Like[]
   locations      Location[]
   statusChanges  StatusChange[]
+  images         ActivityImage[]
 
   @@unique([userId, clientSyncId])
+}
+
+model ActivityImage {
+  id             Int                 @id @default(autoincrement())
+  activityId     Int
+  userId         Int
+  clientImageId  String
+  s3Key          String              @unique
+  contentType    String
+  sizeBytes      Int
+  checksumSha256 String?
+  width          Int?
+  height         Int?
+  sortOrder      Int                 @default(0)
+  caption        String?
+  status         ActivityImageStatus @default(PENDING_UPLOAD)
+  uploadedAt     DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @default(now()) @updatedAt
+
+  activity       Activity            @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, clientImageId])
+  @@index([activityId, sortOrder])
+  @@index([userId])
+  @@index([status])
+}
+
+enum ActivityImageStatus {
+  PENDING_UPLOAD
+  UPLOADED
+  DELETE_PENDING
+  DELETED
+  FAILED
 }
 
 model Location {
