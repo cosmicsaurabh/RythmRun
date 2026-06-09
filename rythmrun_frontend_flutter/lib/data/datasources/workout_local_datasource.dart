@@ -40,6 +40,45 @@ class WorkoutLocalDataSource {
     await _localDbService.updateRemoteActivityId(localId, remoteId);
   }
 
+  Future<List<WorkoutDeleteQueueEntry>> getWorkoutDeletesReadyForSync(
+    int userId,
+    DateTime now,
+  ) async {
+    return await _localDbService.getWorkoutDeletesReadyForSync(userId, now);
+  }
+
+  Future<void> markWorkoutDeleteDeleting(int queueId) async {
+    await _localDbService.markWorkoutDeleteDeleting(queueId);
+  }
+
+  Future<void> markWorkoutDeleteRetrying({
+    required int queueId,
+    required int retryCount,
+    required String error,
+    required DateTime nextRetryAt,
+  }) async {
+    await _localDbService.markWorkoutDeleteRetrying(
+      queueId: queueId,
+      retryCount: retryCount,
+      error: error,
+      nextRetryAt: nextRetryAt,
+    );
+  }
+
+  Future<void> completeWorkoutDelete({
+    required int queueId,
+    required int localWorkoutId,
+  }) async {
+    await _localDbService.completeWorkoutDelete(
+      queueId: queueId,
+      localWorkoutId: localWorkoutId,
+    );
+  }
+
+  Future<void> resetStaleWorkoutDeletes(DateTime staleBefore) async {
+    await _localDbService.resetStaleWorkoutDeletes(staleBefore);
+  }
+
   Future<void> ensureClientSyncIds() async {
     await _localDbService.ensureClientSyncIds();
   }
