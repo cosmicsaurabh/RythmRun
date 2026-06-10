@@ -7,6 +7,7 @@ jest.mock('../services/s3.service', () => ({
       url: `https://signed.example.com/${key}`,
       urlExpiresAt: '2026-06-09T10:15:00.000Z',
     })),
+    deleteObject: jest.fn(async () => undefined),
   },
 }));
 
@@ -142,6 +143,7 @@ describe('ActivityService', () => {
   };
 
   beforeEach(() => {
+    jest.clearAllMocks();
     const mocks = createMockPrisma();
     prisma = mocks.prisma;
     mockTx = mocks.mockTx;
@@ -435,6 +437,75 @@ describe('ActivityService', () => {
 
       await expect(service.updateActivity(userId, 999, updateDto))
         .rejects.toThrow('Activity not found or unauthorized');
+    });
+  });
+
+  describe('deleteActivity', () => {
+    it('should delete known activity image objects before deleting the activity', async () => {
+      const firstKey = 'activity-images/1/1/img_client_123456.jpg';
+      const secondKey = 'activity-images/1/1/img_client_abcdef.jpg';
+      prisma.activity.findFirst.mockResolvedValue({
+        ...mockActivityReturn,
+        images: [
+          { s3Key: firstKey },
+          { s3Key: secondKey },
+          { s3Key: firstKey },
+        ],
+      });
+      prisma.activity.delete.mockResolvedValue({ id: 1 });
+
+      const result = await service.deleteActivity(userId, 1);
+
+      expect(prisma.activity.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 1,
+          userId,
+        },
+        include: {
+          images: {
+            select: {
+              s3Key: true,
+            },
+          },
+        },
+      });
+      expect(s3Service.deleteObject).toHaveBeenCalledTimes(2);
+      expect(s3Service.deleteObject).toHaveBeenNthCalledWith(1, firstKey);
+      expect(s3Service.deleteObject).toHaveBeenNthCalledWith(2, secondKey);
+      expect(prisma.activity.delete).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
+      expect(
+        (s3Service.deleteObject as jest.Mock).mock.invocationCallOrder[0],
+      ).toBeLessThan(prisma.activity.delete.mock.invocationCallOrder[0]);
+      expect(result).toEqual({ message: 'Activity deleted successfully' });
+    });
+
+    it('should not delete the activity row if image object cleanup fails', async () => {
+      prisma.activity.findFirst.mockResolvedValue({
+        ...mockActivityReturn,
+        images: [{ s3Key: 'activity-images/1/1/img_client_123456.jpg' }],
+      });
+      (s3Service.deleteObject as jest.Mock).mockRejectedValueOnce(
+        new Error('S3 unavailable'),
+      );
+
+      await expect(service.deleteActivity(userId, 1)).rejects.toThrow(
+        'S3 unavailable',
+      );
+
+      expect(prisma.activity.delete).not.toHaveBeenCalled();
+    });
+
+    it('should reject deleting another user activity without S3 cleanup', async () => {
+      prisma.activity.findFirst.mockResolvedValue(null);
+
+      await expect(service.deleteActivity(userId, 999)).rejects.toThrow(
+        'Activity not found or unauthorized',
+      );
+
+      expect(s3Service.deleteObject).not.toHaveBeenCalled();
+      expect(prisma.activity.delete).not.toHaveBeenCalled();
     });
   });
 });
