@@ -256,12 +256,24 @@ export class ActivityService {
             where: {
                 id: activityId,
                 userId
+            },
+            include: {
+                images: {
+                    select: {
+                        s3Key: true
+                    }
+                }
             }
         });
 
         if (!activity) {
             throw new Error('Activity not found or unauthorized');
         }
+
+        const imageKeys = [...new Set(activity.images.map((image) => image.s3Key))];
+        await Promise.all(
+            imageKeys.map((key) => s3Service.deleteObject(key))
+        );
 
         // Delete activity (this will cascade delete locations due to our schema)
         await this.prisma.activity.delete({
