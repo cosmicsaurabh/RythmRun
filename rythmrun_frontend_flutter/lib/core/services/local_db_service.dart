@@ -535,22 +535,78 @@ class LocalDbService {
     return rows.map(_mapToActivityImageEntity).toList();
   }
 
-  Future<void> markImageUploading(int localImageId) async {
-    await _updateWorkoutImageStatus(
-      localImageId,
-      ActivityImageSyncStatus.uploading,
-      clearRetryState: true,
+  Future<List<ActivityImageEntity>> getActiveImagesForJanitor(
+    int userId,
+  ) async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT wi.*
+      FROM $_workoutImagesTable wi
+      JOIN $_workoutsTable w ON w.id = wi.workout_id
+      WHERE w.user_id = ?
+      AND wi.status IN (?, ?, ?, ?, ?, ?, ?)
+      ORDER BY wi.created_at ASC
+    ''',
+      [
+        userId,
+        ActivityImageSyncStatus.queued.name,
+        ActivityImageSyncStatus.waitingForActivitySync.name,
+        ActivityImageSyncStatus.uploading.name,
+        ActivityImageSyncStatus.retrying.name,
+        ActivityImageSyncStatus.deleteQueued.name,
+        ActivityImageSyncStatus.deleting.name,
+        ActivityImageSyncStatus.replaceQueued.name,
+      ],
     );
+
+    return rows.map(_mapToActivityImageEntity).toList();
   }
 
-  Future<void> markImageWaitingForActivitySync(int localImageId) async {
-    await _updateWorkoutImageStatus(
-      localImageId,
-      ActivityImageSyncStatus.waitingForActivitySync,
+  Future<bool> markImageUploadingIfReady(int localImageId) async {
+    final db = await database;
+    final updated = await db.update(
+      _workoutImagesTable,
+      {
+        'status': ActivityImageSyncStatus.uploading.name,
+        'retry_count': 0,
+        'last_error': null,
+        'next_retry_at': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ? AND status IN (?, ?, ?)',
+      whereArgs: [
+        localImageId,
+        ActivityImageSyncStatus.queued.name,
+        ActivityImageSyncStatus.waitingForActivitySync.name,
+        ActivityImageSyncStatus.retrying.name,
+      ],
     );
+
+    return updated > 0;
   }
 
-  Future<void> markImageUploaded({
+  Future<bool> markImageWaitingForActivitySyncIfReady(int localImageId) async {
+    final db = await database;
+    final updated = await db.update(
+      _workoutImagesTable,
+      {
+        'status': ActivityImageSyncStatus.waitingForActivitySync.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ? AND status IN (?, ?, ?)',
+      whereArgs: [
+        localImageId,
+        ActivityImageSyncStatus.queued.name,
+        ActivityImageSyncStatus.waitingForActivitySync.name,
+        ActivityImageSyncStatus.retrying.name,
+      ],
+    );
+
+    return updated > 0;
+  }
+
+  Future<ActivityImageSyncStatus?> recordImageUploadResult({
     required int localImageId,
     required int remoteActivityId,
     required int remoteImageId,
@@ -559,23 +615,47 @@ class LocalDbService {
     required String s3Key,
   }) async {
     final db = await database;
-    await db.update(
-      _workoutImagesTable,
-      {
-        'remote_activity_id': remoteActivityId,
-        'remote_image_id': remoteImageId,
-        'remote_url': remoteUrl,
-        'remote_url_expires_at': remoteUrlExpiresAt?.toIso8601String(),
-        's3_key': s3Key,
-        'status': ActivityImageSyncStatus.uploaded.name,
-        'retry_count': 0,
-        'last_error': null,
-        'next_retry_at': null,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [localImageId],
-    );
+    return db.transaction<ActivityImageSyncStatus?>((txn) async {
+      final rows = await txn.query(
+        _workoutImagesTable,
+        columns: ['status'],
+        where: 'id = ?',
+        whereArgs: [localImageId],
+        limit: 1,
+      );
+
+      if (rows.isEmpty) {
+        return null;
+      }
+
+      final currentStatus = activityImageSyncStatusFromName(
+        rows.first['status'] as String?,
+      );
+      final finalStatus =
+          _shouldKeepUploadedImageAfterRemoteConfirm(currentStatus)
+              ? ActivityImageSyncStatus.uploaded
+              : ActivityImageSyncStatus.deleteQueued;
+
+      await txn.update(
+        _workoutImagesTable,
+        {
+          'remote_activity_id': remoteActivityId,
+          'remote_image_id': remoteImageId,
+          'remote_url': remoteUrl,
+          'remote_url_expires_at': remoteUrlExpiresAt?.toIso8601String(),
+          's3_key': s3Key,
+          'status': finalStatus.name,
+          'retry_count': 0,
+          'last_error': null,
+          'next_retry_at': null,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [localImageId],
+      );
+
+      return finalStatus;
+    });
   }
 
   Future<void> markImageRetrying({
@@ -589,6 +669,27 @@ class LocalDbService {
       _workoutImagesTable,
       {
         'status': ActivityImageSyncStatus.retrying.name,
+        'retry_count': retryCount,
+        'last_error': error,
+        'next_retry_at': nextRetryAt.toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [localImageId],
+    );
+  }
+
+  Future<void> markImageDeleteQueuedRetrying({
+    required int localImageId,
+    required String error,
+    required DateTime nextRetryAt,
+    required int retryCount,
+  }) async {
+    final db = await database;
+    await db.update(
+      _workoutImagesTable,
+      {
+        'status': ActivityImageSyncStatus.deleteQueued.name,
         'retry_count': retryCount,
         'last_error': error,
         'next_retry_at': nextRetryAt.toIso8601String(),
@@ -644,9 +745,15 @@ class LocalDbService {
   }
 
   Future<void> markImageDeleting(int localImageId) async {
-    await _updateWorkoutImageStatus(
-      localImageId,
-      ActivityImageSyncStatus.deleting,
+    final db = await database;
+    await db.update(
+      _workoutImagesTable,
+      {
+        'status': ActivityImageSyncStatus.deleting.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ? AND status = ?',
+      whereArgs: [localImageId, ActivityImageSyncStatus.deleteQueued.name],
     );
   }
 
@@ -681,6 +788,16 @@ class LocalDbService {
         staleBefore.toIso8601String(),
       ],
     );
+  }
+
+  bool _shouldKeepUploadedImageAfterRemoteConfirm(
+    ActivityImageSyncStatus status,
+  ) {
+    return status == ActivityImageSyncStatus.uploading ||
+        status == ActivityImageSyncStatus.queued ||
+        status == ActivityImageSyncStatus.waitingForActivitySync ||
+        status == ActivityImageSyncStatus.retrying ||
+        status == ActivityImageSyncStatus.uploaded;
   }
 
   Future<void> updateRemoteImageUrl({

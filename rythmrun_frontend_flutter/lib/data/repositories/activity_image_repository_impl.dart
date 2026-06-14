@@ -263,14 +263,12 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     _isSyncingImages = true;
 
     try {
-      await _localDataSource.resetStaleUploadingImages(
-        DateTime.now().subtract(const Duration(minutes: 15)),
-      );
-
       final userId = await _getCurrentUserId();
       if (userId == null) {
         return;
       }
+
+      await _runImageJanitor(userId);
 
       final initialAuthHeaders = await _authLocalDataSource.getAuthHeaders();
       if (initialAuthHeaders == null) {
@@ -312,6 +310,43 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     } catch (error) {
       await _markRetryingOrFailed(image, error);
       return authHeaders;
+    }
+  }
+
+  Future<void> _runImageJanitor(int userId) async {
+    await _localDataSource.resetStaleUploadingImages(
+      DateTime.now().subtract(const Duration(minutes: 15)),
+    );
+
+    final activeImages = await _localDataSource.getActiveImagesForJanitor(
+      userId,
+    );
+    for (final image in activeImages) {
+      final localImageId = image.localId;
+      if (localImageId == null) {
+        continue;
+      }
+
+      if (_isDeleteLikeStatus(image.status) &&
+          (image.remoteActivityId == null || image.remoteImageId == null)) {
+        await _localDataSource.markImageDeleted(localImageId);
+        await _deleteLocalFiles(image);
+        continue;
+      }
+
+      if (!_isUploadLikeStatus(image.status)) {
+        continue;
+      }
+
+      if (!await _fileService.exists(image.localPath)) {
+        if (image.remoteImageId != null) {
+          continue;
+        }
+        await _localDataSource.markImageFailed(
+          localImageId: localImageId,
+          error: 'missing_local_file',
+        );
+      }
     }
   }
 
@@ -361,7 +396,9 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
 
     final remoteActivityId = workout.remoteActivityId;
     if (remoteActivityId == null) {
-      await _localDataSource.markImageWaitingForActivitySync(localImageId);
+      await _localDataSource.markImageWaitingForActivitySyncIfReady(
+        localImageId,
+      );
       return;
     }
 
@@ -372,7 +409,12 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       throw const _PermanentImageSyncException('Local image file is missing');
     }
 
-    await _localDataSource.markImageUploading(localImageId);
+    final didStartUpload = await _localDataSource.markImageUploadingIfReady(
+      localImageId,
+    );
+    if (!didStartUpload) {
+      return;
+    }
 
     final intent = await _remoteDataSource.requestUploadUrl(
       remoteActivityId: remoteActivityId,
@@ -381,13 +423,16 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     );
 
     if (intent.alreadyUploaded) {
-      await _markUploadedFromIntent(
+      final finalStatus = await _recordAlreadyUploadedIntent(
         image: image,
         remoteActivityId: remoteActivityId,
         intent: intent,
       );
-      await _localDataSource.markReplaceQueuedImagesDeleteQueued(
-        image.localWorkoutId,
+      await _finishPostUploadState(
+        localImageId: localImageId,
+        localWorkoutId: image.localWorkoutId,
+        finalStatus: finalStatus,
+        authHeaders: authHeaders,
       );
       return;
     }
@@ -412,7 +457,7 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       authHeaders: authHeaders,
     );
 
-    await _localDataSource.markImageUploaded(
+    final finalStatus = await _localDataSource.recordImageUploadResult(
       localImageId: localImageId,
       remoteActivityId: remoteActivityId,
       remoteImageId: remoteImage.id,
@@ -420,8 +465,11 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       remoteUrlExpiresAt: remoteImage.urlExpiresAt,
       s3Key: remoteImage.key,
     );
-    await _localDataSource.markReplaceQueuedImagesDeleteQueued(
-      image.localWorkoutId,
+    await _finishPostUploadState(
+      localImageId: localImageId,
+      localWorkoutId: image.localWorkoutId,
+      finalStatus: finalStatus,
+      authHeaders: authHeaders,
     );
   }
 
@@ -449,7 +497,7 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     await _deleteLocalFiles(image);
   }
 
-  Future<void> _markUploadedFromIntent({
+  Future<ActivityImageSyncStatus?> _recordAlreadyUploadedIntent({
     required ActivityImageEntity image,
     required int remoteActivityId,
     required ActivityImageUploadIntent intent,
@@ -463,7 +511,7 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       );
     }
 
-    await _localDataSource.markImageUploaded(
+    return _localDataSource.recordImageUploadResult(
       localImageId: localImageId,
       remoteActivityId: remoteActivityId,
       remoteImageId: remoteImageId,
@@ -471,6 +519,27 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       remoteUrlExpiresAt: intent.urlExpiresAt,
       s3Key: intent.key,
     );
+  }
+
+  Future<void> _finishPostUploadState({
+    required int localImageId,
+    required int localWorkoutId,
+    required ActivityImageSyncStatus? finalStatus,
+    required Map<String, String> authHeaders,
+  }) async {
+    if (finalStatus == ActivityImageSyncStatus.deleteQueued) {
+      final latest = await _localDataSource.getWorkoutImage(localImageId);
+      if (latest != null) {
+        await _syncDelete(latest, authHeaders);
+      }
+      return;
+    }
+
+    if (finalStatus == ActivityImageSyncStatus.uploaded) {
+      await _localDataSource.markReplaceQueuedImagesDeleteQueued(
+        localWorkoutId,
+      );
+    }
   }
 
   Future<void> _refreshRemoteImagesWithHeaders({
@@ -532,6 +601,36 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
   ) async {
     final localImageId = image.localId;
     if (localImageId == null) {
+      return;
+    }
+
+    final latest = await _localDataSource.getWorkoutImage(localImageId);
+    if (latest != null && _isDeleteLikeStatus(latest.status)) {
+      if (latest.remoteActivityId == null || latest.remoteImageId == null) {
+        await _localDataSource.markImageDeleted(localImageId);
+        await _deleteLocalFiles(latest);
+        return;
+      }
+
+      final retryCount = latest.retryCount + 1;
+      await _localDataSource.markImageDeleteQueuedRetrying(
+        localImageId: localImageId,
+        error: error.toString(),
+        nextRetryAt: DateTime.now().add(_retryDelayWithJitter(retryCount)),
+        retryCount: retryCount,
+      );
+      return;
+    }
+
+    if (image.status == ActivityImageSyncStatus.deleteQueued ||
+        image.status == ActivityImageSyncStatus.deleting) {
+      final retryCount = image.retryCount + 1;
+      await _localDataSource.markImageDeleteQueuedRetrying(
+        localImageId: localImageId,
+        error: error.toString(),
+        nextRetryAt: DateTime.now().add(_retryDelayWithJitter(retryCount)),
+        retryCount: retryCount,
+      );
       return;
     }
 
@@ -609,6 +708,20 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     return status == ActivityImageSyncStatus.uploaded ||
         status == ActivityImageSyncStatus.waitingForActivitySync ||
         status == ActivityImageSyncStatus.failed;
+  }
+
+  bool _isUploadLikeStatus(ActivityImageSyncStatus status) {
+    return status == ActivityImageSyncStatus.queued ||
+        status == ActivityImageSyncStatus.waitingForActivitySync ||
+        status == ActivityImageSyncStatus.uploading ||
+        status == ActivityImageSyncStatus.retrying;
+  }
+
+  bool _isDeleteLikeStatus(ActivityImageSyncStatus status) {
+    return status == ActivityImageSyncStatus.deleteQueued ||
+        status == ActivityImageSyncStatus.deleting ||
+        status == ActivityImageSyncStatus.deleted ||
+        status == ActivityImageSyncStatus.replaceQueued;
   }
 
   Future<void> _deleteLocalFiles(ActivityImageEntity image) async {

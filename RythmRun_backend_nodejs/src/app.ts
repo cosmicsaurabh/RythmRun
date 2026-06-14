@@ -13,6 +13,7 @@ import commentRoutes from './routes/comment.routes';
 import likeRoutes from './routes/like.routes';
 import friendRoutes from './routes/friend.routes';
 import avatarRoutes from './routes/avatar.routes';
+import { ActivityImageService } from './services/activity-image.service';
 
 dotenv.config();
 
@@ -38,6 +39,16 @@ app.use('/api/activities/:activityId/likes', likeRoutes);
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+const activityImageDeleteRetryTimer = setInterval(() => {
+  container
+    .resolve<ActivityImageService>('ActivityImageService')
+    .retryPendingDeletes()
+    .catch((error) => {
+      console.error('Activity image delete retry failed:', error);
+    });
+}, 15 * 60 * 1000);
+activityImageDeleteRetryTimer.unref();
 
 const PORT = process.env.PORT || 8080;
 const isDevelopment = process.env.NODE_ENV !== 'production';

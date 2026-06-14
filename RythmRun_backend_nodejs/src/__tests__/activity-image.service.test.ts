@@ -271,8 +271,15 @@ describe('ActivityImageService', () => {
         service.deleteImage(userId, activityId, baseImage.id),
       ).resolves.toEqual({ message: 'Image deleted successfully' });
 
-      expect(prisma.activityImage.update).toHaveBeenCalledTimes(1);
-      expect(prisma.activityImage.update).toHaveBeenCalledWith({
+      expect(prisma.activityImage.update).toHaveBeenCalledTimes(2);
+      expect(prisma.activityImage.update).toHaveBeenNthCalledWith(1, {
+        where: { id: baseImage.id },
+        data: {
+          status: 'DELETE_PENDING',
+          deletedAt: expect.any(Date),
+        },
+      });
+      expect(prisma.activityImage.update).toHaveBeenNthCalledWith(2, {
         where: { id: baseImage.id },
         data: {
           status: 'DELETED',
@@ -292,6 +299,71 @@ describe('ActivityImageService', () => {
 
       expect(prisma.activityImage.update).not.toHaveBeenCalled();
       expect(s3Service.deleteObject).not.toHaveBeenCalled();
+    });
+
+    it('keeps DELETE_PENDING when S3 object deletion fails', async () => {
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+      prisma.activityImage.findFirst.mockResolvedValue(baseImage);
+      prisma.activityImage.update.mockResolvedValue({
+        ...baseImage,
+        status: 'DELETE_PENDING',
+        deletedAt: createdAt,
+      });
+      (s3Service.deleteObject as jest.Mock).mockRejectedValueOnce(
+        new Error('s3 timeout'),
+      );
+
+      await expect(
+        service.deleteImage(userId, activityId, baseImage.id),
+      ).resolves.toEqual({ message: 'Image deleted successfully' });
+
+      expect(prisma.activityImage.update).toHaveBeenNthCalledWith(1, {
+        where: { id: baseImage.id },
+        data: {
+          status: 'DELETE_PENDING',
+          deletedAt: expect.any(Date),
+        },
+      });
+      expect(prisma.activityImage.update).toHaveBeenNthCalledWith(2, {
+        where: { id: baseImage.id },
+        data: {
+          status: 'DELETE_PENDING',
+        },
+      });
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('retries pending S3 deletes and marks them deleted', async () => {
+      prisma.activityImage.findMany.mockResolvedValue([
+        {
+          ...baseImage,
+          status: 'DELETE_PENDING',
+          deletedAt: createdAt,
+        },
+      ]);
+      prisma.activityImage.update.mockResolvedValue({
+        ...baseImage,
+        status: 'DELETED',
+        deletedAt: createdAt,
+      });
+
+      await service.retryPendingDeletes();
+
+      expect(prisma.activityImage.findMany).toHaveBeenCalledWith({
+        where: { status: 'DELETE_PENDING' },
+        orderBy: { updatedAt: 'asc' },
+        take: 25,
+      });
+      expect(s3Service.deleteObject).toHaveBeenCalledWith(s3Key);
+      expect(prisma.activityImage.update).toHaveBeenCalledWith({
+        where: { id: baseImage.id },
+        data: {
+          status: 'DELETED',
+          deletedAt: expect.any(Date),
+        },
+      });
     });
   });
 });

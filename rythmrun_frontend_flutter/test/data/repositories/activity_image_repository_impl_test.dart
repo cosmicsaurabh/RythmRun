@@ -171,6 +171,72 @@ void main() {
       expect(localDataSource.images[1]!.lastError, contains('network down'));
     });
 
+    test(
+      'delete during in-flight upload queues remote delete after confirm',
+      () async {
+        localDataSource.addImage(
+          _image(
+            localId: 1,
+            localWorkoutId: localWorkoutId,
+            clientImageId: clientImageId,
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.queued,
+          ),
+        );
+        remoteDataSource.beforeConfirm = () async {
+          await localDataSource.markImageDeleteQueued(1);
+        };
+
+        await repository.syncPendingImages();
+
+        expect(
+          localDataSource.statusEvents,
+          containsAllInOrder([
+            ActivityImageSyncStatus.uploading,
+            ActivityImageSyncStatus.deleteQueued,
+            ActivityImageSyncStatus.deleting,
+            ActivityImageSyncStatus.deleted,
+          ]),
+        );
+        expect(
+          localDataSource.images[1]!.status,
+          ActivityImageSyncStatus.deleted,
+        );
+        expect(localDataSource.images[1]!.remoteImageId, remoteImageId);
+        expect(remoteDataSource.deleteRemoteImageCount, 1);
+      },
+    );
+
+    test(
+      'remote delete failure stays deleteQueued instead of upload retrying',
+      () async {
+        remoteDataSource.deleteRemoteImageError = Exception('s3 timeout');
+        localDataSource.addImage(
+          _image(
+            localId: 1,
+            localWorkoutId: localWorkoutId,
+            remoteActivityId: remoteActivityId,
+            remoteImageId: remoteImageId,
+            clientImageId: clientImageId,
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.deleteQueued,
+          ),
+        );
+
+        await repository.syncPendingImages();
+
+        expect(
+          localDataSource.images[1]!.status,
+          ActivityImageSyncStatus.deleteQueued,
+        );
+        expect(localDataSource.images[1]!.retryCount, 1);
+        expect(localDataSource.images[1]!.lastError, contains('s3 timeout'));
+        expect(remoteDataSource.requestUploadUrlCount, 0);
+      },
+    );
+
     test('missing local file is a permanent failed state', () async {
       fileService.existingPaths.clear();
       localDataSource.addImage(
@@ -197,7 +263,7 @@ void main() {
       expect(localDataSource.images[1]!.status, ActivityImageSyncStatus.failed);
       expect(
         localDataSource.images[1]!.lastError,
-        contains('Local image file is missing'),
+        contains('missing_local_file'),
       );
     });
 
@@ -480,17 +546,50 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   }
 
   @override
-  Future<void> markImageUploading(int localImageId) async {
+  Future<List<ActivityImageEntity>> getActiveImagesForJanitor(
+    int userId,
+  ) async {
+    return images.values.where((image) {
+      return image.status == ActivityImageSyncStatus.queued ||
+          image.status == ActivityImageSyncStatus.waitingForActivitySync ||
+          image.status == ActivityImageSyncStatus.uploading ||
+          image.status == ActivityImageSyncStatus.retrying ||
+          image.status == ActivityImageSyncStatus.deleteQueued ||
+          image.status == ActivityImageSyncStatus.deleting ||
+          image.status == ActivityImageSyncStatus.replaceQueued;
+    }).toList();
+  }
+
+  @override
+  Future<bool> markImageUploadingIfReady(int localImageId) async {
+    final image = images[localImageId]!;
+    final ready =
+        image.status == ActivityImageSyncStatus.queued ||
+        image.status == ActivityImageSyncStatus.waitingForActivitySync ||
+        image.status == ActivityImageSyncStatus.retrying;
+    if (!ready) {
+      return false;
+    }
     _setStatus(localImageId, ActivityImageSyncStatus.uploading);
+    return true;
   }
 
   @override
-  Future<void> markImageWaitingForActivitySync(int localImageId) async {
+  Future<bool> markImageWaitingForActivitySyncIfReady(int localImageId) async {
+    final image = images[localImageId]!;
+    final ready =
+        image.status == ActivityImageSyncStatus.queued ||
+        image.status == ActivityImageSyncStatus.waitingForActivitySync ||
+        image.status == ActivityImageSyncStatus.retrying;
+    if (!ready) {
+      return false;
+    }
     _setStatus(localImageId, ActivityImageSyncStatus.waitingForActivitySync);
+    return true;
   }
 
   @override
-  Future<void> markImageUploaded({
+  Future<ActivityImageSyncStatus?> recordImageUploadResult({
     required int localImageId,
     required int remoteActivityId,
     required int remoteImageId,
@@ -499,6 +598,13 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
     required String s3Key,
   }) async {
     final image = images[localImageId]!;
+    final finalStatus =
+        image.status == ActivityImageSyncStatus.deleteQueued ||
+                image.status == ActivityImageSyncStatus.deleting ||
+                image.status == ActivityImageSyncStatus.deleted ||
+                image.status == ActivityImageSyncStatus.replaceQueued
+            ? ActivityImageSyncStatus.deleteQueued
+            : ActivityImageSyncStatus.uploaded;
     images[localImageId] = _copyImage(
       image,
       remoteActivityId: remoteActivityId,
@@ -506,11 +612,12 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
       remoteUrl: remoteUrl,
       remoteUrlExpiresAt: remoteUrlExpiresAt,
       s3Key: s3Key,
-      status: ActivityImageSyncStatus.uploaded,
+      status: finalStatus,
       retryCount: 0,
     );
-    statusEvents.add(ActivityImageSyncStatus.uploaded);
-    events.add('uploaded');
+    statusEvents.add(finalStatus);
+    events.add(finalStatus.name);
+    return finalStatus;
   }
 
   @override
@@ -543,6 +650,24 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
       lastError: error,
     );
     statusEvents.add(ActivityImageSyncStatus.failed);
+  }
+
+  @override
+  Future<void> markImageDeleteQueuedRetrying({
+    required int localImageId,
+    required String error,
+    required DateTime nextRetryAt,
+    required int retryCount,
+  }) async {
+    final image = images[localImageId]!;
+    images[localImageId] = _copyImage(
+      image,
+      status: ActivityImageSyncStatus.deleteQueued,
+      retryCount: retryCount,
+      lastError: error,
+      nextRetryAt: nextRetryAt,
+    );
+    statusEvents.add(ActivityImageSyncStatus.deleteQueued);
   }
 
   @override
@@ -652,6 +777,8 @@ class FakeActivityImageRemoteDataSource
   Object? requestUploadUrlError;
   Object? uploadError;
   Object? confirmUploadError;
+  Object? deleteRemoteImageError;
+  Future<void> Function()? beforeConfirm;
   int requestUploadUrlCount = 0;
   int deleteRemoteImageCount = 0;
 
@@ -698,6 +825,11 @@ class FakeActivityImageRemoteDataSource
     required String key,
     required Map<String, String> authHeaders,
   }) async {
+    final callback = beforeConfirm;
+    if (callback != null) {
+      await callback();
+    }
+
     events.add('confirm');
     final error = confirmUploadError;
     if (error != null) {
@@ -731,6 +863,10 @@ class FakeActivityImageRemoteDataSource
   }) async {
     deleteRemoteImageCount++;
     events.add('delete-remote');
+    final error = deleteRemoteImageError;
+    if (error != null) {
+      throw error;
+    }
   }
 }
 
