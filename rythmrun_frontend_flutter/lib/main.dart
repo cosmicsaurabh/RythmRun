@@ -28,11 +28,51 @@ void main() async {
   runApp(const ProviderScope(child: RythmRunApp()));
 }
 
-class RythmRunApp extends ConsumerWidget {
+class RythmRunApp extends ConsumerStatefulWidget {
   const RythmRunApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RythmRunApp> createState() => _RythmRunAppState();
+}
+
+class _RythmRunAppState extends ConsumerState<RythmRunApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncIfAvailable('app resume');
+    }
+  }
+
+  void _syncIfAvailable(String reason) {
+    final sessionState = ref.read(sessionStateProvider);
+    final hasSyncAccess = FeatureGate.isFeatureAvailable(
+      'sync_workouts',
+      sessionState,
+    );
+    if (!hasSyncAccess) {
+      return;
+    }
+
+    ref.read(syncCoordinatorProvider).syncAll().catchError((error) {
+      debugPrint('Sync on $reason failed: $error');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     ref.read(adsServiceProvider).initialize();
     ref.listen<SessionData>(sessionProvider, (previous, next) {
       final hadSyncAccess = FeatureGate.isFeatureAvailable(
@@ -45,9 +85,7 @@ class RythmRunApp extends ConsumerWidget {
       );
 
       if (!hadSyncAccess && hasSyncAccess) {
-        ref.read(syncCoordinatorProvider).syncAll().catchError((error) {
-          debugPrint('Sync on session restore failed: $error');
-        });
+        _syncIfAvailable('session restore');
       }
     });
     ref.listen<AsyncValue<ConnectivityStatus>>(connectivityStatusProvider, (
@@ -74,9 +112,7 @@ class RythmRunApp extends ConsumerWidget {
         return;
       }
 
-      ref.read(syncCoordinatorProvider).syncAll().catchError((error) {
-        debugPrint('Sync on reconnect failed: $error');
-      });
+      _syncIfAvailable('reconnect');
     });
 
     final settings = ref.watch(settingsProvider);

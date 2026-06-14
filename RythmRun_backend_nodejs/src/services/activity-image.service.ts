@@ -178,16 +178,26 @@ export class ActivityImageService {
     await this.prisma.activityImage.update({
       where: { id: image.id },
       data: {
-        status: 'DELETED',
+        status: 'DELETE_PENDING',
         deletedAt: new Date(),
       },
     });
 
-    s3Service.deleteObject(image.s3Key).catch((error) => {
-      console.error('Failed to delete activity image object:', error);
-    });
+    await this.tryDeleteObjectAndMarkDeleted(image.id, image.s3Key);
 
     return { message: 'Image deleted successfully' };
+  }
+
+  async retryPendingDeletes(limit = 25) {
+    const pendingDeletes = await this.prisma.activityImage.findMany({
+      where: { status: 'DELETE_PENDING' },
+      orderBy: { updatedAt: 'asc' },
+      take: limit,
+    });
+
+    for (const image of pendingDeletes) {
+      await this.tryDeleteObjectAndMarkDeleted(image.id, image.s3Key);
+    }
   }
 
   private async assertOwnedActivity(userId: number, activityId: number) {
@@ -236,6 +246,27 @@ export class ActivityImageService {
 
     if (!pattern.test(key)) {
       throw new Error('Invalid image key');
+    }
+  }
+
+  private async tryDeleteObjectAndMarkDeleted(imageId: number, s3Key: string) {
+    try {
+      await s3Service.deleteObject(s3Key);
+      await this.prisma.activityImage.update({
+        where: { id: imageId },
+        data: {
+          status: 'DELETED',
+          deletedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      console.error('Failed to delete activity image object:', error);
+      await this.prisma.activityImage.update({
+        where: { id: imageId },
+        data: {
+          status: 'DELETE_PENDING',
+        },
+      });
     }
   }
 

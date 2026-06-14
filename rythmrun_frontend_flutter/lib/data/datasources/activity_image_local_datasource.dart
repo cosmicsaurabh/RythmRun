@@ -25,15 +25,19 @@ class ActivityImageLocalDataSource {
     return _localDbService.getImagesReadyForSync(userId, now);
   }
 
-  Future<void> markImageUploading(int localImageId) {
-    return _localDbService.markImageUploading(localImageId);
+  Future<List<ActivityImageEntity>> getActiveImagesForJanitor(int userId) {
+    return _localDbService.getActiveImagesForJanitor(userId);
   }
 
-  Future<void> markImageWaitingForActivitySync(int localImageId) {
-    return _localDbService.markImageWaitingForActivitySync(localImageId);
+  Future<bool> markImageUploadingIfReady(int localImageId) {
+    return _localDbService.markImageUploadingIfReady(localImageId);
   }
 
-  Future<void> markImageUploaded({
+  Future<bool> markImageWaitingForActivitySyncIfReady(int localImageId) {
+    return _localDbService.markImageWaitingForActivitySyncIfReady(localImageId);
+  }
+
+  Future<ActivityImageSyncStatus?> recordImageUploadResult({
     required int localImageId,
     required int remoteActivityId,
     required int remoteImageId,
@@ -41,7 +45,7 @@ class ActivityImageLocalDataSource {
     required DateTime? remoteUrlExpiresAt,
     required String s3Key,
   }) {
-    return _localDbService.markImageUploaded(
+    return _localDbService.recordImageUploadResult(
       localImageId: localImageId,
       remoteActivityId: remoteActivityId,
       remoteImageId: remoteImageId,
@@ -58,6 +62,20 @@ class ActivityImageLocalDataSource {
     required int retryCount,
   }) {
     return _localDbService.markImageRetrying(
+      localImageId: localImageId,
+      error: error,
+      nextRetryAt: nextRetryAt,
+      retryCount: retryCount,
+    );
+  }
+
+  Future<void> markImageDeleteQueuedRetrying({
+    required int localImageId,
+    required String error,
+    required DateTime nextRetryAt,
+    required int retryCount,
+  }) {
+    return _localDbService.markImageDeleteQueuedRetrying(
       localImageId: localImageId,
       error: error,
       nextRetryAt: nextRetryAt,
