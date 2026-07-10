@@ -62,6 +62,6 @@ class UserEntity {
 
   @override
   String toString() {
-    return 'UserEntity{id: $id, firstName: $firstName, lastName: $lastName, email: $email, profilePicturePath: $profilePicturePath, profilePictureType: $profilePictureType, createdAt: $createdAt}';
+    return 'UserEntity{id: $id, hasProfilePicture: ${profilePicturePath != null}, createdAt: $createdAt}';
   }
 }

@@ -1,51 +1,51 @@
 import { Request, Response } from 'express';
-import s3Service from '../services/s3.service';
-import { PrismaClient } from '../../generated/prisma/index.js';
+import { inject, injectable } from 'tsyringe';
+import { DtoValidationError, validateDto } from '../middleware/validation.middleware';
+import {
+  ConfirmAvatarUploadDto,
+  RequestAvatarUploadDto,
+} from '../models/dto/avatar.dto';
+import { AvatarService, AvatarServiceError } from '../services/avatar.service';
 
-const prisma = new PrismaClient();
+@injectable()
+export class AvatarController {
+  constructor(
+    @inject('AvatarService') private avatarService: AvatarService,
+  ) {}
 
-class AvatarController {
-  public async getUploadUrl(req: Request, res: Response) {
+  getUploadUrl = async (req: Request, res: Response) => {
     try {
-      const userId = (req as any).user.id;
-      const { ext, contentType } = req.body;
-
-      if (!ext || !contentType) {
-        return res.status(400).json({ message: 'ext and contentType are required' });
-      }
-      
-      const result = await s3Service.getUploadUrl(userId, ext, contentType);
-
-      res.json(result);
+      const dto = await validateDto(RequestAvatarUploadDto, req.body);
+      const result = await this.avatarService.requestUpload(req.user!.id, dto);
+      return res.status(200).json(result);
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Error generating upload URL' });
+      return this.handleError(error, res);
     }
-  }
+  };
 
-  public async confirmUpload(req: Request, res: Response) {
+  confirmUpload = async (req: Request, res: Response) => {
     try {
-      const userId = (req as any).user.id;
-      const { key, contentType } = req.body;
-
-      if (!key || !contentType) {
-        return res.status(400).json({ message: 'key and contentType are required' });
-      }
-
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          profilePicturePath: key,
-          profilePictureType: contentType,
-        },
-      });
-
-      res.sendStatus(200);
+      const dto = await validateDto(ConfirmAvatarUploadDto, req.body);
+      const result = await this.avatarService.confirmUpload(req.user!.id, dto);
+      return res.status(200).json(result);
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Error confirming upload' });
+      return this.handleError(error, res);
     }
+  };
+
+  private handleError(error: unknown, res: Response) {
+    if (error instanceof DtoValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    if (error instanceof AvatarServiceError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+
+    console.error(
+      'Avatar endpoint failed',
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return res.status(500).json({ message: 'Avatar request failed' });
   }
 }
-
-export default new AvatarController();

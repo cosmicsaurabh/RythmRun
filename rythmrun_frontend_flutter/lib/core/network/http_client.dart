@@ -38,6 +38,29 @@ class AppHttpClient {
     );
   }
 
+  /// Submit a multipart form. The request is rebuilt for each attempt so its
+  /// byte stream is never reused. Upload callers should normally disable
+  /// retries because a storage write is not guaranteed to be idempotent.
+  Future<http.Response> postMultipart(
+    String url, {
+    required Map<String, String> fields,
+    required String fileField,
+    required List<int> fileBytes,
+    required String filename,
+    int maxRetries = 0,
+  }) async {
+    return _makeRequest(() async {
+      final request = http.MultipartRequest('POST', Uri.parse(url));
+      request.fields.addAll(fields);
+      request.files.add(
+        http.MultipartFile.fromBytes(fileField, fileBytes, filename: filename),
+      );
+
+      final streamedResponse = await _client.send(request);
+      return http.Response.fromStream(streamedResponse);
+    }, maxRetries: maxRetries);
+  }
+
   /// Make a PUT request
   Future<http.Response> put(
     String url, {

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '../../generated/prisma';
+import { getJwtSecrets } from '../config/env';
 
 // Extend Express Request type to include user
 declare global {
@@ -26,13 +27,12 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
         const token = authHeader.split(' ')[1];
         
         // Verify token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as {
+        const decoded = jwt.verify(token, getJwtSecrets().accessSecret) as {
             userId: number;
         };
 
         // Add user info to request
         req.user = { id: decoded.userId };
-        console.log(`Received ${req.method} request for: ${req.url}`);
         next();
     } catch (error) {
         return res.status(401).json({
@@ -76,19 +76,19 @@ export const refreshTokenMiddleware = async (req: Request, res: Response, next: 
 
         try {
             // Verify token signature
-            const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key') as {
-                id: number;
+            const decoded = jwt.verify(refreshToken, getJwtSecrets().refreshSecret) as {
+                userId: number;
             };
 
             // Verify token matches the stored user
-            if (decoded.id !== storedToken.userId) {
+            if (decoded.userId !== storedToken.userId) {
                 return res.status(401).json({
                     status: 'error',
                     message: 'Invalid refresh token'
                 });
             }
 
-            req.user = { id: decoded.id };
+            req.user = { id: decoded.userId };
             next();
         } catch (error) {
             return res.status(401).json({
@@ -97,10 +97,13 @@ export const refreshTokenMiddleware = async (req: Request, res: Response, next: 
             });
         }
     } catch (error) {
-        console.error('Refresh token error:', error);
+        console.error(
+            'Refresh token middleware failed',
+            error instanceof Error ? error.name : 'UnknownError'
+        );
         return res.status(500).json({
             status: 'error',
             message: 'Internal server error'
         });
     }
-}; 
+};

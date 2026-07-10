@@ -1,5 +1,4 @@
 import AWS from 'aws-sdk';
-import { v4 as uuid } from 'uuid';
 
 type PresignedPutUrlInput = {
   key: string;
@@ -13,12 +12,25 @@ type PresignedPutUrlResult = {
   publicUrl: string;
 };
 
+export type PresignedPostInput = {
+  key: string;
+  contentType: string;
+  sizeBytes: number;
+  expiresSeconds?: number;
+};
+
+export type PresignedPostResult = {
+  uploadUrl: string;
+  fields: Record<string, string>;
+  key: string;
+};
+
 type ActivityImageReadUrlResult = {
   url: string;
   urlExpiresAt: string;
 };
 
-class S3Service {
+export class S3Service {
   private s3: AWS.S3;
 
   constructor() {
@@ -48,6 +60,28 @@ class S3Service {
       uploadUrl,
       key: input.key,
       publicUrl: this.getPublicUrl(input.key),
+    };
+  }
+
+  public getPresignedPost(input: PresignedPostInput): PresignedPostResult {
+    const post = this.s3.createPresignedPost({
+      Bucket: this.getRequiredEnv('S3_BUCKET'),
+      Fields: {
+        key: input.key,
+        'Content-Type': input.contentType,
+      },
+      Conditions: [
+        ['eq', '$key', input.key],
+        ['eq', '$Content-Type', input.contentType],
+        ['content-length-range', input.sizeBytes, input.sizeBytes],
+      ],
+      Expires: input.expiresSeconds ?? 300,
+    });
+
+    return {
+      uploadUrl: post.url,
+      fields: { ...post.fields },
+      key: input.key,
     };
   }
 
@@ -92,12 +126,6 @@ class S3Service {
         Key: key,
       })
       .promise();
-  }
-
-  public async getUploadUrl(userId: number, ext: string, contentType: string) {
-    const key = `avatars/${userId}/${uuid()}.${ext}`;
-
-    return this.getPresignedPutUrl({ key, contentType });
   }
 
   private getRequiredEnv(name: string): string {

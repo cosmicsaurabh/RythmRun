@@ -40,17 +40,7 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
         );
 
         final result = await _avatarRepository.uploadAvatar(image);
-        developer.log(
-          '[pfp] Upload successful, key: ${result.key}, mimeType: ${result.mimeType}',
-          name: 'ProfileViewModel',
-        );
-
         // Update session with new profile picture
-        developer.log(
-          '[pfp-vm] About to update session with key: ${result.key}, mimeType: ${result.mimeType}',
-          name: 'ProfileViewModel',
-        );
-
         _ref
             .read(sessionProvider.notifier)
             .updateProfilePicture(result.key, result.mimeType);
@@ -60,12 +50,8 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
           name: 'ProfileViewModel',
         );
 
-        // Verify the session was actually updated
+        // Verify the session was actually updated without logging its key.
         final updatedUser = _ref.read(sessionProvider).user;
-        developer.log(
-          '[pfp-vm] Verification - Updated user profilePicturePath: ${updatedUser?.profilePicturePath}',
-          name: 'ProfileViewModel',
-        );
 
         // If session update didn't work, refresh from server
         if (updatedUser?.profilePicturePath == null) {
@@ -74,12 +60,6 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
             name: 'ProfileViewModel',
           );
           await _ref.read(sessionProvider.notifier).refreshSession();
-
-          final refreshedUser = _ref.read(sessionProvider).user;
-          developer.log(
-            '[pfp-vm] After refresh - user profilePicturePath: ${refreshedUser?.profilePicturePath}',
-            name: 'ProfileViewModel',
-          );
         }
 
         // Upload complete - clear loading state
@@ -88,13 +68,8 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
           '[pfp] Profile upload complete',
           name: 'ProfileViewModel',
         );
-      } catch (e, stackTrace) {
-        developer.log(
-          '[pfp] ERROR in pickAndUploadImage: $e\nStackTrace: $stackTrace',
-          name: 'ProfileViewModel',
-          error: e,
-          stackTrace: stackTrace,
-        );
+      } catch (_) {
+        developer.log('[pfp] Avatar upload failed', name: 'ProfileViewModel');
         state = state.copyWith(
           isLoading: false,
           errorMessage: 'Failed to upload image.',
