@@ -6,12 +6,13 @@ published: false
 
 This matrix maps the 2026-07-10 read-only audit to the implementation program. It prevents lower-visibility findings from being lost while keeping phase order driven by security, correctness, privacy, and data durability.
 
-Local implementation evidence is now recorded in the IP-0 phase log. A finding is not considered production-verified until the applicable migration, staging, deployment, incident, and operational evidence is also present.
+Merged repository implementation evidence is recorded in the IP-0 phase log. A finding is not considered deployed or production-verified until the applicable migration, staging, deployment, incident, and operational evidence is also present.
 
 ## Current selection
 
 - Human-operated action now: [IP-0.1 production containment and evidence preservation](./IP-0-security-containment.md).
-- Current code delivery: the end-to-end local profile/avatar security slice covering IP-0.2 through IP-0.5 plus its negative suite. It remains pending commit, migration, coordinated mobile rollout, staging proof, and production verification.
+- Merged code delivery: the IP-0.2 through IP-0.5 profile/avatar security slice and its local automated suite are in `origin/main` through `e33f314`/`54a5b26`. Migration, coordinated mobile rollout, staging proof, deployment, and production verification remain open.
+- Current local package: IP-0.7a Express HTTP security regressions and minimum backend CI. Do not call CI operational or passing until a successful GitHub Actions run URL is recorded.
 - Concurrent owner action: IP-0.6 exposure review and credential rotation decision.
 
 ## P0/P1 findings
@@ -23,7 +24,7 @@ Local implementation evidence is now recorded in the IP-0 phase log. A finding i
 | Avatar confirmation accepts arbitrary S3 key | P0 | IP-0.4 | Foreign/unissued/mismatched object tests |
 | Possible deployed secret exposure | P0 | IP-0.1, IP-0.6 | Restricted incident disposition and credential revocation evidence |
 | JWT configuration falls back to public placeholders | P0 | IP-0.5 | Startup-failure tests; deployed smoke check |
-| Vulnerable production dependencies, including Multer/validator and the remaining dated advisories | P0/P1 | IP-0.3, IP-0.7, IP-1.6; recheck IP-5.3 | Remove/upgrade exposed paths, triage every advisory, then enforce dated CI/release gates |
+| Vulnerable production dependencies, including Multer/validator and the remaining dated advisories | P0/P1 | IP-0.3, IP-0.7/IP-0.7a, IP-1.6; recheck IP-5.3 | Remove/upgrade exposed paths, triage every advisory, then enforce dated CI/release gates |
 | Average speed displays roughly 3.6× high | P1 | IP-1.1 | Exact 10 km/h fixture and versioned migration |
 | Calories use double-converted speed | P1 | IP-1.1 | Calorie input spy/fixture receives km/h once |
 | Movement during pause increases distance | P1 | IP-1.2 | Fake-stream pause/move/resume test |
@@ -61,17 +62,17 @@ Local implementation evidence is now recorded in the IP-0 phase log. A finding i
 
 | Audit finding | Disposition | Planned proof or reason |
 | --- | --- | --- |
-| Multiple Prisma clients/pools | Avatar controller fixed locally in IP-0.4; remaining clients complete across IP-2.1/IP-4.6/IP-5.1 | Pool/client lifecycle tests and connection measurement |
+| Multiple Prisma clients/pools | Avatar controller fix is merged in IP-0.4 but not deployed; remaining clients complete across IP-2.1/IP-4.6/IP-5.1 | Pool/client lifecycle tests and connection measurement |
 | Generic/string-matched backend errors | IP-2.6 and IP-4 contract work | Typed error/status-code tests |
-| `app.ts` listens and starts jobs on import | Minimal app/server seam fixed locally in IP-0.5; lifecycle maturity remains IP-5.1 | Import-without-socket test and graceful shutdown test |
-| Environment loads after imported S3 dependencies | Fixed locally in IP-0.5; deployed smoke proof remains | Startup-order/config tests |
+| `app.ts` listens and starts jobs on import | Minimal app/server seam is merged in IP-0.5 but not deployed; lifecycle maturity remains IP-5.1 | Import-without-socket test and graceful shutdown test |
+| Environment loads after imported S3 dependencies | Fix is merged in IP-0.5 but not deployed; deployed smoke proof remains | Startup-order/config tests |
 | Health ignores dependencies and cold start is slow | IP-5.1 | Liveness/readiness failure and startup timing evidence |
-| No current CI and narrow test coverage | Minimum IP-1.6; expanded IP-5.3 | Required checks and intentional-failure probes |
+| No proven operational CI and narrow HTTP-level security coverage | Current IP-0.7a; expanded IP-1.6/IP-5.3 | Successful GitHub Actions run URL, Express regressions, required checks, and intentional-failure probes |
 | 159 Flutter analyzer findings | Baseline protection IP-1.6; release gate IP-5.3 | No increase, then zero errors/warnings and bounded info/deprecation plan |
 | Large mixed-responsibility DB/UI files | Extract only phase-required seams; broader cleanup deferred | Focused tests first; no risk-unrelated rewrite |
 | Duplicate map/formatting logic | IP-1.1/IP-1.2/IP-3.5 | One unit formatter and one accepted-point route |
 | Named `/home` route has no route-level auth guard | IP-2.2 | Unauthenticated direct-navigation/provider-instantiation test |
-| Duplicate local/S3 avatar implementations | Local pipeline removed in the IP-0.3/IP-0.4 worktree; deployment remains | Only S3 route/lifecycle remains |
+| Duplicate local/S3 avatar implementations | Local pipeline removal is merged in IP-0.3/IP-0.4; deployment remains | Deployed route inventory proves only the hardened S3 route/lifecycle remains |
 | Conflicting Android Gradle files | Fix in IP-3.4; verify in IP-5.5 | One authoritative clean foreground-service/release build configuration |
 | Connectivity may never emit initial connected state and polls public DNS | IP-4.1 | Immediate-state/provider tests; probe removed |
 | iOS configuration/readiness incomplete | IP-5.5 | Fully proven device gate or explicit Android-only scope |

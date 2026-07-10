@@ -20,9 +20,9 @@ After this phase, an HTTP client cannot write a local filesystem path or arbitra
 
 This file is a plan, not proof that production is safe.
 
-## Local implementation checkpoint
+## Merged implementation checkpoint
 
-The current worktree implements the reviewable application slice for IP-0.2 through IP-0.5:
+Commit `e33f314`, merged into `origin/main` by merge commit `54a5b26`, contains the reviewable application slice for IP-0.2 through IP-0.5:
 
 - strict DTO allowlists plus explicit Prisma write mappings;
 - removal of the local filesystem avatar routes, handlers, middleware, and Multer dependency;
@@ -30,7 +30,7 @@ The current worktree implements the reviewable application slice for IP-0.2 thro
 - a coordinated Flutter multipart client with size/type checks and redacted avatar logging; and
 - environment validation before infrastructure imports, with no executable JWT fallback secrets.
 
-This checkpoint is not deploy authorization. The additive database migration must precede the backend, older PUT-based clients require a coordinated/forced update, the independent S3 lifecycle rule still needs infrastructure evidence, and IP-0.1/IP-0.6 plus staging/production checks remain open.
+This merged checkpoint is repository evidence, not deploy authorization or production verification. The additive database migration must precede the backend, older PUT-based clients require a coordinated/forced update, the independent S3 lifecycle rule still needs infrastructure evidence, and IP-0.1/IP-0.6 plus staging/production checks remain open.
 
 ## Audit evidence at discovery time
 
@@ -332,9 +332,38 @@ This is operational work. Store sensitive evidence in the approved incident syst
 4. Triage all production advisories from the dated scan—not only Multer. Upgrade/remove affected packages or record a time-bounded owner-approved exception with reachability evidence; no exposed critical/high advisory is accepted for reopen.
 5. Run a supported Flutter build through avatar upload/display/replacement.
 6. Verify logs contain request IDs and safe error categories but no secrets, raw keys beyond what is necessary, response bodies, signed URLs, or filesystem paths.
-7. Add a minimum backend security CI job for clean install, Prisma generation/validation, typecheck, and backend tests before the emergency change can merge. IP-1 expands this to Flutter and analyzer ratchets.
+7. Add the minimum backend security CI job defined in IP-0.7a immediately after the merged emergency application slice, so subsequent security changes are protected by clean install, Prisma generation/validation, typecheck, and backend tests. IP-1 expands this to Flutter and analyzer ratchets. A committed workflow is not operational CI evidence until a successful GitHub Actions run URL is recorded.
 8. Open routes in stages: registration/profile text fields first, S3 avatar request/confirm next. Never reopen local filesystem routes. Keep avatar routes contained if storage-boundary limits, intent checks, quota, or cleanup are incomplete.
 9. Monitor `4xx`, `5xx`, registration, avatar-confirm, storage rejection, and S3 error rates continuously, with an explicit 24-hour heightened observation window after reopen and an owner/on-call rollback trigger.
+
+### IP-0.7a — Current local package: Express HTTP security regressions and minimum backend CI
+
+**Status**
+
+- Current local implementation package. The merged IP-0.2 through IP-0.5 application slice remains undeployed and production-unverified.
+- No CI success is claimed until a GitHub Actions run URL demonstrates the committed workflow on the repository host.
+
+**Implementation**
+
+1. Add Express-level regression tests that exercise the mounted routes, authentication boundary, DTO validation, controller mapping, and HTTP response instead of proving only service behavior.
+2. Cover registration and profile updates with undeclared/server-managed fields and assert a `400` response with no persistence mutation.
+3. Prove the retired local profile-picture read/write routes are not mounted and cannot reach filesystem behavior.
+4. Cover avatar request/confirm rejection at the HTTP boundary for invalid payloads and unauthenticated requests without exposing keys, signed URLs, paths, or secrets in test output.
+5. Keep S3, Prisma, and other external infrastructure deterministic through explicit test doubles; these tests are local regressions, not staging evidence.
+6. Add a minimum backend GitHub Actions workflow that performs a clean dependency install, Prisma validation/generation, TypeScript typecheck, and the backend test suite using non-secret test configuration.
+7. Keep dependency-advisory review explicit. A green test workflow does not satisfy the dated production-advisory gate unless the dependency scan is separately run, triaged, and recorded.
+
+**How to verify**
+
+- Run the Express regression suite locally and record its exact test count together with the full backend-suite total.
+- Open a pull request or push the workflow through the normal protected path, then record the successful GitHub Actions run URL. File presence or local workflow inspection alone is not proof that CI is operational.
+- Deliberately break a security assertion on a temporary/non-merge revision and confirm the workflow fails, or record an equivalent intentional-failure probe.
+- Confirm no staging, production, advisory, incident-containment, credential-rotation, migration, mobile-rollout, or lifecycle-rule checkbox is closed by this package.
+
+**Acceptance**
+
+- The relevant security boundaries have Express-level regression coverage and a successful hosted backend CI run is linked.
+- Completion of IP-0.7a does not authorize route reopen or mark IP-0 complete.
 
 ## Rollback plan
 
@@ -397,3 +426,5 @@ This is operational work. Store sensitive evidence in the approved incident syst
 | 2026-07-10 | IP-0.4 | `avatar.service.test.ts` (38 tests); Flutter avatar tests; full suites | Pass locally | Backend 113/113 and Flutter 21/21 passed. Migration, real S3 lifecycle, multipart upload/display/replacement, and controlled rollout still require staging evidence. |
 | 2026-07-10 | IP-0.5 | `env.test.ts`, `server-bootstrap.test.ts`, TypeScript/build/Prisma validation | Pass locally | Configuration is validated before consumer imports; missing/documented placeholders fail closed. Deployment smoke test remains open. |
 | 2026-07-10 | IP-0.7 | `flutter analyze` baseline comparison | Partial | Analyzer remains at the audited baseline of 159 findings (6 warnings, 153 info); no increase. Current production advisory scan could not run in the restricted environment and remains an explicit gate. |
+| 2026-07-10 | IP-0.2–IP-0.5 | `e33f314`, merged through `54a5b26` into `origin/main` | Merged; not deployed | Repository delivery is confirmed. Migration, staging, production, incident-response, credential-rotation, mobile-rollout, and infrastructure evidence remain open. |
+| 2026-07-10 | IP-0.7a | `http-security-boundary.test.ts` (16 tests); full backend suite (129 tests); `backend-security.yml` local structure review | Pass locally; hosted CI pending | Express-boundary regressions, typecheck, and local suite pass. No operational CI pass is claimed until a successful GitHub Actions run URL and intentional-failure probe are added. |
