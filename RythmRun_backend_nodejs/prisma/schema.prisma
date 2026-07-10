@@ -9,29 +9,50 @@ datasource db {
 }
 
 model User {
-  id                 Int           @id @default(autoincrement())
-  firstname          String?
-  lastname           String?
-  username           String        @unique
-  password           String
-  profilePicturePath String?
-  profilePictureType String?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @default(now()) @updatedAt
-  activities         Activity[]
-  activityImages     ActivityImage[]
-  comments           Comment[]
-  friendsAsUser1     Friend[]      @relation("UserFriends")
-  friendsAsUser2     Friend[]      @relation("UserFriends2")
-  likes              Like[]
-  refreshToken       RefreshToken?
+  id                  Int                  @id @default(autoincrement())
+  firstname           String?
+  lastname            String?
+  username            String               @unique
+  password            String
+  profilePicturePath  String?
+  profilePictureType  String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @default(now()) @updatedAt
+  activities          Activity[]
+  activityImages      ActivityImage[]
+  avatarUploadIntents AvatarUploadIntent[]
+  comments            Comment[]
+  friendsAsUser1      Friend[]             @relation("UserFriends")
+  friendsAsUser2      Friend[]             @relation("UserFriends2")
+  likes               Like[]
+  refreshToken        RefreshToken?
+}
+
+model AvatarUploadIntent {
+  id                 String    @id @default(cuid())
+  userId             Int
+  key                String    @unique
+  contentType        String
+  sizeBytes          Int
+  expiresAt          DateTime
+  consumedAt         DateTime?
+  cleanupKey         String?
+  cleanupCompletedAt DateTime?
+  createdAt          DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, consumedAt, expiresAt])
+  @@index([consumedAt, expiresAt])
+  @@index([cleanupCompletedAt, consumedAt])
 }
 
 model Activity {
-  id             Int        @id @default(autoincrement())
+  id             Int             @id @default(autoincrement())
   userId         Int
   clientSyncId   String
-  type           String     @db.VarChar(50)
+  type           String          @db.VarChar(50)
   startTime      DateTime
   endTime        DateTime
   distance       Float
@@ -40,14 +61,14 @@ model Activity {
   maxSpeed       Float
   calories       Int?
   description    String?
-  isPublic       Boolean    @default(true)
+  isPublic       Boolean         @default(true)
   pausedDuration Int?
   name           String?
   elevationGain  Float?
   elevationLoss  Float?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @default(now()) @updatedAt
-  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @default(now()) @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   comments       Comment[]
   likes          Like[]
   locations      Location[]
@@ -76,8 +97,8 @@ model ActivityImage {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @default(now()) @updatedAt
 
-  activity       Activity            @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([activityId, clientImageId])
   @@index([activityId, sortOrder])

@@ -1,0 +1,212 @@
+---
+published: false
+---
+
+# RythmRun improvement program
+
+> Program status: IP-0 implementation is in progress. Local code and automated-test evidence are recorded below, but production remains unverified and must stay contained until the operational exit gates pass.
+
+This directory turns the repository audit dated 2026-07-10 into an implementation-ready hardening program. It is the canonical place to track the current improvement phase, the next five phases, their decisions, and the evidence required to mark work complete.
+
+These files use `published: false` because `docs/` is also the GitHub Pages policy site. They are engineering source documents, not public policy pages. Do not add secrets or private incident evidence: the repository contents may still be visible even when GitHub Pages does not render them.
+
+If the repository is public, keep this uncommitted plan local (or move the active incident detail to an access-controlled tracker) until IP-0 containment and rotation are complete. `published: false` and the `_engineering` directory prevent normal Pages rendering; they do not make raw repository files confidential.
+
+The audit used the word "phase" for review categories. This program uses `IP` (Improvement Phase) identifiers to avoid confusing audit sections with implementation work.
+
+## Immediate warning
+
+`IP-0` is the current phase and is a release blocker. The deployed backend must be treated as potentially exposed until the profile-path vulnerability is contained, suspicious access is investigated, and potentially exposed credentials are rotated or exposure is confidently ruled out.
+
+The first code remediation slice is implemented in the current worktree, but it has not been committed, deployed, or exercised against staging/production. Writing the documents and passing local tests did **not** restrict production, inspect production logs, rotate credentials, apply the migration, configure bucket lifecycle, or prove the deployed service safe. Those actions require deployment and secret-management access and must begin before normal feature work.
+
+## Selected work now
+
+- **Human-operated first action:** IP-0.1 — contain the affected production routes and preserve evidence.
+- **Current code delivery:** the local IP-0.2 through IP-0.5 profile/avatar/configuration slice and its automated negative suite are implemented and under commit review. Production stays contained until the migration, coordinated mobile rollout, staging proof, incident work, and remaining IP-0.7 gates are complete.
+- **Concurrent owner action:** IP-0.6 — determine exposure and rotate/revoke credentials when it cannot be excluded.
+
+For subsequent work, take the lowest-numbered unblocked work package in the current phase. A maintainer may combine tightly coupled packages, but must not mark either complete until both sets of acceptance criteria pass. See [audit finding traceability](./AUDIT-TRACEABILITY.md) for the complete mapping.
+
+## Product direction
+
+The near-term product is a privacy-first, offline-reliable GPS workout and photo journal for Android. The program optimizes for user trust in this order:
+
+1. The service cannot expose files, secrets, or exact routes unexpectedly.
+2. Recorded metrics are correct.
+3. One account cannot see or mutate another account's local state.
+4. A workout survives pause, screen-off operation, process death, and poor connectivity.
+5. Completed workouts visibly sync, restore on a new device, and delete consistently.
+6. Releases are measurable and repeatable before retention features are expanded.
+
+## Phase roadmap
+
+| Phase | Status | Priority | Intended outcome | Depends on |
+| --- | --- | --- | --- | --- |
+| [IP-0: Security containment](./IP-0-security-containment.md) | **In progress** | P0 | Contain arbitrary file access, fail closed on secrets, harden the single avatar path, and complete exposure response | Production, log, database, AWS, CDN, and secret-store access |
+| [IP-1: Tracking correctness and local integrity](./IP-1-tracking-correctness.md) | Planned | P1 | Trustworthy metrics, pause/outlier semantics, per-user local access, working cascades, and minimum CI | IP-0 code fix deployed and incident actions underway |
+| [IP-2: Authentication, account, and privacy](./IP-2-auth-account-privacy.md) | Planned | P1 | One working refresh contract, secure token storage, revocation, account basics, and safe route visibility | IP-1 user isolation rules and minimum CI |
+| [IP-3: Workout durability](./IP-3-workout-durability.md) | Planned | P1 | Checkpoint/recover active workouts and prove Android screen-off tracking | IP-1 metric state machine; IP-2.1–IP-2.3 identity/offline-session core gate |
+| [IP-4: Sync, data contracts, and restore](./IP-4-sync-data-restore.md) | Planned | P1/P2 | Bounded resumable sync, lightweight API reads, visible status, indexed data, and cross-device restore | IP-2 refresh; IP-3 durable local state |
+| [IP-5: Release readiness; retention follow-on](./IP-5-release-retention.md) | Planned | P2 | Mature staging, observability, release evidence, platform scope, and documentation; specify a separate post-gate journal epic | Exit gates for IP-0 through IP-4 |
+
+Phases are ordered by risk and dependency, not by ease. Work inside a phase may run in parallel when the phase document says so, but a later phase must not delay a safety fix in an earlier phase.
+
+## Parallel dependency matrix
+
+| Workstream | May start after | Must wait before production enablement |
+| --- | --- | --- |
+| IP-0 containment, isolated staging, code fix, and incident response | Immediately, in parallel | All IP-0 exit gates before affected routes reopen |
+| IP-1 metric/local-integrity packages | IP-0 code deployed and containment maintained | IP-1 migrations/tests for each changed behavior |
+| IP-2.1–IP-2.3 auth/session core | IP-1 user-scope rules and minimum CI | Rotation, secure storage, offline-policy gates |
+| IP-3.1–IP-3.2 checkpoint engine/schema development | IP-1 metric engine; can run alongside later IP-2 account work | IP-2.1–IP-2.3 identity rules and IP-2.7 approved checkpoint-at-rest protection before user rollout |
+| IP-3 recovery/background integration | Checkpoint engine plus IP-2.1–IP-2.3 | Physical-device and process-kill gates |
+| IP-4.3/IP-4.4 summary/index work | IP-1 backend/local contract fixes | Privacy and compatibility contract tests |
+| IP-4 upload/restore/tombstone work | IP-2 auth/privacy core and IP-3 stable sequences/finalization | Full IP-4 conflict, restore, and failure gates |
+| IP-5 release controls | Can be prepared earlier; formal gate follows IP-0–IP-4 | No P0/P1 waiver for release |
+
+External email or later account features must not delay checkpoint-engine development. Conversely, parallel development is not permission to enable a feature before its production dependency gates pass.
+
+## What remains unchanged
+
+- Keep Flutter, Riverpod, Express, Prisma, PostgreSQL, SQLite, and S3/CloudFront.
+- Keep the backend as a modular monolith.
+- Keep local-first workout completion.
+- Preserve `(userId, clientSyncId)` idempotency.
+- Preserve queued remote workout deletion.
+- Preserve the activity-image upload/retry/replace/delete state machine.
+- Keep direct-to-S3 upload and signed CDN reads after hardening them.
+- Keep history list payloads lightweight and load route points only for details.
+- Do not introduce Redis, Kafka, Kubernetes, microservices, event streaming, or generalized AI infrastructure without measured evidence that a completed phase cannot meet its target without them.
+
+## Program rules for implementing agents
+
+1. Read this file and the active phase file completely before changing code.
+2. Confirm the phase status is `CURRENT` or that the maintainer explicitly selected the task.
+3. Select the lowest-numbered unblocked work package unless the phase explicitly identifies concurrent human/agent work.
+4. Reproduce or encode the failure before changing behavior wherever safe. Never attempt exploit verification against production.
+5. Implement one work package or one tightly coupled dependency set per pull request.
+6. Add focused tests in the same change as the behavior. A manual-only test is acceptable only when automation is infeasible and the phase document explicitly calls for device or infrastructure evidence.
+7. Preserve existing unrelated worktree changes. Do not reformat or refactor unrelated files.
+8. Include migration, rollout, rollback, privacy, and compatibility effects in the handoff.
+9. Record evidence in the phase file and update the phase table only after its exit gate passes.
+10. Treat unchecked exit criteria as incomplete work; a passing happy-path test alone does not complete a phase.
+11. Do not place production secrets, tokens, exact user routes, raw coordinates, or incident log extracts in the repository.
+
+## Status vocabulary
+
+Use only these values in the roadmap and phase headers:
+
+- `Planned`: sequenced but not started.
+- `Current — not implemented`: selected next, with no claim of remediation.
+- `In progress`: at least one work package is actively being implemented.
+- `Blocked`: external access or an explicit decision prevents progress; document the blocker and owner.
+- `Verification`: implementation is complete but one or more exit checks remain.
+- `Complete`: every exit criterion passed and evidence is linked.
+- `Deferred`: deliberately removed from the active program with a reason.
+
+## Global definition of done
+
+Every phase must meet all applicable conditions:
+
+- Code, tests, migrations, configuration examples, and user-facing behavior agree.
+- Negative and failure-path tests exist for the risk being fixed.
+- Existing backend and Flutter test suites pass.
+- TypeScript type checking passes.
+- Flutter analyzer results introduce no new warnings or errors; the known baseline must be recorded until the backlog is cleared.
+- Forward migration and rollback/compensation have been exercised on non-production data.
+- Observability does not log tokens, passwords, raw secrets, exact routes, raw coordinates, or private file paths.
+- Deployment order and rollback trigger are written down.
+- Compatibility with at least the previous supported mobile version is either proven or intentionally rejected with a forced-upgrade plan.
+- The phase exit matrix contains dated evidence (CI run, test report, staging run, query plan, or incident ticket reference).
+
+## Standard verification commands
+
+Run from the repository root unless a phase adds more specific commands.
+
+```bash
+cd RythmRun_backend_nodejs
+npm ci
+npx prisma validate
+npx prisma generate
+npm test -- --runInBand
+npx tsc --noEmit
+```
+
+```bash
+cd rythmrun_frontend_flutter
+flutter pub get
+flutter test
+flutter analyze
+```
+
+For dependency review, record the date and full report; do not silently accept advisories:
+
+```bash
+cd RythmRun_backend_nodejs
+npm audit --omit=dev
+```
+
+The audit baseline on 2026-07-10 was 25 backend tests passing, TypeScript passing, 15 Flutter tests passing, and 159 Flutter analyzer findings (6 warnings and 153 informational findings). This is a comparison baseline, not an acceptable final quality target.
+
+## Required evidence format
+
+At the bottom of each phase file, maintain a table like this:
+
+| Date | Work package | Evidence | Result | Notes |
+| --- | --- | --- | --- | --- |
+| YYYY-MM-DD | IP-x.y | PR/commit, CI URL, staging run, or ticket reference | Pass/Fail | No secrets or personal data |
+
+Do not mark a phase complete using only a commit hash. Include the test or operational result that demonstrates the exit condition.
+
+## Decisions already made
+
+| ID | Decision | Reason |
+| --- | --- | --- |
+| D-001 | Security containment is the current phase. | It is the only confirmed P0 and can expose files or credentials. |
+| D-002 | Use `IP-0` through `IP-5` for implementation planning. | The audit already labels its review sections as phases. |
+| D-003 | Canonical workout units will be meters, seconds, and meters/second; presentation converts at the boundary. | GPS speed and the existing entity contract are already expressed as m/s, and this avoids double conversion. |
+| D-004 | Completed local workouts remain local-first and are retained per account across logout, but all reads/mutations must be user-scoped. | Offline history is core product value; access isolation is mandatory. Account deletion must purge the user's local and remote data. |
+| D-005 | The S3 avatar pipeline is the target implementation; the local filesystem avatar pipeline is retired after a controlled compatibility window. | Two pipelines create conflicting security and lifecycle behavior. |
+| D-006 | New activities default to private. Public sharing requires an explicit privacy model and route redaction. | Exact GPS start/end points are sensitive. |
+| D-007 | Social work remains disabled/deferred until authentication, privacy, moderation, and route visibility are complete. | Current social routes are broken and there is no frontend journey. |
+| D-008 | Android is the only promised platform until IP-5 either proves iOS readiness or explicitly keeps iOS out of release scope. | iOS currently lacks required photo, AdMob, and background behavior configuration. |
+| D-009 | Offline local access lasts at most seven days from a successful server verification and is limited to the verified user's local data. | It preserves offline value without treating a stale local identity as indefinite server authorization. Clock rollback triggers conservative online verification. |
+| D-010 | Access tokens include a session ID and authenticated requests verify that the session remains active. | Logout/password/account revocation must take effect before natural access-token expiry at current MVP scale. |
+
+## Decisions that still require an owner
+
+These do not block IP-0 or IP-1 but must be resolved before the named phase starts.
+
+| Needed by | Decision | Recommended default |
+| --- | --- | --- |
+| IP-2 | Password-recovery email provider and sender domain | Use one transactional email provider in staging first; never log reset tokens. |
+| IP-2 | Logout UX when an active workout exists | Block logout behind a choice to finish or discard the active workout; never silently leave tracking active. |
+| IP-2 | Device location/photo protection at rest | Approve library/performance/backup recovery first; prefer per-user data keys wrapped by the platform keystore, encrypted DB/files, and exclusion from unencrypted backups. |
+| IP-4 | Cross-device conflict policy | A remote tombstone auto-deletes only a locally proven previously-synced identity/revision; an unsynced collision is quarantined, not erased or resurrected. Ask the user only for true editable journal conflicts. |
+| IP-5 | iOS release commitment | Keep the release Android-only unless real-device background and image/ads checks pass. |
+| IP-5 | Crash/metrics vendor and retention | Choose the smallest provider that supports redaction, regional requirements, and short retention. |
+
+## Deferred backlog
+
+The following findings are real but intentionally do not outrank the trust program:
+
+- Social feed, likes, comments, discovery, and friend journeys.
+- Cadence, music, rhythm coaching, wearables, and health-platform integration.
+- AI-generated summaries.
+- Offline map tile caching.
+- Banner-ad expansion.
+- Broad file/module restructuring that is not needed for a phase task.
+- Cursor pagination, larger IDs, or partitioning until IP-4 measurements justify them.
+- General analyzer cleanup beyond release-blocking or touched-code findings until safety work is protected by CI.
+
+## Plan maintenance
+
+When a phase changes state:
+
+1. Update the phase status and `Last updated` value in its file.
+2. Update the phase table here.
+3. Append evidence rather than overwriting failed attempts.
+4. Add or amend a decision entry when behavior or scope changes.
+5. Move newly discovered work to the earliest phase whose exit condition depends on it.
+6. If the plan and code disagree, treat the code as current behavior and update the plan in the same implementation change; never claim unverified behavior in documentation.

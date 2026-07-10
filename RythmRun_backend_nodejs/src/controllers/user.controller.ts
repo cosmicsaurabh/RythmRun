@@ -1,14 +1,8 @@
 import { Request, Response } from 'express';
 import { UserService } from '../services/user.service';
 import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto';
-import { plainToClass } from 'class-transformer';
-import { validate } from 'class-validator';
 import { injectable, inject } from "tsyringe";
 import { validateDto } from '../middleware/validation.middleware';
-import path from 'path';
-import { UPLOAD_DIRECTORY } from '../config/upload.config';
-import { deleteFile } from '../middleware/file-upload.middleware';
-import fs from 'fs';
 
 @injectable()
 export class UserController {
@@ -125,86 +119,4 @@ export class UserController {
             });
         }
     };
-
-    uploadProfilePicture = async (req: Request, res: Response) => {
-        try {
-            const userId = req.user!.id;
-            if (!req.file) {
-                return res.status(400).json({
-                    error: 'FILE_REQUIRED',
-                    message: 'No file uploaded',
-                    statusCode: 400,
-                    timestamp: new Date().toISOString()
-                });
-            }
-
-            // Get the current user to check existing profile picture
-            const currentUser = await this.userService.findById(userId);
-            if (currentUser.profilePicturePath) {
-                // Delete old profile picture if it exists
-                await deleteFile(path.join(UPLOAD_DIRECTORY, currentUser.profilePicturePath));
-            }
-            
-            // Update the profile picture path in the database
-            await this.userService.updateProfilePicture(userId, {
-                profilePicturePath: req.file.filename,
-                profilePictureType: req.file.mimetype
-            });
-
-            res.status(200).json({ 
-                message: 'Profile picture updated successfully',
-                filename: req.file.filename
-            });
-        } catch (error: any) {
-            // If there's an error, make sure to clean up the uploaded file
-            if (req.file) {
-                await deleteFile(path.join(UPLOAD_DIRECTORY, req.file.filename));
-            }
-
-            res.status(400).json({
-                error: 'PROFILE_PICTURE_UPDATE_FAILED',
-                message: error.message,
-                statusCode: 400,
-                timestamp: new Date().toISOString()
-            });
-        }
-    };
-
-    getProfilePicture = async (req: Request, res: Response) => {
-        try {
-            const userId = parseInt(req.params.id);
-            const user = await this.userService.findById(userId);
-            
-            if (!user || !user.profilePicturePath) {
-                return res.status(404).json({
-                    error: 'NOT_FOUND',
-                    message: 'Profile picture not found',
-                    statusCode: 404,
-                    timestamp: new Date().toISOString()
-                });
-            }
-
-            const filePath = path.join(UPLOAD_DIRECTORY, user.profilePicturePath);
-            
-            // Check if file exists
-            if (!fs.existsSync(filePath)) {
-                return res.status(404).json({
-                    error: 'NOT_FOUND',
-                    message: 'Profile picture file not found',
-                    statusCode: 404,
-                    timestamp: new Date().toISOString()
-                });
-            }
-
-            res.setHeader('Content-Type', user.profilePictureType || 'image/jpeg');
-            res.sendFile(filePath);
-        } catch (error: any) {
-            res.status(500).json({
-                error: 'PROFILE_PICTURE_FETCH_FAILED',
-                message: error.message,
-                statusCode: 500,
-                timestamp: new Date().toISOString()
-            });
-        }
-    };
-} 
+}

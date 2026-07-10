@@ -3,11 +3,7 @@ import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } fr
 import * as bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { injectable, inject } from "tsyringe";
-
-interface ProfilePictureUpdate {
-    profilePicturePath: string;
-    profilePictureType: string;
-}
+import { getJwtSecrets } from '../config/env';
 
 @injectable()
 export class UserService {
@@ -36,8 +32,10 @@ export class UserService {
         // Create user
         const user = await this.prisma.user.create({
             data: {
-                ...registerDto,
-                password: hashedPassword
+                username: registerDto.username,
+                password: hashedPassword,
+                firstname: registerDto.firstname,
+                lastname: registerDto.lastname
             }
         });
 
@@ -132,7 +130,10 @@ export class UserService {
         // Update profile
         await this.prisma.user.update({
             where: { id: userId },
-            data: updateProfileDto
+            data: {
+                firstname: updateProfileDto.firstname,
+                lastname: updateProfileDto.lastname
+            }
         });
     }
 
@@ -146,26 +147,6 @@ export class UserService {
         }
 
         return user;
-    }
-
-    async updateProfilePicture(userId: number, update: ProfilePictureUpdate) {
-        // Find user
-        const user = await this.prisma.user.findUnique({
-            where: { id: userId }
-        });
-
-        if (!user) {
-            throw new Error('User not found');
-        }
-
-        // Update profile picture path
-        await this.prisma.user.update({
-            where: { id: userId },
-            data: {
-                profilePicturePath: update.profilePicturePath,
-                profilePictureType: update.profilePictureType
-            }
-        });
     }
 
     private getUserResponseData(user: User, accessToken: string, refreshToken: string) {
@@ -183,17 +164,21 @@ export class UserService {
     }
 
     private generateAccessToken(userId: number): string {
+        const { accessSecret } = getJwtSecrets();
+
         return jwt.sign(
             { userId },
-            process.env.JWT_SECRET || 'your-secret-key',
+            accessSecret,
             { expiresIn: this.JWT_EXPIRATION }
         );
     }
 
     private generateRefreshToken(userId: number): string {
+        const { refreshSecret } = getJwtSecrets();
+
         return jwt.sign(
             { userId },
-            process.env.REFRESH_TOKEN_SECRET || 'your-refresh-secret-key',
+            refreshSecret,
             { expiresIn: this.REFRESH_EXPIRATION }
         );
     }
@@ -251,4 +236,4 @@ export class UserService {
             refreshToken: newRefreshToken
         };
     }
-} 
+}

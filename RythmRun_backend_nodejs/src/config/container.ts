@@ -7,9 +7,12 @@ import { ActivityImageService } from '../services/activity-image.service';
 import { CommentService } from '../services/comment.service';
 import { LikeService } from '../services/like.service';
 import { FriendService } from '../services/friend.service';
+import { AvatarService } from '../services/avatar.service';
+import s3Service from '../services/s3.service';
 
 // Register Prisma as a singleton
 container.registerInstance("PrismaClient", new PrismaClient());
+container.registerInstance("S3Service", s3Service);
 
 // Register all services
 container.register("UserService", {
@@ -34,6 +37,10 @@ container.register("LikeService", {
 
 container.register("FriendService", {
     useClass: FriendService
+});
+
+container.register("AvatarService", {
+    useClass: AvatarService
 });
 
 export { container };

@@ -65,10 +65,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
         if (userData != null) {
           print('🔍 SessionProvider: User ID: ${userData.id}');
           print(
-            '🔍 SessionProvider: User profilePicturePath: ${userData.profilePicturePath}',
-          );
-          print(
-            '🔍 SessionProvider: User profilePictureType: ${userData.profilePictureType}',
+            '🔍 SessionProvider: Avatar configured: ${userData.profilePicturePath != null}',
           );
         }
       }
@@ -288,9 +285,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
         log('[pfp-session] ERROR: Failed to update local storage: $e');
       });
 
-      log(
-        '[pfp-session] Updated user profilePicturePath: ${state.user!.profilePicturePath}',
-      );
+      log('[pfp-session] Updated profile picture');
     } else {
       log(
         '[pfp-session] WARNING - Cannot update profile picture, user is null',

@@ -220,7 +220,7 @@ class AuthPersistenceService {
 
     if (kDebugMode) {
       print('✅ AuthPersistenceService: User data updated in local storage');
-      print('   Profile picture path: ${user.profilePicturePath}');
+      print('   Avatar configured: ${user.profilePicturePath != null}');
     }
   }
 

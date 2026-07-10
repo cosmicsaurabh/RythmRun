@@ -176,13 +176,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final profileState = ref.watch(profileViewModelProvider);
     final isLoading = profileState.isLoading;
 
-    // Only log when profile picture path changes to avoid spam
+    // Only log the state transition, never the private storage key.
     if (_lastLoggedProfilePicturePath != user.profilePicturePath) {
       _lastLoggedProfilePicturePath = user.profilePicturePath;
-      log(
-        '[pfp-ui] Profile picture changed - User ID: ${user.id}, Path: ${user.profilePicturePath}',
-        name: 'ProfileScreen',
-      );
+      log('[pfp-ui] Profile picture changed', name: 'ProfileScreen');
     }
 
     return Container(
@@ -905,10 +902,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             },
             errorBuilder: (context, error, stackTrace) {
               // Show error placeholder if image fails to load
-              log(
-                '[pfp-ui] ERROR: Failed to load image from $cloudFrontUrl - $error',
-                name: 'ProfileScreen',
-              );
+              log('[pfp-ui] Avatar image load failed', name: 'ProfileScreen');
               return Container(
                 width: 116,
                 height: 116,
