@@ -6,8 +6,14 @@ class WorkoutLocalDataSource {
 
   WorkoutLocalDataSource(this._localDbService);
 
-  Future<int> saveWorkoutInLocalDatabase(WorkoutSessionEntity workout) async {
-    return await _localDbService.saveWorkoutInLocalDatabase(workout);
+  Future<int> saveWorkoutInLocalDatabase(
+    WorkoutSessionEntity workout, {
+    required int userId,
+  }) async {
+    return await _localDbService.saveWorkoutInLocalDatabase(
+      workout,
+      userId: userId,
+    );
   }
 
   Future<List<WorkoutSessionEntity>> getWorkoutsFromLocalDatabase(
@@ -17,13 +23,23 @@ class WorkoutLocalDataSource {
   }
 
   Future<WorkoutSessionEntity?> getWorkoutFromLocalDatabase(
-    int workoutId,
-  ) async {
-    return await _localDbService.getWorkoutFromLocalDatabase(workoutId);
+    int workoutId, {
+    required int userId,
+  }) async {
+    return await _localDbService.getWorkoutFromLocalDatabase(
+      workoutId,
+      userId: userId,
+    );
   }
 
-  Future<void> deleteWorkoutFromLocalDatabase(int workoutId) async {
-    await _localDbService.deleteWorkoutFromLocalDatabase(workoutId);
+  Future<void> deleteWorkoutFromLocalDatabase(
+    int workoutId, {
+    required int userId,
+  }) async {
+    await _localDbService.deleteWorkoutFromLocalDatabase(
+      workoutId,
+      userId: userId,
+    );
   }
 
   Future<List<WorkoutSessionEntity>> getUnsyncedWorkoutsFromLocalDatabase(
@@ -32,12 +48,40 @@ class WorkoutLocalDataSource {
     return await _localDbService.getUnsyncedWorkoutsFromLocalDatabase(userId);
   }
 
-  Future<void> markWorkoutAsSyncedInLocalDatabase(int workoutId) async {
-    await _localDbService.markWorkoutAsSyncedInLocalDatabase(workoutId);
+  Future<void> markWorkoutAsSyncedInLocalDatabase(
+    int workoutId, {
+    required int userId,
+  }) async {
+    await _localDbService.markWorkoutAsSyncedInLocalDatabase(
+      workoutId,
+      userId: userId,
+    );
   }
 
-  Future<void> updateRemoteActivityId(int localId, int remoteId) async {
-    await _localDbService.updateRemoteActivityId(localId, remoteId);
+  Future<void> updateRemoteActivityId(
+    int localId,
+    int remoteId, {
+    required int userId,
+  }) async {
+    await _localDbService.updateRemoteActivityId(
+      localId,
+      remoteId,
+      userId: userId,
+    );
+  }
+
+  Future<bool> recordWorkoutSyncSuccess({
+    required int userId,
+    required int localWorkoutId,
+    required String clientSyncId,
+    required int remoteActivityId,
+  }) {
+    return _localDbService.recordWorkoutSyncSuccess(
+      userId: userId,
+      localWorkoutId: localWorkoutId,
+      clientSyncId: clientSyncId,
+      remoteActivityId: remoteActivityId,
+    );
   }
 
   Future<List<WorkoutDeleteQueueEntry>> getWorkoutDeletesReadyForSync(
@@ -47,18 +91,20 @@ class WorkoutLocalDataSource {
     return await _localDbService.getWorkoutDeletesReadyForSync(userId, now);
   }
 
-  Future<void> markWorkoutDeleteDeleting(int queueId) async {
-    await _localDbService.markWorkoutDeleteDeleting(queueId);
+  Future<bool> markWorkoutDeleteDeleting(int queueId, {required int userId}) {
+    return _localDbService.markWorkoutDeleteDeleting(queueId, userId: userId);
   }
 
   Future<void> markWorkoutDeleteRetrying({
     required int queueId,
+    required int userId,
     required int retryCount,
     required String error,
     required DateTime nextRetryAt,
   }) async {
     await _localDbService.markWorkoutDeleteRetrying(
       queueId: queueId,
+      userId: userId,
       retryCount: retryCount,
       error: error,
       nextRetryAt: nextRetryAt,
@@ -68,23 +114,28 @@ class WorkoutLocalDataSource {
   Future<void> completeWorkoutDelete({
     required int queueId,
     required int localWorkoutId,
+    required int userId,
   }) async {
     await _localDbService.completeWorkoutDelete(
       queueId: queueId,
       localWorkoutId: localWorkoutId,
+      userId: userId,
     );
   }
 
-  Future<void> resetStaleWorkoutDeletes(DateTime staleBefore) async {
-    await _localDbService.resetStaleWorkoutDeletes(staleBefore);
+  Future<void> resetStaleWorkoutDeletes(
+    int userId,
+    DateTime staleBefore,
+  ) async {
+    await _localDbService.resetStaleWorkoutDeletes(userId, staleBefore);
   }
 
-  Future<void> ensureClientSyncIds() async {
-    await _localDbService.ensureClientSyncIds();
+  Future<void> ensureClientSyncIds(int userId) async {
+    await _localDbService.ensureClientSyncIds(userId);
   }
 
-  Future<void> clearAllDataFromLocalDatabase() async {
-    await _localDbService.clearAllDataFromLocalDatabase();
+  Future<void> clearUserDataFromLocalDatabase(int userId) async {
+    await _localDbService.clearUserDataFromLocalDatabase(userId);
   }
 
   // ==================== NEW PAGINATION & STATS METHODS ====================

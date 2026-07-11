@@ -6,16 +6,25 @@ class ActivityImageLocalDataSource {
 
   ActivityImageLocalDataSource(this._localDbService);
 
-  Future<int> insertWorkoutImage(ActivityImageEntity image) {
-    return _localDbService.insertWorkoutImage(image);
+  Future<int> insertWorkoutImage(
+    ActivityImageEntity image, {
+    required int userId,
+  }) {
+    return _localDbService.insertWorkoutImage(image, userId: userId);
   }
 
-  Future<List<ActivityImageEntity>> getWorkoutImages(int workoutId) {
-    return _localDbService.getWorkoutImages(workoutId);
+  Future<List<ActivityImageEntity>> getWorkoutImages(
+    int workoutId, {
+    required int userId,
+  }) {
+    return _localDbService.getWorkoutImages(workoutId, userId: userId);
   }
 
-  Future<ActivityImageEntity?> getWorkoutImage(int localImageId) {
-    return _localDbService.getWorkoutImage(localImageId);
+  Future<ActivityImageEntity?> getWorkoutImage(
+    int localImageId, {
+    required int userId,
+  }) {
+    return _localDbService.getWorkoutImage(localImageId, userId: userId);
   }
 
   Future<List<ActivityImageEntity>> getImagesReadyForSync(
@@ -29,16 +38,29 @@ class ActivityImageLocalDataSource {
     return _localDbService.getActiveImagesForJanitor(userId);
   }
 
-  Future<bool> markImageUploadingIfReady(int localImageId) {
-    return _localDbService.markImageUploadingIfReady(localImageId);
+  Future<bool> markImageUploadingIfReady(
+    int localImageId, {
+    required int userId,
+  }) {
+    return _localDbService.markImageUploadingIfReady(
+      localImageId,
+      userId: userId,
+    );
   }
 
-  Future<bool> markImageWaitingForActivitySyncIfReady(int localImageId) {
-    return _localDbService.markImageWaitingForActivitySyncIfReady(localImageId);
+  Future<bool> markImageWaitingForActivitySyncIfReady(
+    int localImageId, {
+    required int userId,
+  }) {
+    return _localDbService.markImageWaitingForActivitySyncIfReady(
+      localImageId,
+      userId: userId,
+    );
   }
 
   Future<ActivityImageSyncStatus?> recordImageUploadResult({
     required int localImageId,
+    required int userId,
     required int remoteActivityId,
     required int remoteImageId,
     required String remoteUrl,
@@ -47,6 +69,7 @@ class ActivityImageLocalDataSource {
   }) {
     return _localDbService.recordImageUploadResult(
       localImageId: localImageId,
+      userId: userId,
       remoteActivityId: remoteActivityId,
       remoteImageId: remoteImageId,
       remoteUrl: remoteUrl,
@@ -57,12 +80,14 @@ class ActivityImageLocalDataSource {
 
   Future<void> markImageRetrying({
     required int localImageId,
+    required int userId,
     required String error,
     required DateTime nextRetryAt,
     required int retryCount,
   }) {
     return _localDbService.markImageRetrying(
       localImageId: localImageId,
+      userId: userId,
       error: error,
       nextRetryAt: nextRetryAt,
       retryCount: retryCount,
@@ -71,12 +96,14 @@ class ActivityImageLocalDataSource {
 
   Future<void> markImageDeleteQueuedRetrying({
     required int localImageId,
+    required int userId,
     required String error,
     required DateTime nextRetryAt,
     required int retryCount,
   }) {
     return _localDbService.markImageDeleteQueuedRetrying(
       localImageId: localImageId,
+      userId: userId,
       error: error,
       nextRetryAt: nextRetryAt,
       retryCount: retryCount,
@@ -85,44 +112,54 @@ class ActivityImageLocalDataSource {
 
   Future<void> markImageFailed({
     required int localImageId,
+    required int userId,
     required String error,
   }) {
     return _localDbService.markImageFailed(
       localImageId: localImageId,
+      userId: userId,
       error: error,
     );
   }
 
-  Future<void> markImageDeleteQueued(int localImageId) {
-    return _localDbService.markImageDeleteQueued(localImageId);
+  Future<void> markImageDeleteQueued(int localImageId, {required int userId}) {
+    return _localDbService.markImageDeleteQueued(localImageId, userId: userId);
   }
 
-  Future<void> markImageReplaceQueued(int localImageId) {
-    return _localDbService.markImageReplaceQueued(localImageId);
+  Future<void> markImageReplaceQueued(int localImageId, {required int userId}) {
+    return _localDbService.markImageReplaceQueued(localImageId, userId: userId);
   }
 
-  Future<void> markReplaceQueuedImagesDeleteQueued(int workoutId) {
-    return _localDbService.markReplaceQueuedImagesDeleteQueued(workoutId);
+  Future<void> markReplaceQueuedImagesDeleteQueued(
+    int workoutId, {
+    required int userId,
+  }) {
+    return _localDbService.markReplaceQueuedImagesDeleteQueued(
+      workoutId,
+      userId: userId,
+    );
   }
 
-  Future<void> markImageDeleting(int localImageId) {
-    return _localDbService.markImageDeleting(localImageId);
+  Future<bool> markImageDeleting(int localImageId, {required int userId}) {
+    return _localDbService.markImageDeleting(localImageId, userId: userId);
   }
 
-  Future<void> markImageDeleted(int localImageId) {
-    return _localDbService.markImageDeleted(localImageId);
+  Future<void> markImageDeleted(int localImageId, {required int userId}) {
+    return _localDbService.markImageDeleted(localImageId, userId: userId);
   }
 
-  Future<void> resetStaleUploadingImages(DateTime staleBefore) {
-    return _localDbService.resetStaleUploadingImages(staleBefore);
+  Future<void> resetStaleUploadingImages(int userId, DateTime staleBefore) {
+    return _localDbService.resetStaleUploadingImages(userId, staleBefore);
   }
 
   Future<void> updateRemoteImageUrl({
+    required int userId,
     required int remoteImageId,
     required String remoteUrl,
     required DateTime? remoteUrlExpiresAt,
   }) {
     return _localDbService.updateRemoteImageUrl(
+      userId: userId,
       remoteImageId: remoteImageId,
       remoteUrl: remoteUrl,
       remoteUrlExpiresAt: remoteUrlExpiresAt,
@@ -131,6 +168,7 @@ class ActivityImageLocalDataSource {
 
   Future<void> updateRemoteImageMetadata({
     required int localImageId,
+    required int userId,
     required int remoteActivityId,
     required int remoteImageId,
     required String remoteUrl,
@@ -139,6 +177,7 @@ class ActivityImageLocalDataSource {
   }) {
     return _localDbService.updateRemoteImageMetadata(
       localImageId: localImageId,
+      userId: userId,
       remoteActivityId: remoteActivityId,
       remoteImageId: remoteImageId,
       remoteUrl: remoteUrl,

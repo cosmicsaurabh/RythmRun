@@ -41,7 +41,10 @@ void main() {
       );
       expect(workout.copyWith().metricsVersion, workout.metricsVersion);
 
-      final workoutId = await service.saveWorkoutInLocalDatabase(workout);
+      final workoutId = await service.saveWorkoutInLocalDatabase(
+        workout,
+        userId: 7,
+      );
       final storedRows = await database.query(
         'workouts',
         where: 'id = ?',
@@ -52,7 +55,7 @@ void main() {
         (column) => column['name'] == 'metrics_version',
       );
 
-      expect(await database.getVersion(), 5);
+      expect(await database.getVersion(), 6);
       expect(metricsVersionColumn['notnull'], 1);
       expect(metricsVersionColumn['dflt_value'].toString(), '1');
       expect(
@@ -60,7 +63,10 @@ void main() {
         WorkoutSessionEntity.currentMetricsVersion,
       );
 
-      final loaded = await service.getWorkoutFromLocalDatabase(workoutId);
+      final loaded = await service.getWorkoutFromLocalDatabase(
+        workoutId,
+        userId: 7,
+      );
       expect(loaded, isNotNull);
       expect(
         loaded!.metricsVersion,
@@ -72,12 +78,14 @@ void main() {
           clientSyncId: 'fresh-negative-pause',
           pausedDuration: const Duration(seconds: -60),
         ),
+        userId: 7,
       );
       final overlongPauseId = await service.saveWorkoutInLocalDatabase(
         workout.copyWith(
           clientSyncId: 'fresh-overlong-pause',
           pausedDuration: const Duration(hours: 2),
         ),
+        userId: 7,
       );
       final normalizedPauseRows = await database.query(
         'workouts',
@@ -94,12 +102,14 @@ void main() {
       expect(
         (await service.getWorkoutFromLocalDatabase(
           negativePauseId,
+          userId: 7,
         ))!.activeDuration,
         const Duration(hours: 1),
       );
       expect(
         (await service.getWorkoutFromLocalDatabase(
           overlongPauseId,
+          userId: 7,
         ))!.activeDuration,
         Duration.zero,
       );
@@ -119,7 +129,10 @@ void main() {
       expect(WorkoutSessionEntity.isSupportedMetricsVersion(3), isFalse);
 
       await expectLater(
-        service.saveWorkoutInLocalDatabase(workout.copyWith(metricsVersion: 3)),
+        service.saveWorkoutInLocalDatabase(
+          workout.copyWith(metricsVersion: 3),
+          userId: 7,
+        ),
         throwsA(isA<ArgumentError>()),
       );
       await expectLater(
@@ -177,7 +190,7 @@ void main() {
           orderBy: 'id ASC',
         );
 
-        expect(await database.getVersion(), 5);
+        expect(await database.getVersion(), 6);
         expect(
           upgradedRows.map((row) => row['metrics_version']),
           everyElement(WorkoutSessionEntity.legacyMetricsVersion),
@@ -207,9 +220,11 @@ void main() {
 
         final legacyWorkout = await service.getWorkoutFromLocalDatabase(
           legacyId,
+          userId: 7,
         );
         final zeroDurationWorkout = await service.getWorkoutFromLocalDatabase(
           zeroDurationId,
+          userId: 7,
         );
         expect(
           legacyWorkout!.metricsVersion,

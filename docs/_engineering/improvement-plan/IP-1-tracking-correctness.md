@@ -264,7 +264,7 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 - `rythmrun_frontend_flutter/lib/data/repositories/workout_repository_impl.dart`
 - Activity-image local data source/repository methods
 - `rythmrun_frontend_flutter/lib/domain/repositories/workout_repository.dart`
-- New sqflite migration/integration test helpers
+- Existing host-FFI harness plus new schema, migration, ownership, and repository race tests
 
 **Implementation**
 
@@ -272,19 +272,20 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 2. Add `onConfigure` to every opened connection and execute `PRAGMA foreign_keys = ON` before create/upgrade/open work.
 3. Before relying on cascades, migrate existing data transactionally:
    - find child tracking/status/image rows without a parent workout;
-   - quarantine counts in safe migration logs, delete or repair according to deterministic rules;
+   - log table names and aggregate repair counts only, delete irreparable child rows, and repair delete-queue ownership from an existing parent;
    - run `PRAGMA foreign_key_check` and fail migration/verification when violations remain.
 4. Add indexes:
    - `workouts(user_id, start_time DESC)`;
    - `tracking_points(workout_id, timestamp)`;
    - `status_changes(workout_id, timestamp)`;
    - retain existing image/delete-queue indexes;
-   - unique `workouts(user_id, client_sync_id)` after resolving duplicates safely.
+   - unique `workouts(user_id, client_sync_id)` after resolving duplicates safely. Preserve one deterministic canonical identity, quarantine additional ambiguous local rows from sync, and roll back if one client identity already maps to multiple remote activities; never mint a second uploadable identity.
 5. Require `userId` at the local data-source boundary for get, delete, sync-state update, image attach/read/delete, and any operation using a local workout ID.
 6. Use predicates such as `WHERE id = ? AND user_id = ?`. For child tables without `user_id`, join/verify the parent in the same transaction; do not perform a race-prone check and later unscoped mutation.
-7. Re-read the active user before asynchronous sync completion writes. If the account changed, stop and leave the original user's row retryable.
-8. Keep domain repository convenience methods free to obtain the current user, but make it impossible to call the DAO without an explicit owner.
-9. Add `sqflite_common_ffi` as a test-only dependency and initialize a shared host database factory under `test/support/` for schema/DAO/migration tests in normal CI. Keep platform encryption/backup and process-lifecycle checks as `integration_test`/device tests where FFI cannot represent behavior.
+7. Re-read the active user before asynchronous sync completion writes. If the account changed, stop and leave the original user's row retryable. Hold one outer owner lease across coordinated workout/image synchronization and owner leases across foreground image preparation/mutation.
+8. Keep domain repository convenience methods free to obtain the current user, but require an explicit owner on every production data-source operation. Keep the raw database accessor test-only and the production `LocalDbService` provider private.
+9. Reuse the existing pinned `sqflite_common_ffi` test dependency and shared host database harness. Extend it with faithful v1–v5 and shipped-v3-hybrid schemas for schema/DAO/migration tests. Hosted Flutter CI remains IP-1.6; keep mobile-driver, installed-database, backup, and process-lifecycle checks in MC-1.7/device tests where FFI cannot represent behavior.
+10. Database cascades do not safely remove app-private image files after their path rows disappear. Do not perform arbitrary file I/O inside the migration or claim physical cleanup here; durable file cleanup/outbox work remains IP-4.6.
 
 **Automated tests**
 
@@ -292,9 +293,13 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 - The same protection covers activity images and queued deletion state.
 - Deleting an owned workout cascades points, status changes, and images.
 - `PRAGMA foreign_keys` reports enabled on a test connection.
-- Migration from database versions 1–4 preserves valid data, removes/handles seeded orphans, and passes `foreign_key_check`.
-- Duplicate legacy client sync IDs are resolved without duplicating remote activities.
+- Migration from database versions 1–5 plus the shipped v3 delete-queue hybrid preserves valid data, removes/handles seeded orphans, repairs queue ownership, reopens idempotently, and passes `foreign_key_check`.
+- Duplicate legacy client sync IDs leave at most one uploadable canonical row; additional rows are non-syncing, and conflicting remote mappings roll back the migration.
 - New indexes exist after both fresh create and upgrade.
+
+**Manual verification**
+
+- Run [MC-1.7](./MANUAL-CHECKS.md#mc-17--android-sqlite-v5v6-ownership-migration) on a supported Android release build. Repository FFI tests do not prove installed-device driver behavior, backup/forward-fix recovery, or app-private file cleanup.
 
 **Acceptance**
 
@@ -442,9 +447,10 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 - [x] Nullable state can be explicitly cleared across all audited state models.
 - [x] Logout/account switch stops user-scoped work and invalidates state.
 - [ ] MC-1.6 proves idle/active/forced exit and A→B isolation on a supported release build and restart.
-- [ ] Every local get/mutation by row ID is owner-scoped.
-- [ ] SQLite foreign keys are on, orphans are handled, cascades pass, and required indexes exist.
+- [x] Every local get/mutation by row ID is owner-scoped.
+- [x] SQLite foreign keys are on, orphans are handled, cascades pass, and required indexes exist in repository FFI coverage.
 - [ ] SQLite host migration/DAO tests run under an explicitly initialized FFI database in CI; platform-only checks are assigned to device integration tests.
+- [ ] MC-1.7 proves the v5→v6 in-place upgrade, reopen, owner denial, cascades, and forward-fix response on a supported Android release build.
 - [ ] Omitted PATCH collections are preserved.
 - [ ] Representative long workouts sync under explicit limits; invalid/oversized payloads fail safely.
 - [ ] The larger activity parser is authenticated, route-specific, rate/concurrency guarded, and does not raise unrelated route limits.
@@ -461,3 +467,5 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 | 2026-07-11 | IP-1.2 | `flutter analyze`; source scans for raw stream listeners and coordinate/timestamp logging | Pass with existing baseline only | Repository analyzer baseline is 20 informational findings and no warnings after removing tracking-path release logs. Production has one `locationStream.listen` consumer, and audited release paths contain no exact coordinate/timestamp/route logging. |
 | 2026-07-11 | IP-1.3 | Nullable-state, teardown/session, live/auth/user-operation drain, profile race, restart marker, credential-clear retry, and multi-provider A→B tests; focused and full Flutter suites | Pass locally; device/staging verification pending | Focused impacted suite 77/77 and final full Flutter suite 130/130 passed. Explicit `null` clears audited optional state; active/pending live operations and admitted sync/profile/auth work finish or block before invalidation; local-clear failure stays recoverable across restart; history/detail/image/live/profile/calculator/password/tab/sync state is recreated before B. MC-1.6 remains pending. |
 | 2026-07-11 | IP-1.3 | `flutter analyze`; `git diff --check`; independent integration review | Pass with existing analyzer baseline only | Analyzer reports the existing 20 informational findings and zero warnings/errors; the IP-1.3 diff adds none. Natural end-to-end refresh/revocation and strict offline-window enforcement remain IP-2, local DAO ownership remains IP-1.4, and durable recovery of a workout lost by process death remains IP-3. |
+| 2026-07-11 | IP-1.4 | Fresh/reopen schema; v1–v5 and shipped-v3-hybrid migrations; owner-denial/cascade/queue/image/provider/sync races; focused and full Flutter suites | Pass locally; hosted/device verification pending | Database-focused FFI suite 21/21, activity-image repository suite 20/20, workout sync/duplicate suite 4/4, sync coordinator suite 3/3, and full Flutter suite 165/165 passed. Exact indexes/FKs, transactional orphan repair and rollback, one uploadable duplicate identity, owner-bound row operations, late-completion denial, claimed-operation auth retry, and idempotent remote deletion are covered. Hosted Flutter CI and MC-1.7 remain open. |
+| 2026-07-11 | IP-1.4 | `flutter analyze`; `git diff --check`; independent migration/ownership/evidence review | Pass with existing analyzer baseline only | Analyzer reports the existing 20 informational findings and zero warnings/errors; IP-1.4 adds none. Android in-place migration/backup/forward-fix proof, physical orphan-image file cleanup, and hosted CI are not claimed. |

@@ -43,7 +43,7 @@ final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
   return AuthLocalDataSource();
 });
 
-final localDbServiceProvider = Provider<LocalDbService>((ref) {
+final _localDbServiceProvider = Provider<LocalDbService>((ref) {
   return LocalDbService();
 });
 
@@ -64,13 +64,13 @@ final activityImageFileServiceProvider = Provider<ActivityImageFileService>((
 });
 
 final workoutLocalDataSourceProvider = Provider<WorkoutLocalDataSource>((ref) {
-  final localDbService = ref.watch(localDbServiceProvider);
+  final localDbService = ref.watch(_localDbServiceProvider);
   return WorkoutLocalDataSource(localDbService);
 });
 
 final activityImageLocalDataSourceProvider =
     Provider<ActivityImageLocalDataSource>((ref) {
-      final localDbService = ref.watch(localDbServiceProvider);
+      final localDbService = ref.watch(_localDbServiceProvider);
       return ActivityImageLocalDataSource(localDbService);
     });
 
@@ -140,8 +140,10 @@ final activityImageRepositoryProvider = Provider<ActivityImageRepository>((
 
 final syncCoordinatorProvider = Provider<SyncCoordinator>((ref) {
   return SyncCoordinator(
-    ref.watch(workoutRepositoryProvider),
-    ref.watch(activityImageRepositoryProvider),
+    workoutRepository: ref.watch(workoutRepositoryProvider),
+    activityImageRepository: ref.watch(activityImageRepositoryProvider),
+    authRepository: ref.watch(authRepositoryProvider),
+    operationGate: ref.watch(userScopeOperationGateProvider),
   );
 });
 

@@ -1,3 +1,6 @@
+import 'dart:developer' as developer;
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/client_sync_id_generator.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
@@ -9,7 +12,7 @@ import 'package:sqflite/sqflite.dart';
 
 class LocalDbService {
   static const String _databaseName = 'rythmrun_workouts.db';
-  static const int _databaseVersion = 5;
+  static const int _databaseVersion = 6;
 
   static const String _activeDurationSecondsSql = '''
     CASE
@@ -32,6 +35,14 @@ class LocalDbService {
   static const String _statusChangesTable = 'status_changes';
   static const String _workoutDeleteQueueTable = 'workout_delete_queue';
   static const String _workoutImagesTable = 'workout_images';
+  static const String _ownedWorkoutImagePredicate = '''
+    EXISTS (
+      SELECT 1
+      FROM workouts owner_workout
+      WHERE owner_workout.id = workout_images.workout_id
+      AND owner_workout.user_id = ?
+    )
+  ''';
 
   final DatabaseFactory? _databaseFactoryOverride;
   final String? _databasePathOverride;
@@ -42,6 +53,7 @@ class LocalDbService {
     : _databaseFactoryOverride = databaseFactory,
       _databasePathOverride = databasePath;
 
+  @visibleForTesting
   Future<Database> get database async {
     _database ??= await _initDatabase();
     return _database!;
@@ -56,22 +68,22 @@ class LocalDbService {
       path,
       options: OpenDatabaseOptions(
         version: _databaseVersion,
+        onConfigure: _onConfigure,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
+        onOpen: _onOpen,
       ),
     );
-
-    await _ensureSyncColumns(db);
-    await _ensureWorkoutDeleteSupport(db);
-    await _ensureWorkoutImageSupport(db);
-    await _ensureMetricsVersionColumn(db);
-    await _ensureClientSyncIdsOnDatabase(db);
-
     return db;
+  }
+
+  Future<void> _onConfigure(Database db) async {
+    await db.execute('PRAGMA foreign_keys = ON');
   }
 
   Future<void> _onCreate(Database db, int version) async {
     await _createTables(db);
+    await _createOwnershipIndexes(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -101,6 +113,26 @@ class LocalDbService {
     if (oldVersion < 5) {
       await _ensureMetricsVersionColumn(db);
     }
+
+    if (oldVersion < 6) {
+      await _migrateToVersion6(db);
+    }
+  }
+
+  Future<void> _onOpen(Database db) async {
+    final foreignKeyRows = await db.rawQuery('PRAGMA foreign_keys');
+    final foreignKeysEnabled =
+        foreignKeyRows.isNotEmpty &&
+        EnsureTypeHelper.ensureInt(foreignKeyRows.first['foreign_keys']) == 1;
+    if (!foreignKeysEnabled) {
+      throw StateError('SQLite foreign-key enforcement is disabled');
+    }
+
+    if (!await _hasColumn(db, _workoutsTable, 'sync_blocked_reason')) {
+      throw StateError('SQLite v6 ownership schema is incomplete');
+    }
+    await _verifyForeignKeyDefinitions(db);
+    await _verifyOwnershipIndexes(db);
   }
 
   Future<void> _createTables(Database db) async {
@@ -129,7 +161,8 @@ class LocalDbService {
         client_sync_id TEXT NOT NULL,
         deleted_locally INTEGER DEFAULT 0,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        synced INTEGER DEFAULT 0
+        synced INTEGER DEFAULT 0,
+        sync_blocked_reason TEXT
       )
     ''');
 
@@ -165,7 +198,17 @@ class LocalDbService {
   }
 
   /// Save a completed workout session
-  Future<int> saveWorkoutInLocalDatabase(WorkoutSessionEntity workout) async {
+  Future<int> saveWorkoutInLocalDatabase(
+    WorkoutSessionEntity workout, {
+    required int userId,
+  }) async {
+    if (workout.userId != userId) {
+      throw ArgumentError.value(
+        workout.userId,
+        'workout.userId',
+        'Workout owner does not match the requested local owner',
+      );
+    }
     if (!WorkoutSessionEntity.isSupportedMetricsVersion(
       workout.metricsVersion,
     )) {
@@ -177,16 +220,35 @@ class LocalDbService {
     }
 
     final db = await database;
+    final clientSyncId =
+        workout.clientSyncId.trim().isNotEmpty
+            ? workout.clientSyncId
+            : ClientSyncIdGenerator.generate(
+              startTime: workout.startTime,
+              userId: userId,
+            );
 
     return await db.transaction((txn) async {
-      // Insert workout
-      final clientSyncId =
-          workout.clientSyncId.trim().isNotEmpty
-              ? workout.clientSyncId
-              : ClientSyncIdGenerator.generate(
-                startTime: workout.startTime,
-                userId: workout.userId,
-              );
+      final existingRows = await txn.query(
+        _workoutsTable,
+        columns: ['id', 'type', 'start_time', 'sync_blocked_reason'],
+        where: 'user_id = ? AND client_sync_id = ?',
+        whereArgs: [userId, clientSyncId],
+        limit: 1,
+      );
+      if (existingRows.isNotEmpty) {
+        final existing = existingRows.single;
+        final isCompatibleIdentity =
+            existing['type'] == workout.type.name &&
+            existing['start_time'] == workout.startTime?.toIso8601String() &&
+            existing['sync_blocked_reason'] == null;
+        if (!isCompatibleIdentity) {
+          throw StateError(
+            'Client sync ID collides with a different local workout',
+          );
+        }
+        return EnsureTypeHelper.ensureInt(existing['id']);
+      }
 
       final workoutId = await txn.insert(_workoutsTable, {
         'type': workout.type.name,
@@ -205,7 +267,7 @@ class LocalDbService {
         'calories': workout.calories,
         'elevation_gain': workout.elevationGain,
         'elevation_loss': workout.elevationLoss,
-        'user_id': workout.userId,
+        'user_id': userId,
         'name': workout.name,
         'notes': workout.notes,
         'remote_activity_id': workout.remoteActivityId,
@@ -267,20 +329,10 @@ class LocalDbService {
       final workoutId = workoutMap['id'] as int;
 
       // Get tracking points for this workout
-      final points = await db.query(
-        _trackingPointsTable,
-        where: 'workout_id = ?',
-        whereArgs: [workoutId],
-        orderBy: 'timestamp ASC',
-      );
+      final points = await _getOwnedTrackingPoints(db, workoutId, userId);
 
       // Get status changes for this workout
-      final statusChanges = await db.query(
-        _statusChangesTable,
-        where: 'workout_id = ?',
-        whereArgs: [workoutId],
-        orderBy: 'timestamp ASC',
-      );
+      final statusChanges = await _getOwnedStatusChanges(db, workoutId, userId);
 
       result.add(_mapToWorkoutEntity(workoutMap, points, statusChanges));
     }
@@ -290,45 +342,39 @@ class LocalDbService {
 
   /// Get a single workout by ID
   Future<WorkoutSessionEntity?> getWorkoutFromLocalDatabase(
-    int workoutId,
-  ) async {
+    int workoutId, {
+    required int userId,
+  }) async {
     final db = await database;
 
     final workouts = await db.query(
       _workoutsTable,
-      where: 'id = ? AND deleted_locally = 0',
-      whereArgs: [workoutId],
+      where: 'id = ? AND user_id = ? AND deleted_locally = 0',
+      whereArgs: [workoutId, userId],
       limit: 1,
     );
 
     if (workouts.isEmpty) return null;
 
-    final points = await db.query(
-      _trackingPointsTable,
-      where: 'workout_id = ?',
-      whereArgs: [workoutId],
-      orderBy: 'timestamp ASC',
-    );
+    final points = await _getOwnedTrackingPoints(db, workoutId, userId);
 
-    final statusChanges = await db.query(
-      _statusChangesTable,
-      where: 'workout_id = ?',
-      whereArgs: [workoutId],
-      orderBy: 'timestamp ASC',
-    );
+    final statusChanges = await _getOwnedStatusChanges(db, workoutId, userId);
 
     return _mapToWorkoutEntity(workouts.first, points, statusChanges);
   }
 
   /// Delete a workout
-  Future<void> deleteWorkoutFromLocalDatabase(int workoutId) async {
+  Future<void> deleteWorkoutFromLocalDatabase(
+    int workoutId, {
+    required int userId,
+  }) async {
     final db = await database;
     await db.transaction((txn) async {
       final workouts = await txn.query(
         _workoutsTable,
         columns: ['id', 'remote_activity_id', 'user_id'],
-        where: 'id = ?',
-        whereArgs: [workoutId],
+        where: 'id = ? AND user_id = ?',
+        whereArgs: [workoutId, userId],
         limit: 1,
       );
 
@@ -342,8 +388,8 @@ class LocalDbService {
       if (remoteActivityId == null) {
         await txn.delete(
           _workoutsTable,
-          where: 'id = ?',
-          whereArgs: [workoutId],
+          where: 'id = ? AND user_id = ?',
+          whereArgs: [workoutId, userId],
         );
         return;
       }
@@ -359,13 +405,13 @@ class LocalDbService {
         'next_retry_at': null,
         'created_at': now,
         'updated_at': now,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
 
       await txn.update(
         _workoutsTable,
         {'deleted_locally': 1, 'synced': 1},
-        where: 'id = ?',
-        whereArgs: [workoutId],
+        where: 'id = ? AND user_id = ?',
+        whereArgs: [workoutId, userId],
       );
     });
   }
@@ -378,7 +424,12 @@ class LocalDbService {
 
     final workouts = await db.query(
       _workoutsTable,
-      where: 'user_id = ? AND synced = 0 AND deleted_locally = 0',
+      where: '''
+        user_id = ?
+        AND synced = 0
+        AND deleted_locally = 0
+        AND sync_blocked_reason IS NULL
+      ''',
       whereArgs: [userId],
       orderBy: 'start_time ASC',
     );
@@ -387,19 +438,9 @@ class LocalDbService {
 
     for (final workoutMap in workouts) {
       final workoutId = workoutMap['id'] as int;
-      final points = await db.query(
-        _trackingPointsTable,
-        where: 'workout_id = ?',
-        whereArgs: [workoutId],
-        orderBy: 'timestamp ASC',
-      );
+      final points = await _getOwnedTrackingPoints(db, workoutId, userId);
 
-      final statusChanges = await db.query(
-        _statusChangesTable,
-        where: 'workout_id = ?',
-        whereArgs: [workoutId],
-        orderBy: 'timestamp ASC',
-      );
+      final statusChanges = await _getOwnedStatusChanges(db, workoutId, userId);
 
       result.add(_mapToWorkoutEntity(workoutMap, points, statusChanges));
     }
@@ -408,25 +449,55 @@ class LocalDbService {
   }
 
   /// Mark workout as synced
-  Future<void> markWorkoutAsSyncedInLocalDatabase(int workoutId) async {
+  Future<void> markWorkoutAsSyncedInLocalDatabase(
+    int workoutId, {
+    required int userId,
+  }) async {
     final db = await database;
     await db.update(
       _workoutsTable,
       {'synced': 1},
-      where: 'id = ?',
-      whereArgs: [workoutId],
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [workoutId, userId],
     );
   }
 
   /// Update remote activity ID after successful push
-  Future<void> updateRemoteActivityId(int localId, int remoteId) async {
+  Future<void> updateRemoteActivityId(
+    int localId,
+    int remoteId, {
+    required int userId,
+  }) async {
     final db = await database;
     await db.update(
       _workoutsTable,
       {'remote_activity_id': remoteId},
-      where: 'id = ?',
-      whereArgs: [localId],
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [localId, userId],
     );
+  }
+
+  Future<bool> recordWorkoutSyncSuccess({
+    required int userId,
+    required int localWorkoutId,
+    required String clientSyncId,
+    required int remoteActivityId,
+  }) async {
+    final db = await database;
+    final updated = await db.update(
+      _workoutsTable,
+      {'remote_activity_id': remoteActivityId, 'synced': 1},
+      where: '''
+        id = ?
+        AND user_id = ?
+        AND client_sync_id = ?
+        AND synced = 0
+        AND deleted_locally = 0
+        AND sync_blocked_reason IS NULL
+      ''',
+      whereArgs: [localWorkoutId, userId, clientSyncId],
+    );
+    return updated == 1;
   }
 
   Future<List<WorkoutDeleteQueueEntry>> getWorkoutDeletesReadyForSync(
@@ -453,21 +524,31 @@ class LocalDbService {
     return rows.map(WorkoutDeleteQueueEntry.fromMap).toList();
   }
 
-  Future<void> markWorkoutDeleteDeleting(int queueId) async {
+  Future<bool> markWorkoutDeleteDeleting(
+    int queueId, {
+    required int userId,
+  }) async {
     final db = await database;
-    await db.update(
+    final updated = await db.update(
       _workoutDeleteQueueTable,
       {
         'status': WorkoutDeleteQueueStatus.deleting.name,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [queueId],
+      where: 'id = ? AND user_id = ? AND status IN (?, ?)',
+      whereArgs: [
+        queueId,
+        userId,
+        WorkoutDeleteQueueStatus.queued.name,
+        WorkoutDeleteQueueStatus.retrying.name,
+      ],
     );
+    return updated == 1;
   }
 
   Future<void> markWorkoutDeleteRetrying({
     required int queueId,
+    required int userId,
     required int retryCount,
     required String error,
     required DateTime nextRetryAt,
@@ -482,31 +563,56 @@ class LocalDbService {
         'next_retry_at': nextRetryAt.toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [queueId],
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [queueId, userId],
     );
   }
 
   Future<void> completeWorkoutDelete({
     required int queueId,
     required int localWorkoutId,
+    required int userId,
   }) async {
     final db = await database;
     await db.transaction((txn) async {
+      final queueRows = await txn.query(
+        _workoutDeleteQueueTable,
+        columns: ['local_workout_id'],
+        where: '''
+          id = ?
+          AND user_id = ?
+          AND local_workout_id = ?
+          AND status = ?
+        ''',
+        whereArgs: [
+          queueId,
+          userId,
+          localWorkoutId,
+          WorkoutDeleteQueueStatus.deleting.name,
+        ],
+        limit: 1,
+      );
+      if (queueRows.isEmpty) {
+        return;
+      }
+
       await txn.delete(
         _workoutsTable,
-        where: 'id = ?',
-        whereArgs: [localWorkoutId],
+        where: 'id = ? AND user_id = ?',
+        whereArgs: [localWorkoutId, userId],
       );
       await txn.delete(
         _workoutDeleteQueueTable,
-        where: 'id = ?',
-        whereArgs: [queueId],
+        where: 'id = ? AND user_id = ?',
+        whereArgs: [queueId, userId],
       );
     });
   }
 
-  Future<void> resetStaleWorkoutDeletes(DateTime staleBefore) async {
+  Future<void> resetStaleWorkoutDeletes(
+    int userId,
+    DateTime staleBefore,
+  ) async {
     final db = await database;
     await db.update(
       _workoutDeleteQueueTable,
@@ -514,38 +620,71 @@ class LocalDbService {
         'status': WorkoutDeleteQueueStatus.queued.name,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'status = ? AND updated_at < ?',
+      where: 'user_id = ? AND status = ? AND updated_at < ?',
       whereArgs: [
+        userId,
         WorkoutDeleteQueueStatus.deleting.name,
         staleBefore.toIso8601String(),
       ],
     );
   }
 
-  Future<int> insertWorkoutImage(ActivityImageEntity image) async {
+  Future<int> insertWorkoutImage(
+    ActivityImageEntity image, {
+    required int userId,
+  }) async {
     final db = await database;
-    return await db.insert(_workoutImagesTable, _activityImageToMap(image));
+    return db.transaction((txn) async {
+      final ownedWorkout = await txn.query(
+        _workoutsTable,
+        columns: ['id'],
+        where: 'id = ? AND user_id = ? AND deleted_locally = 0',
+        whereArgs: [image.localWorkoutId, userId],
+        limit: 1,
+      );
+      if (ownedWorkout.isEmpty) {
+        throw StateError('Workout is not available for the requested owner');
+      }
+
+      return txn.insert(_workoutImagesTable, _activityImageToMap(image));
+    });
   }
 
-  Future<List<ActivityImageEntity>> getWorkoutImages(int workoutId) async {
+  Future<List<ActivityImageEntity>> getWorkoutImages(
+    int workoutId, {
+    required int userId,
+  }) async {
     final db = await database;
-    final rows = await db.query(
-      _workoutImagesTable,
-      where: 'workout_id = ? AND status != ?',
-      whereArgs: [workoutId, ActivityImageSyncStatus.deleted.name],
-      orderBy: 'sort_order ASC, created_at ASC',
+    final rows = await db.rawQuery(
+      '''
+      SELECT wi.*
+      FROM $_workoutImagesTable wi
+      JOIN $_workoutsTable w ON w.id = wi.workout_id
+      WHERE wi.workout_id = ?
+      AND w.user_id = ?
+      AND wi.status != ?
+      ORDER BY wi.sort_order ASC, wi.created_at ASC
+      ''',
+      [workoutId, userId, ActivityImageSyncStatus.deleted.name],
     );
 
     return rows.map(_mapToActivityImageEntity).toList();
   }
 
-  Future<ActivityImageEntity?> getWorkoutImage(int localImageId) async {
+  Future<ActivityImageEntity?> getWorkoutImage(
+    int localImageId, {
+    required int userId,
+  }) async {
     final db = await database;
-    final rows = await db.query(
-      _workoutImagesTable,
-      where: 'id = ?',
-      whereArgs: [localImageId],
-      limit: 1,
+    final rows = await db.rawQuery(
+      '''
+      SELECT wi.*
+      FROM $_workoutImagesTable wi
+      JOIN $_workoutsTable w ON w.id = wi.workout_id
+      WHERE wi.id = ? AND w.user_id = ?
+      LIMIT 1
+      ''',
+      [localImageId, userId],
     );
 
     if (rows.isEmpty) {
@@ -611,7 +750,10 @@ class LocalDbService {
     return rows.map(_mapToActivityImageEntity).toList();
   }
 
-  Future<bool> markImageUploadingIfReady(int localImageId) async {
+  Future<bool> markImageUploadingIfReady(
+    int localImageId, {
+    required int userId,
+  }) async {
     final db = await database;
     final updated = await db.update(
       _workoutImagesTable,
@@ -622,19 +764,27 @@ class LocalDbService {
         'next_retry_at': null,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ? AND status IN (?, ?, ?)',
+      where: '''
+        id = ?
+        AND status IN (?, ?, ?)
+        AND $_ownedWorkoutImagePredicate
+      ''',
       whereArgs: [
         localImageId,
         ActivityImageSyncStatus.queued.name,
         ActivityImageSyncStatus.waitingForActivitySync.name,
         ActivityImageSyncStatus.retrying.name,
+        userId,
       ],
     );
 
     return updated > 0;
   }
 
-  Future<bool> markImageWaitingForActivitySyncIfReady(int localImageId) async {
+  Future<bool> markImageWaitingForActivitySyncIfReady(
+    int localImageId, {
+    required int userId,
+  }) async {
     final db = await database;
     final updated = await db.update(
       _workoutImagesTable,
@@ -642,12 +792,17 @@ class LocalDbService {
         'status': ActivityImageSyncStatus.waitingForActivitySync.name,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ? AND status IN (?, ?, ?)',
+      where: '''
+        id = ?
+        AND status IN (?, ?, ?)
+        AND $_ownedWorkoutImagePredicate
+      ''',
       whereArgs: [
         localImageId,
         ActivityImageSyncStatus.queued.name,
         ActivityImageSyncStatus.waitingForActivitySync.name,
         ActivityImageSyncStatus.retrying.name,
+        userId,
       ],
     );
 
@@ -656,6 +811,7 @@ class LocalDbService {
 
   Future<ActivityImageSyncStatus?> recordImageUploadResult({
     required int localImageId,
+    required int userId,
     required int remoteActivityId,
     required int remoteImageId,
     required String remoteUrl,
@@ -664,12 +820,15 @@ class LocalDbService {
   }) async {
     final db = await database;
     return db.transaction<ActivityImageSyncStatus?>((txn) async {
-      final rows = await txn.query(
-        _workoutImagesTable,
-        columns: ['status'],
-        where: 'id = ?',
-        whereArgs: [localImageId],
-        limit: 1,
+      final rows = await txn.rawQuery(
+        '''
+        SELECT wi.status
+        FROM $_workoutImagesTable wi
+        JOIN $_workoutsTable w ON w.id = wi.workout_id
+        WHERE wi.id = ? AND w.user_id = ?
+        LIMIT 1
+        ''',
+        [localImageId, userId],
       );
 
       if (rows.isEmpty) {
@@ -698,8 +857,8 @@ class LocalDbService {
           'next_retry_at': null,
           'updated_at': DateTime.now().toIso8601String(),
         },
-        where: 'id = ?',
-        whereArgs: [localImageId],
+        where: 'id = ? AND $_ownedWorkoutImagePredicate',
+        whereArgs: [localImageId, userId],
       );
 
       return finalStatus;
@@ -708,6 +867,7 @@ class LocalDbService {
 
   Future<void> markImageRetrying({
     required int localImageId,
+    required int userId,
     required String error,
     required DateTime nextRetryAt,
     required int retryCount,
@@ -722,13 +882,14 @@ class LocalDbService {
         'next_retry_at': nextRetryAt.toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [localImageId],
+      where: 'id = ? AND $_ownedWorkoutImagePredicate',
+      whereArgs: [localImageId, userId],
     );
   }
 
   Future<void> markImageDeleteQueuedRetrying({
     required int localImageId,
+    required int userId,
     required String error,
     required DateTime nextRetryAt,
     required int retryCount,
@@ -743,13 +904,14 @@ class LocalDbService {
         'next_retry_at': nextRetryAt.toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [localImageId],
+      where: 'id = ? AND $_ownedWorkoutImagePredicate',
+      whereArgs: [localImageId, userId],
     );
   }
 
   Future<void> markImageFailed({
     required int localImageId,
+    required int userId,
     required String error,
   }) async {
     final db = await database;
@@ -760,26 +922,37 @@ class LocalDbService {
         'last_error': error,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [localImageId],
+      where: 'id = ? AND $_ownedWorkoutImagePredicate',
+      whereArgs: [localImageId, userId],
     );
   }
 
-  Future<void> markImageDeleteQueued(int localImageId) async {
+  Future<void> markImageDeleteQueued(
+    int localImageId, {
+    required int userId,
+  }) async {
     await _updateWorkoutImageStatus(
       localImageId,
       ActivityImageSyncStatus.deleteQueued,
+      userId: userId,
     );
   }
 
-  Future<void> markImageReplaceQueued(int localImageId) async {
+  Future<void> markImageReplaceQueued(
+    int localImageId, {
+    required int userId,
+  }) async {
     await _updateWorkoutImageStatus(
       localImageId,
       ActivityImageSyncStatus.replaceQueued,
+      userId: userId,
     );
   }
 
-  Future<void> markReplaceQueuedImagesDeleteQueued(int workoutId) async {
+  Future<void> markReplaceQueuedImagesDeleteQueued(
+    int workoutId, {
+    required int userId,
+  }) async {
     final db = await database;
     await db.update(
       _workoutImagesTable,
@@ -787,33 +960,57 @@ class LocalDbService {
         'status': ActivityImageSyncStatus.deleteQueued.name,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'workout_id = ? AND status = ?',
-      whereArgs: [workoutId, ActivityImageSyncStatus.replaceQueued.name],
+      where: '''
+        workout_id = ?
+        AND status = ?
+        AND $_ownedWorkoutImagePredicate
+      ''',
+      whereArgs: [
+        workoutId,
+        ActivityImageSyncStatus.replaceQueued.name,
+        userId,
+      ],
     );
   }
 
-  Future<void> markImageDeleting(int localImageId) async {
+  Future<bool> markImageDeleting(
+    int localImageId, {
+    required int userId,
+  }) async {
     final db = await database;
-    await db.update(
+    final updated = await db.update(
       _workoutImagesTable,
       {
         'status': ActivityImageSyncStatus.deleting.name,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ? AND status = ?',
-      whereArgs: [localImageId, ActivityImageSyncStatus.deleteQueued.name],
+      where: '''
+        id = ?
+        AND status = ?
+        AND $_ownedWorkoutImagePredicate
+      ''',
+      whereArgs: [
+        localImageId,
+        ActivityImageSyncStatus.deleteQueued.name,
+        userId,
+      ],
     );
+    return updated == 1;
   }
 
-  Future<void> markImageDeleted(int localImageId) async {
+  Future<void> markImageDeleted(int localImageId, {required int userId}) async {
     await _updateWorkoutImageStatus(
       localImageId,
       ActivityImageSyncStatus.deleted,
+      userId: userId,
       clearRetryState: true,
     );
   }
 
-  Future<void> resetStaleUploadingImages(DateTime staleBefore) async {
+  Future<void> resetStaleUploadingImages(
+    int userId,
+    DateTime staleBefore,
+  ) async {
     final db = await database;
     await db.rawUpdate(
       '''
@@ -825,6 +1022,7 @@ class LocalDbService {
       updated_at = ?
       WHERE status IN (?, ?)
       AND updated_at < ?
+      AND $_ownedWorkoutImagePredicate
     ''',
       [
         ActivityImageSyncStatus.deleting.name,
@@ -834,6 +1032,7 @@ class LocalDbService {
         ActivityImageSyncStatus.uploading.name,
         ActivityImageSyncStatus.deleting.name,
         staleBefore.toIso8601String(),
+        userId,
       ],
     );
   }
@@ -849,6 +1048,7 @@ class LocalDbService {
   }
 
   Future<void> updateRemoteImageUrl({
+    required int userId,
     required int remoteImageId,
     required String remoteUrl,
     required DateTime? remoteUrlExpiresAt,
@@ -861,13 +1061,24 @@ class LocalDbService {
         'remote_url_expires_at': remoteUrlExpiresAt?.toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'remote_image_id = ?',
-      whereArgs: [remoteImageId],
+      where: '''
+        remote_image_id = ?
+        AND status IN (?, ?, ?)
+        AND $_ownedWorkoutImagePredicate
+      ''',
+      whereArgs: [
+        remoteImageId,
+        ActivityImageSyncStatus.uploaded.name,
+        ActivityImageSyncStatus.waitingForActivitySync.name,
+        ActivityImageSyncStatus.failed.name,
+        userId,
+      ],
     );
   }
 
   Future<void> updateRemoteImageMetadata({
     required int localImageId,
+    required int userId,
     required int remoteActivityId,
     required int remoteImageId,
     required String remoteUrl,
@@ -889,15 +1100,59 @@ class LocalDbService {
         'next_retry_at': null,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [localImageId],
+      where: '''
+        id = ?
+        AND status IN (?, ?, ?)
+        AND $_ownedWorkoutImagePredicate
+      ''',
+      whereArgs: [
+        localImageId,
+        ActivityImageSyncStatus.uploaded.name,
+        ActivityImageSyncStatus.waitingForActivitySync.name,
+        ActivityImageSyncStatus.failed.name,
+        userId,
+      ],
     );
   }
 
   /// Backfill missing client sync IDs for older local rows
-  Future<void> ensureClientSyncIds() async {
+  Future<void> ensureClientSyncIds(int userId) async {
     final db = await database;
-    await _ensureClientSyncIdsOnDatabase(db);
+    await _ensureClientSyncIdsOnDatabase(db, userId: userId);
+  }
+
+  Future<List<Map<String, dynamic>>> _getOwnedTrackingPoints(
+    DatabaseExecutor db,
+    int workoutId,
+    int userId,
+  ) {
+    return db.rawQuery(
+      '''
+      SELECT tp.*
+      FROM $_trackingPointsTable tp
+      JOIN $_workoutsTable w ON w.id = tp.workout_id
+      WHERE tp.workout_id = ? AND w.user_id = ?
+      ORDER BY tp.timestamp ASC
+      ''',
+      [workoutId, userId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _getOwnedStatusChanges(
+    DatabaseExecutor db,
+    int workoutId,
+    int userId,
+  ) {
+    return db.rawQuery(
+      '''
+      SELECT sc.*
+      FROM $_statusChangesTable sc
+      JOIN $_workoutsTable w ON w.id = sc.workout_id
+      WHERE sc.workout_id = ? AND w.user_id = ?
+      ORDER BY sc.timestamp ASC
+      ''',
+      [workoutId, userId],
+    );
   }
 
   /// Map database results to entity
@@ -1049,14 +1304,21 @@ class LocalDbService {
     );
   }
 
-  /// Clear all data (useful for logout)
-  Future<void> clearAllDataFromLocalDatabase() async {
+  /// Purge only one owner's retained local data.
+  Future<void> clearUserDataFromLocalDatabase(int userId) async {
     final db = await database;
-    await db.delete(_workoutImagesTable);
-    await db.delete(_workoutDeleteQueueTable);
-    await db.delete(_statusChangesTable);
-    await db.delete(_trackingPointsTable);
-    await db.delete(_workoutsTable);
+    await db.transaction((txn) async {
+      await txn.delete(
+        _workoutDeleteQueueTable,
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
+      await txn.delete(
+        _workoutsTable,
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
+    });
   }
 
   Future<void> close() async {
@@ -1103,6 +1365,312 @@ class LocalDbService {
         ADD COLUMN metrics_version INTEGER NOT NULL DEFAULT 1
           CHECK(metrics_version IN (1, 2))
       ''');
+    }
+  }
+
+  Future<void> _migrateToVersion6(Database db) async {
+    await _ensureSyncBlockedReasonColumn(db);
+    await _ensureClientSyncIdsOnDatabase(db);
+    final duplicateClientSyncIds = await _resolveDuplicateClientSyncIds(db);
+    final repairedDeleteQueueOwners = await db.rawUpdate('''
+      UPDATE $_workoutDeleteQueueTable
+      SET user_id = (
+        SELECT w.user_id
+        FROM $_workoutsTable w
+        WHERE w.id = $_workoutDeleteQueueTable.local_workout_id
+      )
+      WHERE EXISTS (
+        SELECT 1
+        FROM $_workoutsTable w
+        WHERE w.id = $_workoutDeleteQueueTable.local_workout_id
+        AND w.user_id != $_workoutDeleteQueueTable.user_id
+      )
+    ''');
+    final orphanTrackingPoints = await _deleteOrphanRows(
+      db,
+      _trackingPointsTable,
+    );
+    final orphanStatusChanges = await _deleteOrphanRows(
+      db,
+      _statusChangesTable,
+    );
+    final orphanWorkoutImages = await _deleteOrphanRows(
+      db,
+      _workoutImagesTable,
+    );
+
+    await _createOwnershipIndexes(db);
+    await _verifyOwnershipIndexes(db);
+    await _verifyForeignKeyDefinitions(db);
+    await _verifyForeignKeyIntegrity(db);
+
+    developer.log(
+      'SQLite v6 migration quarantined $duplicateClientSyncIds duplicate '
+      'client sync IDs, repaired $repairedDeleteQueueOwners delete-queue '
+      'owners, and removed orphan rows: tracking_points='
+      '$orphanTrackingPoints, status_changes=$orphanStatusChanges, '
+      'workout_images=$orphanWorkoutImages',
+      name: 'LocalDbService',
+    );
+  }
+
+  Future<void> _ensureSyncBlockedReasonColumn(Database db) async {
+    if (!await _hasColumn(db, _workoutsTable, 'sync_blocked_reason')) {
+      await db.execute(
+        'ALTER TABLE $_workoutsTable ADD COLUMN sync_blocked_reason TEXT',
+      );
+    }
+  }
+
+  Future<int> _deleteOrphanRows(DatabaseExecutor db, String childTable) {
+    return db.rawDelete('''
+      DELETE FROM $childTable
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM $_workoutsTable w
+        WHERE w.id = $childTable.workout_id
+      )
+    ''');
+  }
+
+  Future<int> _resolveDuplicateClientSyncIds(DatabaseExecutor db) async {
+    final workouts = await db.query(
+      _workoutsTable,
+      columns: [
+        'id',
+        'user_id',
+        'start_time',
+        'client_sync_id',
+        'remote_activity_id',
+        'synced',
+        'deleted_locally',
+      ],
+      orderBy: 'user_id ASC, id ASC',
+    );
+    final groups =
+        <({int userId, String clientSyncId}), List<Map<String, Object?>>>{};
+    final occupiedByUser = <int, Set<String>>{};
+
+    for (final workout in workouts) {
+      final userId = EnsureTypeHelper.ensureInt(workout['user_id']);
+      final clientSyncId = workout['client_sync_id'] as String?;
+      if (clientSyncId == null || clientSyncId.trim().isEmpty) {
+        throw StateError('SQLite v6 migration left an empty client sync ID');
+      }
+      final key = (userId: userId, clientSyncId: clientSyncId);
+      groups.putIfAbsent(key, () => <Map<String, Object?>>[]).add(workout);
+      occupiedByUser.putIfAbsent(userId, () => <String>{}).add(clientSyncId);
+    }
+
+    int canonicalRank(Map<String, Object?> row) {
+      if (row['remote_activity_id'] != null) return 0;
+      if (EnsureTypeHelper.ensureInt(row['synced']) == 1) return 1;
+      if (EnsureTypeHelper.ensureInt(row['deleted_locally']) == 0) return 2;
+      return 3;
+    }
+
+    var quarantinedCount = 0;
+    for (final entry in groups.entries) {
+      final duplicates = entry.value;
+      if (duplicates.length < 2) {
+        continue;
+      }
+
+      final remoteActivityIds =
+          duplicates
+              .map((row) => row['remote_activity_id'])
+              .where((value) => value != null)
+              .map(EnsureTypeHelper.ensureInt)
+              .toSet();
+      if (remoteActivityIds.length > 1) {
+        throw StateError(
+          'SQLite v6 migration found an ambiguous client sync ID mapped to '
+          'multiple remote activities',
+        );
+      }
+
+      duplicates.sort((left, right) {
+        final rankComparison = canonicalRank(
+          left,
+        ).compareTo(canonicalRank(right));
+        if (rankComparison != 0) return rankComparison;
+        return EnsureTypeHelper.ensureInt(
+          left['id'],
+        ).compareTo(EnsureTypeHelper.ensureInt(right['id']));
+      });
+
+      final occupied = occupiedByUser[entry.key.userId]!;
+      for (final duplicate in duplicates.skip(1)) {
+        final localWorkoutId = EnsureTypeHelper.ensureInt(duplicate['id']);
+        final startTimeValue = duplicate['start_time'];
+        final startTime =
+            startTimeValue is String ? DateTime.tryParse(startTimeValue) : null;
+        final baseClientSyncId = ClientSyncIdGenerator.legacyFromLocalRow(
+          localWorkoutId: localWorkoutId,
+          userId: entry.key.userId,
+          startTime: startTime,
+        );
+        var replacementClientSyncId = baseClientSyncId;
+        var suffix = 1;
+        while (occupied.contains(replacementClientSyncId)) {
+          replacementClientSyncId = '$baseClientSyncId-$suffix';
+          suffix += 1;
+        }
+
+        await db.update(
+          _workoutsTable,
+          {
+            'client_sync_id': replacementClientSyncId,
+            'sync_blocked_reason': 'duplicate_client_sync_id',
+          },
+          where: 'id = ? AND user_id = ?',
+          whereArgs: [localWorkoutId, entry.key.userId],
+        );
+        occupied.add(replacementClientSyncId);
+        quarantinedCount += 1;
+      }
+    }
+
+    return quarantinedCount;
+  }
+
+  Future<void> _createOwnershipIndexes(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_workouts_user_start_time
+      ON $_workoutsTable(user_id, start_time DESC)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_tracking_points_workout_timestamp
+      ON $_trackingPointsTable(workout_id, timestamp)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_status_changes_workout_timestamp
+      ON $_statusChangesTable(workout_id, timestamp)
+    ''');
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_workouts_user_client_sync_id
+      ON $_workoutsTable(user_id, client_sync_id)
+    ''');
+  }
+
+  Future<void> _verifyOwnershipIndexes(DatabaseExecutor db) async {
+    await _verifyIndex(
+      db,
+      tableName: _workoutsTable,
+      indexName: 'idx_workouts_user_start_time',
+      expectedColumns: const [
+        (name: 'user_id', descending: false),
+        (name: 'start_time', descending: true),
+      ],
+    );
+    await _verifyIndex(
+      db,
+      tableName: _trackingPointsTable,
+      indexName: 'idx_tracking_points_workout_timestamp',
+      expectedColumns: const [
+        (name: 'workout_id', descending: false),
+        (name: 'timestamp', descending: false),
+      ],
+    );
+    await _verifyIndex(
+      db,
+      tableName: _statusChangesTable,
+      indexName: 'idx_status_changes_workout_timestamp',
+      expectedColumns: const [
+        (name: 'workout_id', descending: false),
+        (name: 'timestamp', descending: false),
+      ],
+    );
+    await _verifyIndex(
+      db,
+      tableName: _workoutsTable,
+      indexName: 'idx_workouts_user_client_sync_id',
+      expectedColumns: const [
+        (name: 'user_id', descending: false),
+        (name: 'client_sync_id', descending: false),
+      ],
+      unique: true,
+    );
+  }
+
+  Future<void> _verifyIndex(
+    DatabaseExecutor db, {
+    required String tableName,
+    required String indexName,
+    required List<({String name, bool descending})> expectedColumns,
+    bool unique = false,
+  }) async {
+    final indexList = await db.rawQuery('PRAGMA index_list("$tableName")');
+    final matchingIndexes = indexList.where((row) => row['name'] == indexName);
+    if (matchingIndexes.length != 1 ||
+        (EnsureTypeHelper.ensureInt(matchingIndexes.single['unique']) == 1) !=
+            unique) {
+      throw StateError('SQLite index verification failed for $indexName');
+    }
+
+    final indexColumns =
+        (await db.rawQuery('PRAGMA index_xinfo("$indexName")'))
+            .where(
+              (row) =>
+                  EnsureTypeHelper.ensureInt(row['key']) == 1 &&
+                  EnsureTypeHelper.ensureInt(row['cid']) >= 0,
+            )
+            .toList()
+          ..sort(
+            (left, right) => EnsureTypeHelper.ensureInt(
+              left['seqno'],
+            ).compareTo(EnsureTypeHelper.ensureInt(right['seqno'])),
+          );
+    final actualColumns =
+        indexColumns
+            .map(
+              (row) => (
+                name: row['name'] as String,
+                descending: EnsureTypeHelper.ensureInt(row['desc']) == 1,
+              ),
+            )
+            .toList();
+    if (actualColumns.length != expectedColumns.length) {
+      throw StateError('SQLite index verification failed for $indexName');
+    }
+    for (var index = 0; index < expectedColumns.length; index += 1) {
+      if (actualColumns[index] != expectedColumns[index]) {
+        throw StateError('SQLite index verification failed for $indexName');
+      }
+    }
+  }
+
+  Future<void> _verifyForeignKeyIntegrity(DatabaseExecutor db) async {
+    final violations = await db.rawQuery('PRAGMA foreign_key_check');
+    if (violations.isNotEmpty) {
+      throw StateError(
+        'SQLite foreign-key verification found ${violations.length} '
+        'violation(s)',
+      );
+    }
+  }
+
+  Future<void> _verifyForeignKeyDefinitions(DatabaseExecutor db) async {
+    for (final childTable in const [
+      _trackingPointsTable,
+      _statusChangesTable,
+      _workoutImagesTable,
+    ]) {
+      final definitions = await db.rawQuery(
+        'PRAGMA foreign_key_list("$childTable")',
+      );
+      final hasWorkoutCascade = definitions.any(
+        (row) =>
+            row['table'] == _workoutsTable &&
+            row['from'] == 'workout_id' &&
+            row['to'] == 'id' &&
+            (row['on_delete'] as String?)?.toUpperCase() == 'CASCADE',
+      );
+      if (!hasWorkoutCascade) {
+        throw StateError(
+          'SQLite foreign-key definition is incomplete for $childTable',
+        );
+      }
     }
   }
 
@@ -1176,12 +1744,21 @@ class LocalDbService {
     ''');
   }
 
-  Future<void> _ensureClientSyncIdsOnDatabase(Database db) async {
+  Future<void> _ensureClientSyncIdsOnDatabase(
+    DatabaseExecutor db, {
+    int? userId,
+  }) async {
     final workoutsMissingClientSyncId = await db.query(
       _workoutsTable,
       columns: ['id', 'user_id', 'start_time'],
-      where: 'client_sync_id IS NULL OR TRIM(client_sync_id) = ?',
-      whereArgs: [''],
+      where:
+          userId == null
+              ? 'client_sync_id IS NULL OR TRIM(client_sync_id) = ?'
+              : '''
+                user_id = ?
+                AND (client_sync_id IS NULL OR TRIM(client_sync_id) = ?)
+              ''',
+      whereArgs: userId == null ? [''] : [userId, ''],
     );
 
     if (workoutsMissingClientSyncId.isEmpty) {
@@ -1192,7 +1769,7 @@ class LocalDbService {
 
     for (final workout in workoutsMissingClientSyncId) {
       final localWorkoutId = EnsureTypeHelper.ensureInt(workout['id']);
-      final userId = EnsureTypeHelper.ensureInt(workout['user_id']);
+      final workoutUserId = EnsureTypeHelper.ensureInt(workout['user_id']);
       final startTime =
           workout['start_time'] != null
               ? DateTime.tryParse(workout['start_time'] as String)
@@ -1203,12 +1780,12 @@ class LocalDbService {
         {
           'client_sync_id': ClientSyncIdGenerator.legacyFromLocalRow(
             localWorkoutId: localWorkoutId,
-            userId: userId,
+            userId: workoutUserId,
             startTime: startTime,
           ),
         },
-        where: 'id = ?',
-        whereArgs: [localWorkoutId],
+        where: 'id = ? AND user_id = ?',
+        whereArgs: [localWorkoutId, workoutUserId],
       );
     }
 
@@ -1279,6 +1856,7 @@ class LocalDbService {
   Future<void> _updateWorkoutImageStatus(
     int localImageId,
     ActivityImageSyncStatus status, {
+    required int userId,
     bool clearRetryState = false,
   }) async {
     final db = await database;
@@ -1291,8 +1869,8 @@ class LocalDbService {
         if (clearRetryState) 'next_retry_at': null,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [localImageId],
+      where: 'id = ? AND $_ownedWorkoutImagePredicate',
+      whereArgs: [localImageId, userId],
     );
   }
 
@@ -1520,19 +2098,8 @@ class LocalDbService {
       List<Map<String, dynamic>> statusChanges = [];
 
       if (loadTrackingPoints) {
-        points = await db.query(
-          _trackingPointsTable,
-          where: 'workout_id = ?',
-          whereArgs: [workoutId],
-          orderBy: 'timestamp ASC',
-        );
-
-        statusChanges = await db.query(
-          _statusChangesTable,
-          where: 'workout_id = ?',
-          whereArgs: [workoutId],
-          orderBy: 'timestamp ASC',
-        );
+        points = await _getOwnedTrackingPoints(db, workoutId, userId);
+        statusChanges = await _getOwnedStatusChanges(db, workoutId, userId);
       }
 
       workoutEntities.add(
