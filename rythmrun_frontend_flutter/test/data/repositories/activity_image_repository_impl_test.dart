@@ -1432,6 +1432,16 @@ class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
   }
 
   @override
+  Future<bool> markWorkoutSyncBlocked({
+    required int userId,
+    required int localWorkoutId,
+    required String clientSyncId,
+    required String reason,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<List<WorkoutDeleteQueueEntry>> getWorkoutDeletesReadyForSync(
     int userId,
     DateTime now,

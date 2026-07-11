@@ -1,9 +1,121 @@
 import { Request, Response } from 'express';
-import { ActivityService } from '../services/activity.service';
-import { GetActivitiesQueryDto, CreateActivityDto, UpdateActivityDto } from '../models/dto/activity.dto';
+import {
+    ActivityDomainValidationError,
+    ActivityNotFoundError,
+    ActivityService,
+} from '../services/activity.service';
+import { GetActivitiesQueryDto } from '../models/dto/activity.dto';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
 import { injectable, inject } from "tsyringe";
+import {
+    DtoValidationError,
+    DtoValidationIssue,
+    MAX_DTO_ISSUE_MESSAGE_LENGTH,
+    MAX_DTO_ISSUE_PATH_LENGTH,
+} from '../middleware/validation.middleware';
+import {
+    validateCreateActivityDto,
+    validateUpdateActivityDto,
+} from '../middleware/activity-validation.middleware';
+
+function activityRequestIssueCode(issue: DtoValidationIssue): string {
+    if (issue.constraintCodes.includes('arrayMaxSize')) {
+        if (issue.property === 'locations') {
+            return 'ACTIVITY_LOCATION_LIMIT_EXCEEDED';
+        }
+
+        if (issue.property === 'statusChanges') {
+            return 'ACTIVITY_STATUS_CHANGE_LIMIT_EXCEEDED';
+        }
+    }
+
+    if (issue.constraintCodes.includes('whitelistValidation')) {
+        return 'ACTIVITY_FIELD_NOT_ALLOWED';
+    }
+
+    if (issue.constraintCodes.includes('isIn')) {
+        return 'ACTIVITY_VALUE_NOT_ALLOWED';
+    }
+
+    return 'ACTIVITY_FIELD_INVALID';
+}
+
+function boundedIssueText(value: string, maximumLength: number): string {
+    if (value.length <= maximumLength) {
+        return value;
+    }
+
+    return `${value.slice(0, maximumLength - 1)}…`;
+}
+
+function sendActivityError(res: Response, error: unknown): Response | undefined {
+    if (error instanceof DtoValidationError) {
+        return res.status(400).json({
+            status: 'error',
+            code: 'ACTIVITY_REQUEST_INVALID',
+            message: 'Activity payload is invalid',
+            retryable: false,
+            issuesTruncated: error.issuesTruncated,
+            issues: error.issues.map(issue => ({
+                code: activityRequestIssueCode(issue),
+                path: boundedIssueText(
+                    issue.property,
+                    MAX_DTO_ISSUE_PATH_LENGTH
+                ),
+                message: boundedIssueText(
+                    issue.constraints.join('; '),
+                    MAX_DTO_ISSUE_MESSAGE_LENGTH
+                ),
+            })),
+        });
+    }
+
+    if (error instanceof ActivityDomainValidationError) {
+        return res.status(error.statusCode).json({
+            status: 'error',
+            code: error.code,
+            message: error.message,
+            retryable: error.retryable,
+            issuesTruncated: error.issuesTruncated,
+            issues: error.issues.map(issue => ({
+                code: issue.code,
+                path: boundedIssueText(
+                    issue.property,
+                    MAX_DTO_ISSUE_PATH_LENGTH
+                ),
+                message: boundedIssueText(
+                    issue.message,
+                    MAX_DTO_ISSUE_MESSAGE_LENGTH
+                ),
+            })),
+        });
+    }
+
+    if (error instanceof ActivityNotFoundError) {
+        return res.status(error.statusCode).json({
+            status: 'error',
+            code: error.code,
+            message: error.message,
+            retryable: error.retryable,
+        });
+    }
+
+    return undefined;
+}
+
+function safeErrorName(error: unknown): string {
+    return error instanceof Error ? error.name : 'UnknownError';
+}
+
+function parseActivityId(value: string): number | null {
+    if (!/^[1-9]\d*$/.test(value)) {
+        return null;
+    }
+
+    const activityId = Number(value);
+    return Number.isSafeInteger(activityId) ? activityId : null;
+}
 
 @injectable()
 export class ActivityController {
@@ -57,8 +169,8 @@ export class ActivityController {
 
     getActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
-            if (isNaN(activityId)) {
+            const activityId = parseActivityId(req.params.activityId);
+            if (activityId === null) {
                 return res.status(400).json({
                     status: 'error',
                     message: 'Invalid activity ID'
@@ -90,41 +202,7 @@ export class ActivityController {
 
     createActivity = async (req: Request, res: Response) => {
         try {
-            // Transform and validate request body
-            const createDto = plainToClass(CreateActivityDto, req.body);
-            const errors = await validate(createDto, {
-                forbidUnknownValues: true,
-                whitelist: true
-            });
-
-            if (errors.length > 0) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Invalid input',
-                    errors: errors.map(error => ({
-                        property: error.property,
-                        constraints: error.constraints
-                    }))
-                });
-            }
-
-            // Validate timestamps
-            const startTime = new Date(createDto.startTime);
-            const endTime = new Date(createDto.endTime);
-            
-            if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Invalid date format'
-                });
-            }
-
-            if (endTime <= startTime) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'End time must be after start time'
-                });
-            }
+            const createDto = await validateCreateActivityDto(req.body);
 
             // Create activity
             const result = await this.activityService.createActivity(req.user!.id, createDto);
@@ -135,7 +213,12 @@ export class ActivityController {
             });
 
         } catch (error) {
-            console.error('Create activity error:', error);
+            const validationResponse = sendActivityError(res, error);
+            if (validationResponse) {
+                return validationResponse;
+            }
+
+            console.error(`Create activity error (${safeErrorName(error)})`);
             return res.status(500).json({
                 status: 'error',
                 message: 'Internal server error'
@@ -145,51 +228,15 @@ export class ActivityController {
 
     updateActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
-            if (isNaN(activityId)) {
+            const activityId = parseActivityId(req.params.activityId);
+            if (activityId === null) {
                 return res.status(400).json({
                     status: 'error',
                     message: 'Invalid activity ID'
                 });
             }
 
-            // Transform and validate request body
-            const updateDto = plainToClass(UpdateActivityDto, req.body);
-            const errors = await validate(updateDto, {
-                forbidUnknownValues: true,
-                whitelist: true
-            });
-
-            if (errors.length > 0) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Invalid input',
-                    errors: errors.map(error => ({
-                        property: error.property,
-                        constraints: error.constraints
-                    }))
-                });
-            }
-
-            // Validate timestamps if provided
-            if (updateDto.startTime && updateDto.endTime) {
-                const startTime = new Date(updateDto.startTime);
-                const endTime = new Date(updateDto.endTime);
-                
-                if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
-                    return res.status(400).json({
-                        status: 'error',
-                        message: 'Invalid date format'
-                    });
-                }
-
-                if (endTime <= startTime) {
-                    return res.status(400).json({
-                        status: 'error',
-                        message: 'End time must be after start time'
-                    });
-                }
-            }
+            const updateDto = await validateUpdateActivityDto(req.body);
 
             // Update activity
             const result = await this.activityService.updateActivity(req.user!.id, activityId, updateDto);
@@ -200,14 +247,12 @@ export class ActivityController {
             });
 
         } catch (error: any) {
-            if (error?.message === 'Activity not found or unauthorized') {
-                return res.status(404).json({
-                    status: 'error',
-                    message: error.message
-                });
+            const validationResponse = sendActivityError(res, error);
+            if (validationResponse) {
+                return validationResponse;
             }
 
-            console.error('Update activity error:', error);
+            console.error(`Update activity error (${safeErrorName(error)})`);
             return res.status(500).json({
                 status: 'error',
                 message: 'Internal server error'
@@ -217,8 +262,8 @@ export class ActivityController {
 
     deleteActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
-            if (isNaN(activityId)) {
+            const activityId = parseActivityId(req.params.activityId);
+            if (activityId === null) {
                 return res.status(400).json({
                     status: 'error',
                     message: 'Invalid activity ID'
@@ -248,4 +293,4 @@ export class ActivityController {
             });
         }
     };
-} 
+}

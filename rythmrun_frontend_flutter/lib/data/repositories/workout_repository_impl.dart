@@ -13,6 +13,18 @@ import 'package:rythmrun_frontend_flutter/domain/repositories/auth_repository.da
 import 'package:rythmrun_frontend_flutter/domain/repositories/workout_repository.dart';
 
 class WorkoutRepositoryImpl implements WorkoutRepository {
+  static const Set<int> _permanentActivityRejectionStatuses = <int>{
+    400,
+    413,
+    422,
+  };
+  static const Set<String> _knownPermanentActivityCodes = <String>{
+    'ACTIVITY_REQUEST_INVALID',
+    'ACTIVITY_PAYLOAD_INVALID_JSON',
+    'ACTIVITY_PAYLOAD_TOO_LARGE',
+    'ACTIVITY_DOMAIN_INVALID',
+  };
+
   final WorkoutLocalDataSource _localDataSource;
   final AuthRepository _authRepository;
   final ActivityRemoteDataSource _remoteDataSource;
@@ -203,6 +215,13 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
           .getUnsyncedWorkoutsFromLocalDatabase(userId);
 
       for (final workout in unsyncedWorkouts) {
+        // A remote failure can race an account switch. Recheck before every
+        // queued row so cached A credentials are never used for another A
+        // request after B becomes active.
+        if (!await _isCurrentUser(userId)) {
+          return;
+        }
+
         final localWorkoutId = _parseLocalWorkoutId(workout.id);
         if (localWorkoutId == null) {
           log('Skipping workout with invalid local ID: ${workout.id}');
@@ -250,9 +269,11 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
               return;
             }
           } catch (retryError) {
-            log(
-              'Failed to sync workout ${workout.id} after auth refresh: '
-              '$retryError',
+            await _handleWorkoutCreateFailure(
+              retryError,
+              workout,
+              localWorkoutId,
+              userId,
             );
           }
         } on ForbiddenException catch (_) {
@@ -275,13 +296,15 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
               return;
             }
           } catch (retryError) {
-            log(
-              'Failed to sync workout ${workout.id} after auth refresh: '
-              '$retryError',
+            await _handleWorkoutCreateFailure(
+              retryError,
+              workout,
+              localWorkoutId,
+              userId,
             );
           }
         } catch (e) {
-          log('Failed to sync workout ${workout.id}: $e');
+          await _handleWorkoutCreateFailure(e, workout, localWorkoutId, userId);
         }
       }
     } finally {
@@ -311,6 +334,38 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
       clientSyncId: workout.clientSyncId,
       remoteActivityId: remoteActivityId,
     );
+  }
+
+  Future<void> _handleWorkoutCreateFailure(
+    Object error,
+    WorkoutSessionEntity workout,
+    int localWorkoutId,
+    int userId,
+  ) async {
+    if (error is! HttpStatusException ||
+        !_permanentActivityRejectionStatuses.contains(error.statusCode)) {
+      log('Workout sync remains retryable after a remote failure');
+      return;
+    }
+
+    if (!await _isCurrentUser(userId)) {
+      return;
+    }
+
+    final serverCode = error.code;
+    final reason =
+        serverCode != null && _knownPermanentActivityCodes.contains(serverCode)
+            ? serverCode
+            : 'ACTIVITY_HTTP_${error.statusCode}';
+    final blocked = await _localDataSource.markWorkoutSyncBlocked(
+      userId: userId,
+      localWorkoutId: localWorkoutId,
+      clientSyncId: workout.clientSyncId,
+      reason: reason,
+    );
+    if (blocked) {
+      log('Workout sync blocked by permanent server rejection ($reason)');
+    }
   }
 
   Future<Map<String, String>?> _syncPendingWorkoutDeletes(

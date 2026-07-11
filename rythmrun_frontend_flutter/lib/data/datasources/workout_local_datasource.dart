@@ -84,6 +84,20 @@ class WorkoutLocalDataSource {
     );
   }
 
+  Future<bool> markWorkoutSyncBlocked({
+    required int userId,
+    required int localWorkoutId,
+    required String clientSyncId,
+    required String reason,
+  }) {
+    return _localDbService.markWorkoutSyncBlocked(
+      userId: userId,
+      localWorkoutId: localWorkoutId,
+      clientSyncId: clientSyncId,
+      reason: reason,
+    );
+  }
+
   Future<List<WorkoutDeleteQueueEntry>> getWorkoutDeletesReadyForSync(
     int userId,
     DateTime now,
