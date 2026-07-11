@@ -691,10 +691,6 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     final hasElevation =
         session.elevationGain != null && session.elevationGain! > 0;
     final hasCalories = session.calories != null;
-    final maxSpeedKmh =
-        session.maxSpeed > 0
-            ? (session.maxSpeed * 3.6).toStringAsFixed(1)
-            : '0.0';
 
     return Container(
       padding: const EdgeInsets.all(spacingMd),
@@ -723,7 +719,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
               Expanded(
                 child: _buildDetailMetric(
                   label: 'Max Speed',
-                  value: '$maxSpeedKmh km/h',
+                  value: state.formattedMaxSpeed,
                   icon: Icons.speed,
                 ),
               ),
@@ -746,7 +742,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                 if (hasCalories)
                   Expanded(
                     child: _buildDetailMetric(
-                      label: 'Calories',
+                      label: 'Est. Calories',
                       value: '${session.calories}',
                       icon: Icons.local_fire_department,
                     ),

@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
+import 'package:rythmrun_frontend_flutter/core/utils/calculation_helper.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_action_card.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
@@ -148,14 +149,8 @@ class _TrackingHistoryDetailsScreenState
   }
 
   Widget _buildComprehensiveStats(WorkoutSessionEntity workout) {
-    final duration =
-        workout.endTime != null && workout.startTime != null
-            ? workout.endTime!.difference(workout.startTime!)
-            : Duration.zero;
-
-    final activeDuration = workout.activeDuration ?? duration;
-    final totalDuration =
-        activeDuration + (workout.pausedDuration ?? Duration.zero);
+    final totalDuration = workout.wallClockDuration ?? Duration.zero;
+    final activeDuration = workout.activeDuration ?? totalDuration;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,7 +308,8 @@ class _TrackingHistoryDetailsScreenState
                 child: buildQuickActionCard(
                   context: context,
                   icon: speedIcon,
-                  value: _formatPace(workout.averagePace),
+                  value:
+                      '${formatPaceMinutesPerKilometer(workout.averagePace)} /km',
                   title: 'Avg Pace',
                   color: CustomAppColors.colorA,
                   onTap: () {},
@@ -489,7 +485,7 @@ class _TrackingHistoryDetailsScreenState
               if (workout.calories != null) ...[
                 Expanded(
                   child: _buildDetailRow(
-                    'Calories Burned',
+                    'Estimated Calories',
                     '${workout.calories}',
                     caloriesIcon,
                     CustomAppColors.statusWarning,
@@ -601,13 +597,6 @@ class _TrackingHistoryDetailsScreenState
     } else {
       return '${seconds}s';
     }
-  }
-
-  String _formatPace(double? pace) {
-    if (pace == null || pace == 0) return '--:--';
-    final minutes = pace.floor();
-    final seconds = ((pace - minutes) * 60).round();
-    return '$minutes:${seconds.toString().padLeft(2, '0')} /km';
   }
 
   String _getWorkoutTypeString(WorkoutType type) {

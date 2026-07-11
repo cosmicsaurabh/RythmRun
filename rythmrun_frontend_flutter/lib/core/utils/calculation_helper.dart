@@ -3,22 +3,59 @@ import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.
 
 /// Calculate pace in minutes per kilometer
 double? calculatePace(double distanceInMeters, Duration duration) {
-  if (distanceInMeters <= 0 || duration.inSeconds <= 0) return null;
+  if (!distanceInMeters.isFinite ||
+      distanceInMeters <= 0 ||
+      duration.inSeconds <= 0) {
+    return null;
+  }
 
-  double distanceInKm = distanceInMeters / 1000;
-  double timeInMinutes = duration.inSeconds / 60;
+  final distanceInKm = distanceInMeters / 1000;
+  final timeInMinutes = duration.inSeconds / 60;
 
   return timeInMinutes / distanceInKm; // minutes per km
 }
 
-/// Calculate speed in km/h
-double calculateSpeed(double distanceInMeters, Duration duration) {
-  if (duration.inSeconds <= 0 || distanceInMeters <= 0) return 0.0;
+/// Format fractional minutes per kilometre without producing invalid seconds.
+String formatPaceMinutesPerKilometer(double? pace) {
+  if (pace == null || !pace.isFinite || pace <= 0) return '--:--';
 
-  double distanceInKm = distanceInMeters / 1000;
-  double timeInHours = duration.inSeconds / 3600;
+  final totalSeconds = (pace * 60).round();
+  final minutes = totalSeconds ~/ 60;
+  final seconds = totalSeconds.remainder(60);
 
-  return distanceInKm / timeInHours; // km/h
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
+}
+
+/// Calculate average speed in metres per second.
+double calculateAverageSpeedMetersPerSecond(
+  double distanceInMeters,
+  Duration duration,
+) {
+  if (!distanceInMeters.isFinite ||
+      distanceInMeters <= 0 ||
+      duration.inSeconds <= 0) {
+    return 0.0;
+  }
+
+  return distanceInMeters / duration.inSeconds;
+}
+
+/// Convert a canonical metres-per-second value to kilometres per hour.
+double metersPerSecondToKilometersPerHour(double speedMetersPerSecond) {
+  if (!speedMetersPerSecond.isFinite || speedMetersPerSecond <= 0) {
+    return 0.0;
+  }
+
+  return speedMetersPerSecond * 3.6;
+}
+
+/// Format canonical speed for the current metric-only presentation.
+String formatMetersPerSecondAsKilometersPerHour(double speedMetersPerSecond) {
+  final speedKilometersPerHour = metersPerSecondToKilometersPerHour(
+    speedMetersPerSecond,
+  );
+
+  return '${speedKilometersPerHour.toStringAsFixed(1)} km/h';
 }
 
 /// Estimate calories burned (simple calculation based on MET values)
@@ -28,7 +65,13 @@ int estimateCalories({
   required double userWeightKg,
   double averageSpeedKmh = 8.0, // default running speed
 }) {
-  if (duration.inSeconds <= 0 || distanceInKm <= 0 || userWeightKg <= 0) {
+  if (!distanceInKm.isFinite ||
+      !userWeightKg.isFinite ||
+      !averageSpeedKmh.isFinite ||
+      duration.inSeconds <= 0 ||
+      distanceInKm <= 0 ||
+      userWeightKg <= 0 ||
+      averageSpeedKmh < 0) {
     return 0;
   }
 
@@ -44,8 +87,51 @@ int estimateCalories({
     met = 14.5; // fast running
   }
 
-  double timeInHours = duration.inSeconds / 3600;
+  final timeInHours = duration.inSeconds / 3600;
   return (met * userWeightKg * timeInHours).round();
+}
+
+/// Canonical metrics calculated when a workout is completed.
+class WorkoutCompletionMetrics {
+  final double averageSpeedMetersPerSecond;
+  final double? averagePaceMinutesPerKilometer;
+  final int estimatedCalories;
+
+  const WorkoutCompletionMetrics({
+    required this.averageSpeedMetersPerSecond,
+    required this.averagePaceMinutesPerKilometer,
+    required this.estimatedCalories,
+  });
+}
+
+/// Calculate the completion summary from canonical distance and active time.
+WorkoutCompletionMetrics calculateWorkoutCompletionMetrics({
+  required double distanceInMeters,
+  required Duration activeDuration,
+  required double userWeightKilograms,
+}) {
+  final averageSpeedMetersPerSecond = calculateAverageSpeedMetersPerSecond(
+    distanceInMeters,
+    activeDuration,
+  );
+  final averagePaceMinutesPerKilometer = calculatePace(
+    distanceInMeters,
+    activeDuration,
+  );
+  final estimatedCalories = estimateCalories(
+    distanceInKm: distanceInMeters / 1000,
+    duration: activeDuration,
+    userWeightKg: userWeightKilograms,
+    averageSpeedKmh: metersPerSecondToKilometersPerHour(
+      averageSpeedMetersPerSecond,
+    ),
+  );
+
+  return WorkoutCompletionMetrics(
+    averageSpeedMetersPerSecond: averageSpeedMetersPerSecond,
+    averagePaceMinutesPerKilometer: averagePaceMinutesPerKilometer,
+    estimatedCalories: estimatedCalories,
+  );
 }
 
 /// Calculate elevation gain and loss from tracking points

@@ -34,6 +34,10 @@ Repository commits and local test results cannot change a manual check to `Verif
 | MC-0.10 | Dated production dependency advisory review | Security maintainer | Blocked | Full dated report and one decision per advisory | — | — | Explicit approval is required before sending the dependency inventory to npm. |
 | MC-0.11 | Supported mobile avatar lifecycle in staging | Mobile and QA owners | Pending | Build/version plus request, upload, confirm, display, replace, and logout run record | — | — | — |
 | MC-0.12 | Controlled reopen and 24-hour observation | Deployment/on-call owner | Pending | Reopen timeline, dashboards, thresholds, rollback owner, and observation outcome | — | — | — |
+| MC-1.1 | Legacy metric sampling and classification | Product-data and database owners | Pending | Restricted sample showing distance/active-duration/stored-speed ratios and approved classification rules | — | — | Never copy user routes or row-level personal data into Git. |
+| MC-1.2 | Metric migration backups and staging exercise | Database and mobile owners | Pending | PostgreSQL/SQLite backup references, migration runs, version counts, and rollback rehearsal | — | — | Current repository migration only tags provenance; historic values are not rewritten. |
+| MC-1.3 | Previous-client and device compatibility | Mobile and QA owners | Pending | Supported old-client matrix plus Android SQLite upgrade/reopen evidence | — | — | Backend migration must precede the corrected version-2 mobile writer. |
+| MC-1.4 | Coordinated metric rollout and observation | Deployment, mobile, and on-call owners | Pending | Backend/mobile versions, staged rollout timeline, metric-version telemetry, thresholds, and outcome | — | — | IP-0 containment must remain active throughout. |
 
 ## Hosted CI procedure
 
@@ -106,3 +110,35 @@ Pass condition: the valid lifecycle passes, negative probes remain contained, mo
 ## Evidence updates
 
 When a check changes state, update its row with a safe evidence reference and add a dated entry to the applicable phase evidence log. Never infer completion of another row: for example, hosted CI does not prove staging, production deployment, dependency safety, or incident closure.
+
+## IP-1 metric migration procedure
+
+### MC-1.1 — Sample before interpreting legacy values
+
+1. Work only from an access-controlled export containing the minimum fields needed: metric version, distance, active duration, stored average speed, and a non-identifying record reference.
+2. Calculate `storedAverageSpeed / (distanceMeters / activeDurationSeconds)`. A result near `1.0` suggests canonical m/s; a result near `3.6` suggests the historical km/h defect. Treat zero, invalid, mixed, or ambiguous records as unresolved rather than guessing.
+3. Record sample window, counts, classification thresholds, exclusions, and reviewer approval outside Git.
+4. Do not divide `maxSpeed` or GPS point speed; those values were already m/s.
+
+Pass condition: the affected version/time range and deterministic conversion rules are approved, or historic values remain version 1 and unchanged.
+
+### MC-1.2 — Back up and exercise migrations
+
+1. Verify restorable PostgreSQL and representative device/SQLite backups before any value rewrite.
+2. Apply the additive backend column/check first and the SQLite version-5 migration to staged copies.
+3. Prove existing rows become version 1 without numeric changes and new corrected rows persist as version 2.
+4. Run any later approved value migration only where version 1 and the MC-1.1 classification rule both match; update the value and marker atomically and idempotently.
+5. Reopen/restart twice, compare version counts and metric aggregates, and rehearse rollback from captured data rather than multiplying values blindly.
+
+Pass condition: both stores preserve unresolved legacy data, version-2 writes round-trip, and the backup/rollback rehearsal succeeds.
+
+### MC-1.3 and MC-1.4 — Compatibility and rollout
+
+1. Deploy the additive backend migration, then backend support for versions 1 and 2, before releasing the corrected mobile writer.
+2. Verify an old supported client still creates version-1 activities and the new client creates version-2 activities with m/s values.
+3. Exercise Android database upgrade, process restart, local history/statistics, sync retry/idempotency, and rollback on representative devices.
+4. Roll out the mobile build gradually and monitor version counts, speed/distance ratios, sync `4xx`/`5xx`, migration failures, and abnormal calorie/speed distributions without collecting exact routes.
+5. Stop rollout on a threshold breach; preserve the provenance marker and restore only from approved backups.
+6. Once any unsynced version-2 workout exists, do not roll back to a client that omits `metricsVersion`: it would upload canonical m/s as legacy version 1. Stop sync and forward-fix, or first prove every version-2 row has been finalized safely.
+
+Pass condition: mixed-version compatibility, staged migration, and the observation window have dated owner/reviewer evidence while all IP-0 containment requirements remain enforced.

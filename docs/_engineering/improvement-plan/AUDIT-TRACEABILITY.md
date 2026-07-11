@@ -15,8 +15,9 @@ Hosted and human-operated evidence is tracked in the [manual verification regist
 - Human-operated action now: [IP-0.1 production containment and evidence preservation](./IP-0-security-containment.md).
 - Merged code delivery: the IP-0.2 through IP-0.5 profile/avatar security slice and its local automated suite are in `origin/main` through `e33f314`/`54a5b26`. Migration, coordinated mobile rollout, staging proof, deployment, and production verification remain open.
 - Repository-delivered; hosted verification pending: IP-0.7a Express HTTP security regressions and minimum backend CI are committed in `c52fb87`; do not call CI operational until MC-0.7 through MC-0.9 pass.
-- Current repository package: IP-0.7 dependency-surface reduction. AWS SDK v3 and unused-direct-dependency changes pass locally on Node.js 22; the dated advisory gate remains open until MC-0.10 records an approved scan and reviewed disposition for every result.
-- Manual/hosted gates: [MC-0.1 through MC-0.12](./MANUAL-CHECKS.md), including hosted CI, its intentional-failure probe, branch protection, dependency advisory review, deployment, incident response, infrastructure, staging, and controlled reopen.
+- Repository-delivered; advisory verification pending: IP-0.7 dependency-surface reduction is committed in `fc33dca`; the dated advisory gate remains open until MC-0.10 records an approved scan and reviewed disposition for every result.
+- Current repository package: IP-1.1 canonical metric calculations, version provenance, additive local/backend schema changes, and pause-aware statistics. This is repository work only; production migration and rollout remain gated.
+- Manual/hosted gates: [MC-0.1 through MC-0.12 and MC-1.1 through MC-1.4](./MANUAL-CHECKS.md), including hosted CI, dependency review, security operations, metric sampling/backups, compatibility, staging, and controlled rollout.
 - Concurrent owner action: IP-0.6 exposure review and credential rotation decision.
 
 ## P0/P1 findings

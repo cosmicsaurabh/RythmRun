@@ -1,8 +1,20 @@
-import { IsString, IsOptional, IsBoolean, IsNumber, IsDateString, Min, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber, IsDateString, Min, IsArray, IsIn, IsInt } from 'class-validator';
+
+export const LEGACY_METRICS_VERSION = 1;
+export const CURRENT_METRICS_VERSION = 2;
+export const SUPPORTED_METRICS_VERSIONS = [
+    LEGACY_METRICS_VERSION,
+    CURRENT_METRICS_VERSION,
+] as const;
 
 export class CreateActivityDto {
     @IsString()
     clientSyncId!: string;
+
+    @IsInt()
+    @IsIn(SUPPORTED_METRICS_VERSIONS)
+    @IsOptional()
+    metricsVersion?: number;
 
     @IsString()
     type!: string;

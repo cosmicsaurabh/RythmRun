@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
+import 'package:rythmrun_frontend_flutter/core/utils/calculation_helper.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 
@@ -79,12 +80,7 @@ class LiveTrackingState {
   ////----------------------Formatted valueus----------------------
 
   /// Get current pace in a readable format
-  String get formattedPace {
-    if (currentPace <= 0) return '--:--';
-    int minutes = currentPace.floor();
-    int seconds = ((currentPace - minutes) * 60).round();
-    return '${minutes.toString().padLeft(1, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
+  String get formattedPace => formatPaceMinutesPerKilometer(currentPace);
 
   /// Get elapsed time in a readable format
   String get formattedElapsedTime {
@@ -100,13 +96,13 @@ class LiveTrackingState {
   }
 
   /// Get average speed in km/h
-  String get formattedAverageSpeed {
-    if (currentSession == null || currentSession!.averageSpeed <= 0) {
-      return '0.0 km/h';
-    }
-    double kmh = currentSession!.averageSpeed * 3.6; // m/s to km/h
-    return '${kmh.toStringAsFixed(1)} km/h';
-  }
+  String get formattedAverageSpeed => formatMetersPerSecondAsKilometersPerHour(
+    currentSession?.averageSpeed ?? 0,
+  );
+
+  /// Get maximum speed in km/h
+  String get formattedMaxSpeed =>
+      formatMetersPerSecondAsKilometersPerHour(currentSession?.maxSpeed ?? 0);
 
   ////--------------------------------------------
 

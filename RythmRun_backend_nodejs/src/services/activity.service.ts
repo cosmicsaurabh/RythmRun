@@ -1,5 +1,10 @@
 import { PrismaClient } from '../../generated/prisma';
-import { GetActivitiesQueryDto, CreateActivityDto, UpdateActivityDto } from '../models/dto/activity.dto';
+import {
+    GetActivitiesQueryDto,
+    CreateActivityDto,
+    UpdateActivityDto,
+    LEGACY_METRICS_VERSION,
+} from '../models/dto/activity.dto';
 import { injectable, inject } from "tsyringe";
 import s3Service from './s3.service';
 
@@ -63,6 +68,7 @@ export class ActivityService {
                 data: {
                     userId,
                     clientSyncId: dto.clientSyncId,
+                    metricsVersion: dto.metricsVersion ?? LEGACY_METRICS_VERSION,
                     type: dto.type,
                     startTime: new Date(dto.startTime),
                     endTime: new Date(dto.endTime),

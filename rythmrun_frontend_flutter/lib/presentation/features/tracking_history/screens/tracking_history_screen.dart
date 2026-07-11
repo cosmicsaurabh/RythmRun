@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
+import 'package:rythmrun_frontend_flutter/core/utils/calculation_helper.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/models/tracking_history_state.dart';
@@ -665,15 +666,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
     WidgetRef ref,
     WorkoutSessionEntity workout,
   ) {
-    final duration =
-        workout.endTime != null && workout.startTime != null
-            ? workout.endTime!.difference(workout.startTime!)
-            : Duration.zero;
-
-    final activeDuration =
-        workout.pausedDuration != null
-            ? duration - workout.pausedDuration!
-            : duration;
+    final activeDuration = workout.activeDuration ?? Duration.zero;
 
     return Container(
       decoration: BoxDecoration(
@@ -862,7 +855,8 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
                             child: _buildEnhancedMetric(
                               icon: speedIcon,
                               label: 'Avg Pace',
-                              value: _formatPace(workout.averagePace),
+                              value:
+                                  '${formatPaceMinutesPerKilometer(workout.averagePace)} /km',
                               color: CustomAppColors.colorA,
                             ),
                           ),
@@ -877,7 +871,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
                           Expanded(
                             child: _buildEnhancedMetric(
                               icon: caloriesIcon,
-                              label: 'Calories',
+                              label: 'Est. Calories',
                               value: workout.calories?.toString() ?? '--',
                               color: CustomAppColors.colorB,
                             ),
@@ -971,15 +965,6 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
     } else {
       return '${seconds}s';
     }
-  }
-
-  String _formatPace(double? pace) {
-    if (pace == null || pace == 0) return '--:--';
-
-    final minutes = pace.floor();
-    final seconds = ((pace - minutes) * 60).round();
-
-    return '$minutes:${seconds.toString().padLeft(2, '0')} /km';
   }
 
   Future<bool> _showDeleteConfirmation(BuildContext context) async {

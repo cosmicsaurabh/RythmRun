@@ -12,7 +12,12 @@ jest.mock('../services/s3.service', () => ({
 }));
 
 import { ActivityService } from '../services/activity.service';
-import { CreateActivityDto, UpdateActivityDto } from '../models/dto/activity.dto';
+import {
+  CreateActivityDto,
+  CURRENT_METRICS_VERSION,
+  LEGACY_METRICS_VERSION,
+  UpdateActivityDto,
+} from '../models/dto/activity.dto';
 import s3Service from '../services/s3.service';
 
 // Mock Prisma transaction helper
@@ -105,6 +110,7 @@ describe('ActivityService', () => {
     id: 1,
     userId: 1,
     clientSyncId: 'rr-00000001-0001-0001-abcd-1234567890ab',
+    metricsVersion: LEGACY_METRICS_VERSION,
     type: 'running',
     startTime: new Date('2026-03-22T10:00:00.000Z'),
     endTime: new Date('2026-03-22T10:30:00.000Z'),
@@ -173,6 +179,7 @@ describe('ActivityService', () => {
       // Verify activity.create was called with new fields
       const createData = mockTx.activity.create.mock.calls[0][0].data;
       expect(createData.clientSyncId).toBe(fullActivityDto.clientSyncId);
+      expect(createData.metricsVersion).toBe(LEGACY_METRICS_VERSION);
       expect(createData.pausedDuration).toBe(120);
       expect(createData.name).toBe('Morning Jog');
       expect(createData.elevationGain).toBe(45.5);
@@ -218,6 +225,7 @@ describe('ActivityService', () => {
       expect(createData.name).toBeUndefined();
       expect(createData.elevationGain).toBeUndefined();
       expect(createData.elevationLoss).toBeUndefined();
+      expect(createData.metricsVersion).toBe(LEGACY_METRICS_VERSION);
 
       // Verify heading is undefined in locations
       const locationData = mockTx.location.createMany.mock.calls[0][0].data;
@@ -227,6 +235,33 @@ describe('ActivityService', () => {
       expect(mockTx.statusChange.createMany).not.toHaveBeenCalled();
 
       expect(result!.statusChanges).toEqual([]);
+      expect(result!.metricsVersion).toBe(LEGACY_METRICS_VERSION);
+    });
+
+    it('should persist an explicit canonical metrics version for a new client', async () => {
+      const dto: CreateActivityDto = {
+        ...fullActivityDto,
+        clientSyncId: 'rr-00000001-0001-0001-abcd-1234567890ac',
+        metricsVersion: CURRENT_METRICS_VERSION,
+      };
+      const canonicalActivity = {
+        ...mockActivityReturn,
+        clientSyncId: dto.clientSyncId,
+        metricsVersion: CURRENT_METRICS_VERSION,
+      };
+
+      mockTx.activity.findUnique.mockResolvedValueOnce(null);
+      mockTx.activity.create.mockResolvedValue({ id: 2 });
+      mockTx.location.createMany.mockResolvedValue({ count: 1 });
+      mockTx.statusChange.createMany.mockResolvedValue({ count: 4 });
+      mockTx.activity.findUnique.mockResolvedValue(canonicalActivity);
+
+      const result = await service.createActivity(userId, dto);
+
+      expect(mockTx.activity.create.mock.calls[0][0].data.metricsVersion).toBe(
+        CURRENT_METRICS_VERSION,
+      );
+      expect(result!.metricsVersion).toBe(CURRENT_METRICS_VERSION);
     });
 
     it('should create activity with empty locations array', async () => {
@@ -244,15 +279,19 @@ describe('ActivityService', () => {
       expect(mockTx.location.createMany).not.toHaveBeenCalled();
     });
 
-    it('should return the existing activity when clientSyncId already exists', async () => {
+    it('should preserve the existing metric version when clientSyncId already exists', async () => {
       mockTx.activity.findUnique.mockResolvedValue(mockActivityReturn);
 
-      const result = await service.createActivity(userId, fullActivityDto);
+      const result = await service.createActivity(userId, {
+        ...fullActivityDto,
+        metricsVersion: CURRENT_METRICS_VERSION,
+      });
 
       expect(mockTx.activity.create).not.toHaveBeenCalled();
       expect(mockTx.location.createMany).not.toHaveBeenCalled();
       expect(mockTx.statusChange.createMany).not.toHaveBeenCalled();
       expect(result).toEqual(mockActivityReturn);
+      expect(result!.metricsVersion).toBe(LEGACY_METRICS_VERSION);
     });
   });
 
@@ -279,6 +318,7 @@ describe('ActivityService', () => {
 
       expect(result.activities).toHaveLength(1);
       expect(result.activities[0].statusChanges).toHaveLength(4);
+      expect(result.activities[0].metricsVersion).toBe(LEGACY_METRICS_VERSION);
       expect(result.pagination.total).toBe(1);
     });
 
@@ -344,6 +384,7 @@ describe('ActivityService', () => {
       expect(result.name).toBe('Morning Jog');
       expect(result.elevationGain).toBe(45.5);
       expect(result.elevationLoss).toBe(30.2);
+      expect(result.metricsVersion).toBe(LEGACY_METRICS_VERSION);
     });
   });
 
@@ -397,6 +438,7 @@ describe('ActivityService', () => {
       expect(updateData.pausedDuration).toBe(60);
       expect(updateData.elevationGain).toBe(50);
       expect(updateData.elevationLoss).toBe(35);
+      expect(updateData).not.toHaveProperty('metricsVersion');
 
       // Verify heading in location recreation
       const locationData = mockTx.location.createMany.mock.calls[0][0].data;
