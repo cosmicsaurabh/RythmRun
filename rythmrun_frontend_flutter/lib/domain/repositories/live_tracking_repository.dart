@@ -1,7 +1,13 @@
+import 'dart:async';
+
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 
 abstract class LiveTrackingRepository {
+  Stream<TrackingPointEntity> get locationStream;
+
+  DateTime now();
+
   Future<LocationServiceStatus> checkPermissions();
 
   Future<void> startTracking();

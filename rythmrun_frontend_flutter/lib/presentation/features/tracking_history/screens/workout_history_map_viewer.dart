@@ -63,46 +63,24 @@ class _WorkoutHistoryMapViewerState
   void didUpdateWidget(WorkoutHistoryMapViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    debugPrint('🔄 didUpdateWidget called');
-    debugPrint('  Old workout ID: ${oldWidget.workout.id}');
-    debugPrint('  New workout ID: ${widget.workout.id}');
-    debugPrint(
-      '  Old tracking points: ${oldWidget.workout.trackingPoints.length}',
-    );
-    debugPrint(
-      '  New tracking points: ${widget.workout.trackingPoints.length}',
-    );
-
     // Rebuild the map visualization if the workout data changes
     if (widget.workout.id != oldWidget.workout.id ||
         widget.workout.trackingPoints.length !=
             oldWidget.workout.trackingPoints.length) {
-      debugPrint('💡 Workout data changed, rebuilding visualization...');
       _buildAndFitMap();
-    } else {
-      debugPrint('📍 No significant changes detected');
     }
   }
 
   void _buildAndFitMap() {
-    debugPrint('🏗️ _buildAndFitMap called');
-    debugPrint(
-      '  Tracking points available: ${widget.workout.trackingPoints.length}',
-    );
-
     if (widget.workout.trackingPoints.isNotEmpty) {
       // Center map on workout start location
       final startPoint = widget.workout.trackingPoints.first;
       _center = LatLng(startPoint.latitude, startPoint.longitude);
-      debugPrint(
-        '  Setting center to: ${_center.latitude}, ${_center.longitude}',
-      );
 
       _buildWorkoutVisualization();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          debugPrint('📐 Fitting map to workout bounds...');
           //Critical:  Add a small delay to ensure map has finished rendering
           Future.delayed(const Duration(milliseconds: 100), () {
             if (mounted) {
@@ -111,16 +89,10 @@ class _WorkoutHistoryMapViewerState
           });
         }
       });
-    } else {
-      debugPrint('⚠️ No tracking points available for visualization');
     }
   }
 
   void _buildWorkoutVisualization() {
-    debugPrint(
-      '🔧 Building workout visualization for ${widget.workout.trackingPoints.length} points',
-    );
-
     _markers.clear();
     _solidPolylines.clear();
     _dashedPolylines.clear();
@@ -129,8 +101,6 @@ class _WorkoutHistoryMapViewerState
 
     // Build segments from workout data
     final segments = LiveMapSegmentBuilder.buildSegments(widget.workout);
-
-    debugPrint('🎯 Built ${segments.length} segments for visualization');
 
     // Create polylines for each segment
     bool hasValidSegments = false;
@@ -151,9 +121,12 @@ class _WorkoutHistoryMapViewerState
       }
     }
 
-    // Fallback: if no valid segments, create a simple polyline from all points
-    if (!hasValidSegments && widget.workout.trackingPoints.length >= 2) {
-      debugPrint('⚠️ No valid segments found, creating fallback polyline');
+    // Preserve the historical fallback only for legacy routes. Rejoining all
+    // version-2 points would redraw a pause or long-gap bridge.
+    if (!hasValidSegments &&
+        widget.workout.metricsVersion ==
+            WorkoutSessionEntity.legacyMetricsVersion &&
+        widget.workout.trackingPoints.length >= 2) {
       final allPoints =
           widget.workout.trackingPoints
               .map((point) => LatLng(point.latitude, point.longitude))
@@ -169,7 +142,6 @@ class _WorkoutHistoryMapViewerState
   }
 
   void _createSolidPolyline(List<LatLng> points, WorkoutType type) {
-    debugPrint('✅ Creating solid polyline with ${points.length} points');
     final polyline = Polyline(
       points: points,
       color: getWorkoutColor(type),
@@ -181,7 +153,6 @@ class _WorkoutHistoryMapViewerState
   }
 
   void _createDashedPolyline(List<LatLng> points, WorkoutType type) {
-    debugPrint('✅ Creating dashed polyline with ${points.length} points');
     final polyline = Polyline(
       points: points,
       color: CustomAppColors.statusError,

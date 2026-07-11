@@ -1,31 +1,48 @@
+import 'dart:async';
+
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/live_tracking_repository.dart';
 
 class LiveTrackingRepositoryImpl implements LiveTrackingRepository {
+  final LiveTrackingService _service;
+  final DateTime Function() _now;
+
+  LiveTrackingRepositoryImpl({
+    LiveTrackingService? service,
+    DateTime Function()? now,
+  }) : _service = service ?? LiveTrackingService.instance,
+       _now = now ?? DateTime.now;
+
+  @override
+  Stream<TrackingPointEntity> get locationStream => _service.locationStream;
+
+  @override
+  DateTime now() => _now();
+
   @override
   Future<LocationServiceStatus> checkPermissions() async {
-    return await LiveTrackingService.instance.checkPermissions();
+    return await _service.checkPermissions();
   }
 
   @override
   Future<void> startTracking() async {
-    await LiveTrackingService.instance.startTracking();
+    await _service.startTracking();
   }
 
   @override
   Future<void> stopTracking() async {
-    await LiveTrackingService.instance.stopTracking();
+    await _service.stopTracking();
   }
 
   @override
   Future<TrackingPointEntity?> getCurrentLocation() async {
-    return await LiveTrackingService.instance.getCurrentLocation();
+    return await _service.getCurrentLocation();
   }
 
   @override
   Future<double?> getCurrentElevation() async {
-    return await LiveTrackingService.instance.getCurrentElevation();
+    return await _service.getCurrentElevation();
   }
 
   @override
@@ -38,6 +55,6 @@ class LiveTrackingRepositoryImpl implements LiveTrackingRepository {
 
   @override
   Future<bool> requestLocationService() async {
-    return await LiveTrackingService.instance.requestLocationService();
+    return await _service.requestLocationService();
   }
 }

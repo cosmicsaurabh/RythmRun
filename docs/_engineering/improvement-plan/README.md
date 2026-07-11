@@ -26,7 +26,8 @@ The first code-remediation slice, commit `e33f314`, is merged into `origin/main`
 - **Merged code delivery:** IP-0.2 through IP-0.5 profile/avatar/configuration hardening and its local automated suite are in `origin/main` via `e33f314`/`54a5b26`; they are not deployed or production-verified.
 - **Repository-delivered; hosted verification pending:** IP-0.7a Express HTTP security regressions and minimum backend CI are committed in `c52fb87`; MC-0.7 through MC-0.9 remain open.
 - **Repository-delivered; advisory verification pending:** IP-0.7 dependency-surface reduction is committed in `fc33dca`; MC-0.10 remains open and no current advisory-clean claim is made.
-- **Current repository package:** IP-1.1 canonical metric contracts, provenance markers, non-destructive local/backend migrations, and paused-duration statistics. Production sampling, backup, rollout, and compatibility remain MC-1.1 through MC-1.4.
+- **Repository-delivered; rollout pending:** IP-1.1 canonical metric contracts and provenance are committed in `ba7b288`; production sampling, backup, rollout, and compatibility remain MC-1.1 through MC-1.4.
+- **Current repository package:** IP-1.2 one GPS acceptance policy, deterministic pause timeline, provider-owned route, and map/elevation segmentation. Device/release-log verification remains MC-1.5.
 - **Manual/hosted gates:** use [MANUAL-CHECKS.md](./MANUAL-CHECKS.md) for hosted CI, intentional-failure, branch-protection, dependency-audit, deployment, incident, infrastructure, staging, and controlled-reopen evidence.
 - **Concurrent owner action:** IP-0.6 — determine exposure and rotate/revoke credentials when it cannot be excluded.
 
