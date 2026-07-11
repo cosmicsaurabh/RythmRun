@@ -4,7 +4,7 @@ published: false
 
 # RythmRun improvement program
 
-> Program status: IP-0 remains the release blocker and its operational evidence is still open. The maintainer has explicitly selected repository-only IP-1.1 metric work in parallel; this does not authorize migration execution, deployment, or production enablement.
+> Program status: IP-0 remains the release blocker and its operational evidence is still open. The maintainer has explicitly selected repository-only IP-1 work in parallel and the current package is IP-1.3; this does not authorize migration execution, deployment, or production enablement.
 
 This directory turns the repository audit dated 2026-07-10 into an implementation-ready hardening program. It is the canonical place to track the current improvement phase, the next five phases, their decisions, and the evidence required to mark work complete.
 
@@ -27,7 +27,8 @@ The first code-remediation slice, commit `e33f314`, is merged into `origin/main`
 - **Repository-delivered; hosted verification pending:** IP-0.7a Express HTTP security regressions and minimum backend CI are committed in `c52fb87`; MC-0.7 through MC-0.9 remain open.
 - **Repository-delivered; advisory verification pending:** IP-0.7 dependency-surface reduction is committed in `fc33dca`; MC-0.10 remains open and no current advisory-clean claim is made.
 - **Repository-delivered; rollout pending:** IP-1.1 canonical metric contracts and provenance are committed in `ba7b288`; production sampling, backup, rollout, and compatibility remain MC-1.1 through MC-1.4.
-- **Current repository package:** IP-1.2 one GPS acceptance policy, deterministic pause timeline, provider-owned route, and map/elevation segmentation. Device/release-log verification remains MC-1.5.
+- **Repository-delivered; device verification pending:** IP-1.2 one GPS acceptance policy, deterministic pause timeline, provider-owned route, and map/elevation segmentation is committed in `c41d3dc`; MC-1.5 remains open.
+- **Current repository package:** IP-1.3 explicit nullable-state clearing, serialized live/auth operations, restart-safe credential cleanup, active-workout exit decisions, and A→B cache isolation. Device/staging verification remains MC-1.6.
 - **Manual/hosted gates:** use [MANUAL-CHECKS.md](./MANUAL-CHECKS.md) for hosted CI, intentional-failure, branch-protection, dependency-audit, deployment, incident, infrastructure, staging, and controlled-reopen evidence.
 - **Concurrent owner action:** IP-0.6 — determine exposure and rotate/revoke credentials when it cannot be excluded.
 
@@ -72,7 +73,7 @@ Phases are ordered by risk and dependency, not by ease. Work inside a phase may 
 
 External email or later account features must not delay checkpoint-engine development. Conversely, parallel development is not permission to enable a feature before its production dependency gates pass.
 
-The maintainer explicitly selected IP-1.1 repository development on 2026-07-11 while IP-0 operational work remains manual. This exception permits local code/tests only; the dependency matrix still controls migrations, deployment, and user rollout.
+The maintainer explicitly selected IP-1 repository development on 2026-07-11 while IP-0 operational work remains manual. This exception permits local code/tests only; the dependency matrix still controls migrations, deployment, and user rollout.
 
 ## What remains unchanged
 
@@ -180,6 +181,7 @@ Do not mark a phase complete using only a commit hash. Include the test or opera
 | D-008 | Android is the only promised platform until IP-5 either proves iOS readiness or explicitly keeps iOS out of release scope. | iOS currently lacks required photo, AdMob, and background behavior configuration. |
 | D-009 | Offline local access lasts at most seven days from a successful server verification and is limited to the verified user's local data. | It preserves offline value without treating a stale local identity as indefinite server authorization. Clock rollback triggers conservative online verification. |
 | D-010 | Access tokens include a session ID and authenticated requests verify that the session remains active. | Logout/password/account revocation must take effect before natural access-token expiry at current MVP scale. |
+| D-011 | Voluntary logout/account switch requires Finish or Discard while a workout is active; forced authentication loss attempts local finalization and blocks cleanup on failed save/GPS shutdown until recovery; direct cross-user authentication is rejected until prior-user live, sync, profile, and auth work drains and durable credentials clear. | Tracking and late callbacks must never continue silently or move state to another account. Durable process-death recovery remains IP-3. |
 
 ## Decisions that still require an owner
 
@@ -188,7 +190,6 @@ These do not block IP-0 or IP-1 but must be resolved before the named phase star
 | Needed by | Decision | Recommended default |
 | --- | --- | --- |
 | IP-2 | Password-recovery email provider and sender domain | Use one transactional email provider in staging first; never log reset tokens. |
-| IP-2 | Logout UX when an active workout exists | Block logout behind a choice to finish or discard the active workout; never silently leave tracking active. |
 | IP-2 | Device location/photo protection at rest | Approve library/performance/backup recovery first; prefer per-user data keys wrapped by the platform keystore, encrypted DB/files, and exclusion from unencrypted backups. |
 | IP-4 | Cross-device conflict policy | A remote tombstone auto-deletes only a locally proven previously-synced identity/revision; an unsynced collision is quarantined, not erased or resurrected. Ask the user only for true editable journal conflicts. |
 | IP-5 | iOS release commitment | Keep the release Android-only unless real-device background and image/ads checks pass. |

@@ -4,6 +4,8 @@ import 'package:rythmrun_frontend_flutter/core/utils/calculation_helper.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 
+const Object _unsetLiveTrackingValue = Object();
+
 @immutable
 class LiveTrackingState {
   final WorkoutSessionEntity? currentSession;
@@ -29,36 +31,45 @@ class LiveTrackingState {
   });
 
   LiveTrackingState copyWith({
-    WorkoutSessionEntity? currentSession,
+    Object? currentSession = _unsetLiveTrackingValue,
     bool? isTracking,
     bool? isLoading,
-    String? errorMessage,
-    bool? clearErrorMessage,
-    TrackingPointEntity? currentLocation,
+    Object? errorMessage = _unsetLiveTrackingValue,
+    Object? currentLocation = _unsetLiveTrackingValue,
     Duration? elapsedTime,
     double? currentPace,
     bool? hasLocationPermission,
-    LocationServiceStatus? locationServiceStatus,
+    Object? locationServiceStatus = _unsetLiveTrackingValue,
   }) {
     return LiveTrackingState(
-      currentSession: currentSession ?? this.currentSession,
+      currentSession:
+          identical(currentSession, _unsetLiveTrackingValue)
+              ? this.currentSession
+              : currentSession as WorkoutSessionEntity?,
       isTracking: isTracking ?? this.isTracking,
       isLoading: isLoading ?? this.isLoading,
       errorMessage:
-          clearErrorMessage == true ? null : errorMessage ?? this.errorMessage,
-      currentLocation: currentLocation ?? this.currentLocation,
+          identical(errorMessage, _unsetLiveTrackingValue)
+              ? this.errorMessage
+              : errorMessage as String?,
+      currentLocation:
+          identical(currentLocation, _unsetLiveTrackingValue)
+              ? this.currentLocation
+              : currentLocation as TrackingPointEntity?,
       elapsedTime: elapsedTime ?? this.elapsedTime,
       currentPace: currentPace ?? this.currentPace,
       hasLocationPermission:
           hasLocationPermission ?? this.hasLocationPermission,
       locationServiceStatus:
-          locationServiceStatus ?? this.locationServiceStatus,
+          identical(locationServiceStatus, _unsetLiveTrackingValue)
+              ? this.locationServiceStatus
+              : locationServiceStatus as LocationServiceStatus?,
     );
   }
 
   /// Clear error message
   LiveTrackingState clearError() {
-    return copyWith(clearErrorMessage: true);
+    return copyWith(errorMessage: null);
   }
 
   ////----------------------Checkers----------------------
@@ -115,7 +126,11 @@ class LiveTrackingState {
           isTracking == other.isTracking &&
           isLoading == other.isLoading &&
           errorMessage == other.errorMessage &&
-          elapsedTime == other.elapsedTime;
+          currentLocation == other.currentLocation &&
+          elapsedTime == other.elapsedTime &&
+          currentPace == other.currentPace &&
+          hasLocationPermission == other.hasLocationPermission &&
+          locationServiceStatus == other.locationServiceStatus;
 
   @override
   int get hashCode =>
@@ -123,7 +138,11 @@ class LiveTrackingState {
       isTracking.hashCode ^
       isLoading.hashCode ^
       errorMessage.hashCode ^
-      elapsedTime.hashCode;
+      currentLocation.hashCode ^
+      elapsedTime.hashCode ^
+      currentPace.hashCode ^
+      hasLocationPermission.hashCode ^
+      locationServiceStatus.hashCode;
 
   @override
   String toString() {

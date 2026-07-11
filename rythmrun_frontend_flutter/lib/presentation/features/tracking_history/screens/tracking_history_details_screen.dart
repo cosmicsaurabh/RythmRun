@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/calculation_helper.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_action_card.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/models/tracking_history_details_state.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_details_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/screens/workout_history_map_viewer.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/widgets/activity_image_strip.dart';
@@ -26,21 +28,25 @@ class _TrackingHistoryDetailsScreenState
   final bool _showMapTiles = true;
 
   @override
-  void initState() {
-    super.initState();
-    // Load full workout details on init
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.workout.id != null) {
-        ref
-            .read(trackingHistoryDetailsProvider.notifier)
-            .loadWorkoutDetails(widget.workout.id!);
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final state = ref.watch(trackingHistoryDetailsProvider);
+    final activeUserId = int.tryParse(ref.watch(currentUserProvider)?.id ?? '');
+    final workoutId = int.tryParse(widget.workout.id ?? '');
+    final ownsWorkout =
+        activeUserId != null &&
+        workoutId != null &&
+        widget.workout.userId == activeUserId;
+    final state =
+        ownsWorkout
+            ? ref.watch(
+              trackingHistoryDetailsProvider((
+                userId: activeUserId,
+                workoutId: workoutId,
+              )),
+            )
+            : const TrackingHistoryDetailsState(
+              errorMessage:
+                  'Workout details are not available for this account.',
+            );
 
     return Scaffold(
       appBar: AppBar(
@@ -80,9 +86,14 @@ class _TrackingHistoryDetailsScreenState
                       SizedBox(height: spacingMd),
                       ElevatedButton(
                         onPressed: () {
-                          if (widget.workout.id != null) {
+                          if (ownsWorkout) {
                             ref
-                                .read(trackingHistoryDetailsProvider.notifier)
+                                .read(
+                                  trackingHistoryDetailsProvider((
+                                    userId: activeUserId,
+                                    workoutId: workoutId,
+                                  )).notifier,
+                                )
                                 .loadWorkoutDetails(widget.workout.id!);
                           }
                         },

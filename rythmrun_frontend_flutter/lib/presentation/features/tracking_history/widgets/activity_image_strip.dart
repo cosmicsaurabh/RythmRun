@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/activity_image_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/activity_images_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/widgets/activity_image_tile.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
@@ -21,11 +22,15 @@ class _ActivityImageStripState extends ConsumerState<ActivityImageStrip> {
   @override
   Widget build(BuildContext context) {
     final workoutId = int.tryParse(widget.workout.id ?? '');
-    if (workoutId == null) {
+    final activeUserId = int.tryParse(ref.watch(currentUserProvider)?.id ?? '');
+    if (workoutId == null ||
+        activeUserId == null ||
+        widget.workout.userId != activeUserId) {
       return const SizedBox.shrink();
     }
+    final providerKey = (userId: activeUserId, workoutId: workoutId);
 
-    final state = ref.watch(activityImagesProvider(workoutId));
+    final state = ref.watch(activityImagesProvider(providerKey));
     final visibleImages =
         state.images.where((image) => _isVisible(image.status)).toList();
 
@@ -49,7 +54,7 @@ class _ActivityImageStripState extends ConsumerState<ActivityImageStrip> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeader(context, workoutId, state),
+            _buildHeader(context, providerKey, state),
             if (state.errorMessage != null) ...[
               const SizedBox(height: spacingMd),
               _buildError(context, state.errorMessage!),
@@ -59,7 +64,7 @@ class _ActivityImageStripState extends ConsumerState<ActivityImageStrip> {
               height: 132,
               child:
                   visibleImages.isEmpty
-                      ? _buildEmptyState(context, workoutId)
+                      ? _buildEmptyState(context, providerKey)
                       : ListView.separated(
                         scrollDirection: Axis.horizontal,
                         physics: const BouncingScrollPhysics(),
@@ -71,11 +76,11 @@ class _ActivityImageStripState extends ConsumerState<ActivityImageStrip> {
                           final image = visibleImages[index];
                           return ActivityImageTile(
                             image: image,
-                            onDelete: () => _deleteImage(workoutId, image),
-                            onReplace: () => _replaceImage(workoutId, image),
-                            onRetry: () => _retryImage(workoutId, image),
+                            onDelete: () => _deleteImage(providerKey, image),
+                            onReplace: () => _replaceImage(providerKey, image),
+                            onRetry: () => _retryImage(providerKey, image),
                             onRefreshRemoteUrls:
-                                () => _refreshRemoteUrls(workoutId),
+                                () => _refreshRemoteUrls(providerKey),
                           );
                         },
                       ),
@@ -88,7 +93,7 @@ class _ActivityImageStripState extends ConsumerState<ActivityImageStrip> {
 
   Widget _buildHeader(
     BuildContext context,
-    int workoutId,
+    ({int userId, int workoutId}) providerKey,
     ActivityImagesState state,
   ) {
     return Row(
@@ -115,7 +120,7 @@ class _ActivityImageStripState extends ConsumerState<ActivityImageStrip> {
           message: 'Add photo',
           child: IconButton(
             visualDensity: VisualDensity.compact,
-            onPressed: state.isLoading ? null : () => _attachImage(workoutId),
+            onPressed: state.isLoading ? null : () => _attachImage(providerKey),
             icon: const Icon(Icons.add_photo_alternate_outlined),
           ),
         ),
@@ -143,10 +148,13 @@ class _ActivityImageStripState extends ConsumerState<ActivityImageStrip> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, int workoutId) {
+  Widget _buildEmptyState(
+    BuildContext context,
+    ({int userId, int workoutId}) providerKey,
+  ) {
     return InkWell(
       borderRadius: BorderRadius.circular(radiusMd),
-      onTap: () => _attachImage(workoutId),
+      onTap: () => _attachImage(providerKey),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
@@ -167,16 +175,16 @@ class _ActivityImageStripState extends ConsumerState<ActivityImageStrip> {
     );
   }
 
-  Future<void> _attachImage(int workoutId) async {
-    final before = ref.read(activityImagesProvider(workoutId)).images.length;
+  Future<void> _attachImage(({int userId, int workoutId}) providerKey) async {
+    final before = ref.read(activityImagesProvider(providerKey)).images.length;
     await ref
-        .read(activityImagesProvider(workoutId).notifier)
+        .read(activityImagesProvider(providerKey).notifier)
         .attachFromGallery();
     if (!mounted) {
       return;
     }
 
-    final after = ref.read(activityImagesProvider(workoutId)).images.length;
+    final after = ref.read(activityImagesProvider(providerKey)).images.length;
     if (after > before) {
       _showSnackBar(
         "Image saved on this device. It will upload when you're back online.",
@@ -184,27 +192,38 @@ class _ActivityImageStripState extends ConsumerState<ActivityImageStrip> {
     }
   }
 
-  Future<void> _deleteImage(int workoutId, ActivityImageEntity image) async {
+  Future<void> _deleteImage(
+    ({int userId, int workoutId}) providerKey,
+    ActivityImageEntity image,
+  ) async {
     await ref
-        .read(activityImagesProvider(workoutId).notifier)
+        .read(activityImagesProvider(providerKey).notifier)
         .deleteImage(image);
   }
 
-  Future<void> _replaceImage(int workoutId, ActivityImageEntity image) async {
+  Future<void> _replaceImage(
+    ({int userId, int workoutId}) providerKey,
+    ActivityImageEntity image,
+  ) async {
     await ref
-        .read(activityImagesProvider(workoutId).notifier)
+        .read(activityImagesProvider(providerKey).notifier)
         .replaceImage(image);
   }
 
-  Future<void> _retryImage(int workoutId, ActivityImageEntity image) async {
+  Future<void> _retryImage(
+    ({int userId, int workoutId}) providerKey,
+    ActivityImageEntity image,
+  ) async {
     await ref
-        .read(activityImagesProvider(workoutId).notifier)
+        .read(activityImagesProvider(providerKey).notifier)
         .retryImage(image);
   }
 
-  Future<void> _refreshRemoteUrls(int workoutId) async {
+  Future<void> _refreshRemoteUrls(
+    ({int userId, int workoutId}) providerKey,
+  ) async {
     await ref
-        .read(activityImagesProvider(workoutId).notifier)
+        .read(activityImagesProvider(providerKey).notifier)
         .refreshRemoteUrls();
   }
 

@@ -4,6 +4,8 @@ import '../entities/user_entity.dart';
 import '../entities/login_request_entity.dart';
 import '../entities/registration_request_entity.dart';
 
+enum SessionValidationStatus { valid, invalid, unavailable }
+
 /// Domain repository interface for authentication operations
 /// This defines the contract that the data layer must implement
 abstract class AuthRepository {
@@ -13,7 +15,8 @@ abstract class AuthRepository {
   /// Register new user
   Future<UserEntity> register(RegistrationRequestEntity request);
 
-  /// Logout current user
+  /// Best-effort remote logout. Local auth data is cleared by the session
+  /// coordinator only after user-scoped work has stopped.
   Future<void> logout();
 
   /// Change password
@@ -31,14 +34,21 @@ abstract class AuthRepository {
   /// Check if session needs token refresh
   Future<bool> needsTokenRefresh();
 
-  /// Validate current session
-  Future<bool> validateSession();
+  /// Validate without clearing/replacing persisted credentials or user data.
+  /// A successful backend verification may advance its safe sync timestamp.
+  Future<SessionValidationStatus> validateSession();
 
   /// Check if user has offline access (local data available)
   Future<bool> hasOfflineAccess();
 
   /// Clear all authentication data
   Future<void> clearAuthData();
+
+  /// Persist a fail-closed recovery marker before credential removal.
+  Future<void> markAuthCleanupPending();
+
+  /// Whether a previous account exit still needs credential cleanup.
+  Future<bool> hasPendingAuthCleanup();
 
   /// Check if user can stay logged in offline (has valid session and within sync window)
   Future<bool> canStayLoggedInOffline();

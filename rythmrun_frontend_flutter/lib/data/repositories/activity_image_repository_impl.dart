@@ -6,6 +6,7 @@ import 'dart:math' hide log;
 import 'package:image_picker/image_picker.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/activity_image_file_service.dart';
+import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_remote_datasource.dart';
@@ -23,6 +24,7 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
   final AuthLocalDataSource _authLocalDataSource;
   final WorkoutLocalDataSource _workoutLocalDataSource;
   final Random _random;
+  final UserScopeOperationGate? _operationGate;
 
   bool _isSyncingImages = false;
 
@@ -34,13 +36,15 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     required AuthLocalDataSource authLocalDataSource,
     required WorkoutLocalDataSource workoutLocalDataSource,
     Random? random,
+    UserScopeOperationGate? operationGate,
   }) : _localDataSource = localDataSource,
        _remoteDataSource = remoteDataSource,
        _fileService = fileService,
        _authRepository = authRepository,
        _authLocalDataSource = authLocalDataSource,
        _workoutLocalDataSource = workoutLocalDataSource,
-       _random = random ?? Random();
+       _random = random ?? Random(),
+       _operationGate = operationGate;
 
   @override
   Future<ActivityImageEntity> attachImage({
@@ -261,10 +265,16 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       return;
     }
     _isSyncingImages = true;
+    UserScopeOperationLease? operationLease;
 
     try {
       final userId = await _getCurrentUserId();
       if (userId == null) {
+        return;
+      }
+
+      operationLease = _operationGate?.tryAcquire(userId);
+      if (_operationGate != null && operationLease == null) {
         return;
       }
 
@@ -293,6 +303,7 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       }
     } finally {
       _isSyncingImages = false;
+      operationLease?.release();
     }
   }
 

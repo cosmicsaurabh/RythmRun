@@ -11,11 +11,15 @@ class AuthPersistenceService {
   static const String _refreshTokenKey = 'refresh_token';
   static const String _userDataKey = 'user_data';
   static const String _lastBackendSyncKey = 'last_backend_sync';
+  static const String _authCleanupPendingKey = 'auth_cleanup_pending';
 
   /// Write data to SharedPreferences
   static Future<void> _write(String key, String value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(key, value);
+    final didWrite = await prefs.setString(key, value);
+    if (!didWrite) {
+      throw StateError('Failed to persist authentication data locally.');
+    }
   }
 
   /// Read data from SharedPreferences
@@ -27,7 +31,26 @@ class AuthPersistenceService {
   /// Delete data from SharedPreferences
   static Future<void> _delete(String key) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(key);
+    final didRemove = await prefs.remove(key);
+    if (!didRemove) {
+      throw StateError(
+        'Failed to clear locally persisted authentication data.',
+      );
+    }
+  }
+
+  /// Marks an account exit as incomplete before credentials are removed.
+  static Future<void> markAuthCleanupPending() async {
+    final prefs = await SharedPreferences.getInstance();
+    final didWrite = await prefs.setBool(_authCleanupPendingKey, true);
+    if (!didWrite) {
+      throw StateError('Failed to persist pending authentication cleanup.');
+    }
+  }
+
+  static Future<bool> hasPendingAuthCleanup() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_authCleanupPendingKey) ?? false;
   }
 
   /// Save authentication data after successful login
@@ -203,6 +226,18 @@ class AuthPersistenceService {
       _delete(_userDataKey),
       _delete(_lastBackendSyncKey),
     ]);
+
+    final remaining = await getAllStoredData();
+    if (remaining.values.any((value) => value != null)) {
+      throw StateError('Locally persisted authentication data remains.');
+    }
+
+    if (await hasPendingAuthCleanup()) {
+      // Remove the recovery marker only after every credential/user value is
+      // confirmed absent. A failed delete therefore stays fail-closed across
+      // process restart.
+      await _delete(_authCleanupPendingKey);
+    }
   }
 
   /// Update user data in local storage

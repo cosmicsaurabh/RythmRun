@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/core/services/activity_image_file_service.dart';
+import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/sync_coordinator.dart';
+import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_remote_datasource.dart';
@@ -45,6 +47,16 @@ final localDbServiceProvider = Provider<LocalDbService>((ref) {
   return LocalDbService();
 });
 
+final userScopeOperationGateProvider = Provider<UserScopeOperationGate>((ref) {
+  return UserScopeOperationGate();
+});
+
+final authenticationAttemptGateProvider = Provider<AuthenticationAttemptGate>((
+  ref,
+) {
+  return AuthenticationAttemptGate();
+});
+
 final activityImageFileServiceProvider = Provider<ActivityImageFileService>((
   ref,
 ) {
@@ -84,7 +96,11 @@ final activityRemoteDataSourceProvider = Provider<ActivityRemoteDataSource>((
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   final remoteDataSource = ref.watch(authRemoteDataSourceProvider);
   final localDataSource = ref.watch(authLocalDataSourceProvider);
-  return AuthRepositoryImpl(remoteDataSource, localDataSource);
+  return AuthRepositoryImpl(
+    remoteDataSource,
+    localDataSource,
+    authenticationAttemptGate: ref.watch(authenticationAttemptGateProvider),
+  );
 });
 
 final avatarRepositoryProvider = Provider<AvatarRepository>((ref) {
@@ -104,6 +120,7 @@ final workoutRepositoryProvider = Provider<WorkoutRepository>((ref) {
     authRepository,
     activityRemoteDataSource,
     authLocalDataSource,
+    operationGate: ref.watch(userScopeOperationGateProvider),
   );
 });
 
@@ -117,6 +134,7 @@ final activityImageRepositoryProvider = Provider<ActivityImageRepository>((
     authRepository: ref.watch(authRepositoryProvider),
     authLocalDataSource: ref.watch(authLocalDataSourceProvider),
     workoutLocalDataSource: ref.watch(workoutLocalDataSourceProvider),
+    operationGate: ref.watch(userScopeOperationGateProvider),
   );
 });
 

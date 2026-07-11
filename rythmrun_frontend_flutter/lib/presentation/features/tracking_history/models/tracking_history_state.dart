@@ -4,6 +4,8 @@ import '../../../../core/services/local_db_service.dart';
 
 @immutable
 class TrackingHistoryState {
+  static const Object _unset = Object();
+
   final List<WorkoutSessionEntity> workouts;
   final bool isLoading;
   final bool isLoadingMore;
@@ -53,32 +55,29 @@ class TrackingHistoryState {
     List<WorkoutSessionEntity>? workouts,
     bool? isLoading,
     bool? isLoadingMore,
-    String? errorMessage,
+    Object? errorMessage = _unset,
     int? currentPage,
     int? totalPages,
     int? totalCount,
     bool? hasNextPage,
     bool? hasPreviousPage,
     int? limit,
-    String? selectedWorkoutType,
-    DateTime? startDate,
-    DateTime? endDate,
-    String? searchQuery,
-    WorkoutStatistics? overallStatistics,
-    WorkoutStatistics? filteredStatistics,
+    Object? selectedWorkoutType = _unset,
+    Object? startDate = _unset,
+    Object? endDate = _unset,
+    Object? searchQuery = _unset,
+    Object? overallStatistics = _unset,
+    Object? filteredStatistics = _unset,
     bool? isLoadingStats,
-    bool clearSelectedWorkoutType = false,
-    bool clearStartDate = false,
-    bool clearEndDate = false,
-    bool clearSearchQuery = false,
-    bool clearErrorMessage = false,
   }) {
     return TrackingHistoryState(
       workouts: workouts ?? this.workouts,
       isLoading: isLoading ?? this.isLoading,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       errorMessage:
-          clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
+          identical(errorMessage, _unset)
+              ? this.errorMessage
+              : errorMessage as String?,
       currentPage: currentPage ?? this.currentPage,
       totalPages: totalPages ?? this.totalPages,
       totalCount: totalCount ?? this.totalCount,
@@ -86,14 +85,26 @@ class TrackingHistoryState {
       hasPreviousPage: hasPreviousPage ?? this.hasPreviousPage,
       limit: limit ?? this.limit,
       selectedWorkoutType:
-          clearSelectedWorkoutType
-              ? null
-              : (selectedWorkoutType ?? this.selectedWorkoutType),
-      startDate: clearStartDate ? null : (startDate ?? this.startDate),
-      endDate: clearEndDate ? null : (endDate ?? this.endDate),
-      searchQuery: clearSearchQuery ? null : (searchQuery ?? this.searchQuery),
-      overallStatistics: overallStatistics ?? this.overallStatistics,
-      filteredStatistics: filteredStatistics ?? this.filteredStatistics,
+          identical(selectedWorkoutType, _unset)
+              ? this.selectedWorkoutType
+              : selectedWorkoutType as String?,
+      startDate:
+          identical(startDate, _unset)
+              ? this.startDate
+              : startDate as DateTime?,
+      endDate: identical(endDate, _unset) ? this.endDate : endDate as DateTime?,
+      searchQuery:
+          identical(searchQuery, _unset)
+              ? this.searchQuery
+              : searchQuery as String?,
+      overallStatistics:
+          identical(overallStatistics, _unset)
+              ? this.overallStatistics
+              : overallStatistics as WorkoutStatistics?,
+      filteredStatistics:
+          identical(filteredStatistics, _unset)
+              ? this.filteredStatistics
+              : filteredStatistics as WorkoutStatistics?,
       isLoadingStats: isLoadingStats ?? this.isLoadingStats,
     );
   }
@@ -102,10 +113,10 @@ class TrackingHistoryState {
   TrackingHistoryState clearFilters() {
     return copyWith(
       currentPage: 1,
-      clearSelectedWorkoutType: true,
-      clearStartDate: true,
-      clearEndDate: true,
-      clearSearchQuery: true,
+      selectedWorkoutType: null,
+      startDate: null,
+      endDate: null,
+      searchQuery: null,
     );
   }
 

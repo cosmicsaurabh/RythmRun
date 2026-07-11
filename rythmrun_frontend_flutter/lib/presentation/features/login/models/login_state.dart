@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 
 @immutable
 class LoginState {
+  static const Object _unset = Object();
+
   final String email;
   final String password;
   final bool rememberMe;
@@ -25,7 +27,7 @@ class LoginState {
     String? password,
     bool? rememberMe,
     bool? isLoading,
-    String? errorMessage,
+    Object? errorMessage = _unset,
     bool? isSuccess,
     bool? obscurePassword,
   }) {
@@ -34,7 +36,10 @@ class LoginState {
       password: password ?? this.password,
       rememberMe: rememberMe ?? this.rememberMe,
       isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage:
+          identical(errorMessage, _unset)
+              ? this.errorMessage
+              : errorMessage as String?,
       isSuccess: isSuccess ?? this.isSuccess,
       obscurePassword: obscurePassword ?? this.obscurePassword,
     );
@@ -52,10 +57,8 @@ class LoginState {
           errorMessage == other.errorMessage &&
           isSuccess == other.isSuccess &&
           obscurePassword == other.obscurePassword;
-
-
   @override
   String toString() {
     return 'LoginState{email: $email, rememberMe: $rememberMe, isLoading: $isLoading, errorMessage: $errorMessage, isSuccess: $isSuccess}';
   }
-} 
+}

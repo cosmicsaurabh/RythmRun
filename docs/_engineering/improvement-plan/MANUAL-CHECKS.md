@@ -39,6 +39,7 @@ Repository commits and local test results cannot change a manual check to `Verif
 | MC-1.3 | Previous-client and device compatibility | Mobile and QA owners | Pending | Supported old-client matrix plus Android SQLite upgrade/reopen evidence | — | — | Backend migration must precede the corrected version-2 mobile writer. |
 | MC-1.4 | Coordinated metric rollout and observation | Deployment, mobile, and on-call owners | Pending | Backend/mobile versions, staged rollout timeline, metric-version telemetry, thresholds, and outcome | — | — | IP-0 containment must remain active throughout. |
 | MC-1.5 | GPS acceptance and pause behavior on devices | Mobile and QA owners | Pending | Release-build route run showing active/pause/resume distance, accepted route, persisted result, and sanitized-log review | — | — | Never attach exact coordinates, timestamps, or route exports to Git evidence. |
+| MC-1.6 | User-scope exit and account-switch isolation | Mobile, backend, and QA owners | Pending | Staging build/run covering idle and active logout, forced auth loss, save recovery, sync drain, and A→B isolation | — | — | Use synthetic accounts and safe run references; never attach tokens, routes, profile objects, or local database contents to Git. |
 
 ## Hosted CI procedure
 
@@ -154,3 +155,17 @@ Pass condition: mixed-version compatibility, staged migration, and the observati
 6. Inspect release logs and crash/analytics breadcrumbs for the run. Exact coordinates, acquisition timestamps, and route payloads must be absent; store sensitive device evidence only in the access-controlled QA system.
 
 Pass condition: Android and iOS evidence shows one accepted route across UI/local/sync, deterministic pause timing, no resume bridge, and no exact-route logging.
+
+### MC-1.6 — User-scope exit and account-switch isolation
+
+1. Use two synthetic staging accounts, A and B, on a representative supported Android release build. Load A's history, workout details, activity images, profile/avatar, calculator/settings state, and a pending sync before exercising logout.
+2. While A is idle, make only the remote logout endpoint unavailable and sign out. Confirm user-scoped work drains and local credentials/session state still clear, the landing screen appears, A's completed offline rows remain stored, and no A provider content flashes after logout. Server-side access-token revocation remains an IP-2 responsibility; do not infer it from this check.
+3. In a controlled test build, inject a local `clearAuthData` failure separately. The exit must remain blocked on non-dismissible Retry cleanup UI, B must not authenticate, and a process restart must not silently restore usable A access. Remove the fault and confirm retry clears credentials before the landing screen or B activation is allowed.
+4. Sign in as B without restarting the process. Confirm B starts with only B-scoped history, details, images, profile, and sync work even when local workout IDs overlap. Attempt no destructive cross-account probe against production; use only seeded staging fixtures.
+5. Sign back in as A and confirm A's retained completed local rows are available only to A. Local row-ID read/mutation authorization is not complete until IP-1.4 and must be tested separately there.
+6. Start an A workout and attempt voluntary logout. Verify Stay signed in preserves tracking, Finish & logout saves exactly once before navigation, and Discard & logout explicitly removes the in-memory workout. Confirm timers and the GPS subscription stop in both exit paths.
+7. In isolated staging, invoke the invalid-session result through a controlled QA hook/fault injection while A has an active workout; do not assume an arbitrary connected `401/403` naturally reaches this coordinator until IP-2 proves that wiring. Confirm forced authentication loss attempts a local save under A before clearing the session. Inject one local-save failure: account switching must remain blocked behind Retry/Discard, Retry must finish cleanup only after a successful save, and Discard must require an explicit action.
+8. Separately hold a native GPS start, workout/image sync, avatar upload, token refresh, and synthetic login/registration response in flight during exit. Confirm new work is rejected, admitted work finishes or shuts down under A before credentials clear, and no late callback can persist or render A/B under the wrong session.
+9. Review sanitized release logs and telemetry. They must contain no tokens, passwords, raw profile payloads, local file paths, exact coordinates, route points, or acquisition timestamps.
+
+Pass condition: every exit path ends in one of two explicit outcomes—A remains blocked behind recovery UI, or A's work is drained, local credentials are cleared, and all A state is inaccessible before B activates. Record build, synthetic fixture, staging run, and reviewer references only. This check does not prove server-side revocation (IP-2), local row-ID authorization (IP-1.4), or durable recovery across process death (IP-3).

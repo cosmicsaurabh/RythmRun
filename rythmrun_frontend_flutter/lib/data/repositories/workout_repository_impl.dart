@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
+import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/auth_local_datasource.dart';
@@ -16,14 +17,16 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   final AuthRepository _authRepository;
   final ActivityRemoteDataSource _remoteDataSource;
   final AuthLocalDataSource _authLocalDataSource;
+  final UserScopeOperationGate? _operationGate;
   bool _isSyncing = false;
 
   WorkoutRepositoryImpl(
     this._localDataSource,
     this._authRepository,
     this._remoteDataSource,
-    this._authLocalDataSource,
-  );
+    this._authLocalDataSource, {
+    UserScopeOperationGate? operationGate,
+  }) : _operationGate = operationGate;
 
   /// Get current user ID from auth repository
   /// Returns null only if no user data is available locally
@@ -128,10 +131,16 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
     }
 
     _isSyncing = true;
+    UserScopeOperationLease? operationLease;
 
     try {
       final userId = await getCurrentUserId();
       if (userId == null) {
+        return;
+      }
+
+      operationLease = _operationGate?.tryAcquire(userId);
+      if (_operationGate != null && operationLease == null) {
         return;
       }
 
@@ -221,6 +230,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
       }
     } finally {
       _isSyncing = false;
+      operationLease?.release();
     }
   }
 
