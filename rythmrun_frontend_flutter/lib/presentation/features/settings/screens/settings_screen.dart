@@ -136,7 +136,7 @@ class SettingsScreen extends ConsumerWidget {
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: CustomAppColors.black.withOpacity(0.05),
+            color: CustomAppColors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -151,8 +151,8 @@ class SettingsScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(spacingSm),
                   decoration: BoxDecoration(
-                    color: (iconColor ?? CustomAppColors.colorA).withOpacity(
-                      0.1,
+                    color: (iconColor ?? CustomAppColors.colorA).withValues(
+                      alpha: 0.1,
                     ),
                     borderRadius: BorderRadius.circular(radiusSm),
                   ),
@@ -219,7 +219,7 @@ class SettingsScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(
                         context,
-                      ).textTheme.bodySmall?.color?.withOpacity(0.6),
+                      ).textTheme.bodySmall?.color?.withValues(alpha: 0.6),
                     ),
                   ),
                 ],
@@ -228,7 +228,7 @@ class SettingsScreen extends ConsumerWidget {
             Icon(
               arrowForwardIosIcon,
               size: 16,
-              color: Theme.of(context).iconTheme.color?.withOpacity(0.4),
+              color: Theme.of(context).iconTheme.color?.withValues(alpha: 0.4),
             ),
           ],
         ),
@@ -384,7 +384,7 @@ class SettingsScreen extends ConsumerWidget {
                         padding: const EdgeInsets.all(spacingSm),
                         margin: const EdgeInsets.only(bottom: spacingLg),
                         decoration: BoxDecoration(
-                          color: CustomAppColors.statusError.withOpacity(0.1),
+                          color: CustomAppColors.statusError.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(radiusSm),
                           border: Border.all(
                             color: CustomAppColors.statusError,

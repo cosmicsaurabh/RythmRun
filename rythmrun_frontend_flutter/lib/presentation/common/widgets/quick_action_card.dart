@@ -18,16 +18,16 @@ Widget buildQuickActionCard({
       child: Container(
         padding: const EdgeInsets.all(spacingLg),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(radiusLg),
-          border: Border.all(color: color.withOpacity(0.3), width: 1),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
         ),
         child: Column(
           children: [
             Container(
               padding: const EdgeInsets.all(spacingSm),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
+                color: color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(radiusSm),
               ),
               child: Icon(icon, color: color, size: iconSizeMd),

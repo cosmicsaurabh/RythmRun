@@ -240,7 +240,7 @@ class _FitnessCalculatorScreenState
             if (showActivity) ...[
               const SizedBox(height: spacingLg),
               DropdownButtonFormField<ActivityLevel>(
-                value: state.activityLevel,
+                initialValue: state.activityLevel,
                 decoration: InputDecoration(
                   labelText: 'Activity Level',
                   border: OutlineInputBorder(

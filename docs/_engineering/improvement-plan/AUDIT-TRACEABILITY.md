@@ -8,11 +8,15 @@ This matrix maps the 2026-07-10 read-only audit to the implementation program. I
 
 Merged repository implementation evidence is recorded in the IP-0 phase log. A finding is not considered deployed or production-verified until the applicable migration, staging, deployment, incident, and operational evidence is also present.
 
+Hosted and human-operated evidence is tracked in the [manual verification register](./MANUAL-CHECKS.md); repository commits and local tests do not close those checks.
+
 ## Current selection
 
 - Human-operated action now: [IP-0.1 production containment and evidence preservation](./IP-0-security-containment.md).
 - Merged code delivery: the IP-0.2 through IP-0.5 profile/avatar security slice and its local automated suite are in `origin/main` through `e33f314`/`54a5b26`. Migration, coordinated mobile rollout, staging proof, deployment, and production verification remain open.
-- Current local package: IP-0.7a Express HTTP security regressions and minimum backend CI. Do not call CI operational or passing until a successful GitHub Actions run URL is recorded.
+- Repository-delivered; hosted verification pending: IP-0.7a Express HTTP security regressions and minimum backend CI are committed in `c52fb87`; do not call CI operational until MC-0.7 through MC-0.9 pass.
+- Current repository package: IP-0.7 dependency-surface reduction. AWS SDK v3 and unused-direct-dependency changes pass locally on Node.js 22; the dated advisory gate remains open until MC-0.10 records an approved scan and reviewed disposition for every result.
+- Manual/hosted gates: [MC-0.1 through MC-0.12](./MANUAL-CHECKS.md), including hosted CI, its intentional-failure probe, branch protection, dependency advisory review, deployment, incident response, infrastructure, staging, and controlled reopen.
 - Concurrent owner action: IP-0.6 exposure review and credential rotation decision.
 
 ## P0/P1 findings

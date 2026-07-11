@@ -70,7 +70,7 @@ class _ProfileStatCardState extends State<ProfileStatCard>
             child: Container(
               padding: const EdgeInsets.all(spacingLg),
               decoration: BoxDecoration(
-                color: widget.color.withOpacity(0.1),
+                color: widget.color.withValues(alpha: 0.1),
                 // gradient: LinearGradient(
                 //   begin: Alignment.topLeft,
                 //   end: Alignment.bottomRight,
@@ -81,7 +81,7 @@ class _ProfileStatCardState extends State<ProfileStatCard>
                 // ),
                 borderRadius: BorderRadius.circular(radiusLg),
                 border: Border.all(
-                  color: widget.color.withOpacity(0.2),
+                  color: widget.color.withValues(alpha: 0.2),
                   width: 1.5,
                 ),
                 // boxShadow: [
@@ -103,8 +103,8 @@ class _ProfileStatCardState extends State<ProfileStatCard>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          widget.color.withOpacity(0.2),
-                          widget.color.withOpacity(0.1),
+                          widget.color.withValues(alpha: 0.2),
+                          widget.color.withValues(alpha: 0.1),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(radiusSm),
@@ -126,7 +126,7 @@ class _ProfileStatCardState extends State<ProfileStatCard>
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(
                         context,
-                      ).textTheme.bodySmall?.color?.withOpacity(0.6),
+                      ).textTheme.bodySmall?.color?.withValues(alpha: 0.6),
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                       letterSpacing: 0.5,

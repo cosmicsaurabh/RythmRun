@@ -23,7 +23,7 @@ final currentConnectivityStatusProvider = Provider<ConnectivityStatus>((ref) {
   return asyncStatus.when(
     data: (status) => status,
     loading: () => ConnectivityStatus.connected, // Default to connected while loading
-    error: (_, __) => ConnectivityStatus.disconnected,
+    error: (_, _) => ConnectivityStatus.disconnected,
   );
 });
 

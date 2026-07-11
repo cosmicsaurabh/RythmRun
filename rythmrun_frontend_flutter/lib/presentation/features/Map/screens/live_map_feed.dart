@@ -322,7 +322,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
           border: Border.all(color: Colors.white, width: 3),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -379,7 +379,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -460,7 +460,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
             borderRadius: BorderRadius.circular(radiusLg),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),

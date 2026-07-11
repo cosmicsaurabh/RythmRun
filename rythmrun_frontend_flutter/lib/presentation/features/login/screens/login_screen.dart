@@ -276,7 +276,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   prefixIcon,
                   color: Theme.of(
                     context,
-                  ).colorScheme.onSurface.withOpacity(0.7),
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
                 )
                 : null,
         suffixIcon: suffixIcon,
@@ -295,7 +295,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: CustomAppColors.statusSuccess.withOpacity(0.1),
+        backgroundColor: CustomAppColors.statusSuccess.withValues(alpha: 0.1),
       ),
     );
   }

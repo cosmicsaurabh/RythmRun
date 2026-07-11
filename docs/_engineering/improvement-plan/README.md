@@ -4,7 +4,7 @@ published: false
 
 # RythmRun improvement program
 
-> Program status: IP-0 implementation is in progress. The first application-remediation slice is merged, and IP-0.7a is the current local package, but production remains undeployed/unverified and must stay contained until the operational exit gates pass.
+> Program status: IP-0 implementation is in progress. Application hardening and local backend CI coverage are committed, while hosted, deployment, incident, infrastructure, and dependency evidence remains tracked in the [manual verification register](./MANUAL-CHECKS.md).
 
 This directory turns the repository audit dated 2026-07-10 into an implementation-ready hardening program. It is the canonical place to track the current improvement phase, the next five phases, their decisions, and the evidence required to mark work complete.
 
@@ -24,7 +24,9 @@ The first code-remediation slice, commit `e33f314`, is merged into `origin/main`
 
 - **Human-operated first action:** IP-0.1 — contain the affected production routes and preserve evidence.
 - **Merged code delivery:** IP-0.2 through IP-0.5 profile/avatar/configuration hardening and its local automated suite are in `origin/main` via `e33f314`/`54a5b26`; they are not deployed or production-verified.
-- **Current local package:** IP-0.7a — add Express HTTP security regressions and minimum backend CI. CI is not operational evidence until a successful GitHub Actions run URL is recorded.
+- **Repository-delivered; hosted verification pending:** IP-0.7a Express HTTP security regressions and minimum backend CI are committed in `c52fb87`; MC-0.7 through MC-0.9 remain open.
+- **Current repository package:** IP-0.7 dependency-surface reduction — the AWS SDK v3 migration and removal of locally proven unused production dependencies pass locally on Node.js 22; commit/review is pending, and the dated advisory scan stays open until MC-0.10 has explicit approval and evidence.
+- **Manual/hosted gates:** use [MANUAL-CHECKS.md](./MANUAL-CHECKS.md) for hosted CI, intentional-failure, branch-protection, dependency-audit, deployment, incident, infrastructure, staging, and controlled-reopen evidence.
 - **Concurrent owner action:** IP-0.6 — determine exposure and rotate/revoke credentials when it cannot be excluded.
 
 For subsequent work, take the lowest-numbered unblocked work package in the current phase. A maintainer may combine tightly coupled packages, but must not mark either complete until both sets of acceptance criteria pass. See [audit finding traceability](./AUDIT-TRACEABILITY.md) for the complete mapping.
@@ -127,7 +129,7 @@ Run from the repository root unless a phase adds more specific commands.
 
 ```bash
 cd RythmRun_backend_nodejs
-npm ci
+npm ci --no-audit
 npx prisma validate
 npx prisma generate
 npm test -- --runInBand
@@ -141,7 +143,7 @@ flutter test
 flutter analyze
 ```
 
-For dependency review, record the date and full report; do not silently accept advisories:
+For dependency review, use MC-0.10 in the [manual verification register](./MANUAL-CHECKS.md). Run the outbound command only after explicit approval, record the date and full report in the approved evidence location, and do not silently accept advisories:
 
 ```bash
 cd RythmRun_backend_nodejs

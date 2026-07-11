@@ -76,7 +76,7 @@ export class AvatarService {
     });
 
     try {
-      const authorization = this.s3.getPresignedPost({
+      const authorization = await this.s3.getPresignedPost({
         key: intent.key,
         contentType: intent.contentType,
         sizeBytes: intent.sizeBytes,
@@ -526,9 +526,17 @@ export class AvatarService {
       return false;
     }
 
-    const candidate = error as { code?: unknown; statusCode?: unknown };
+    const candidate = error as {
+      name?: unknown;
+      code?: unknown;
+      statusCode?: unknown;
+      $metadata?: { httpStatusCode?: unknown };
+    };
     return (
       candidate.statusCode === 404 ||
+      candidate.$metadata?.httpStatusCode === 404 ||
+      candidate.name === 'NotFound' ||
+      candidate.name === 'NoSuchKey' ||
       candidate.code === 'NotFound' ||
       candidate.code === 'NoSuchKey'
     );

@@ -105,7 +105,7 @@ class _TrackingHistoryDetailsScreenState
                             BoxShadow(
                               color: Theme.of(
                                 context,
-                              ).colorScheme.primary.withOpacity(0.2),
+                              ).colorScheme.primary.withValues(alpha: 0.2),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -197,13 +197,13 @@ class _TrackingHistoryDetailsScreenState
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            getWorkoutColor(workout.type).withOpacity(0.1),
-            getWorkoutColor(workout.type).withOpacity(0.05),
+            getWorkoutColor(workout.type).withValues(alpha: 0.1),
+            getWorkoutColor(workout.type).withValues(alpha: 0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(radiusLg),
         border: Border.all(
-          color: getWorkoutColor(workout.type).withOpacity(0.3),
+          color: getWorkoutColor(workout.type).withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -216,7 +216,7 @@ class _TrackingHistoryDetailsScreenState
               borderRadius: BorderRadius.circular(radiusMd),
               boxShadow: [
                 BoxShadow(
-                  color: getWorkoutColor(workout.type).withOpacity(0.3),
+                  color: getWorkoutColor(workout.type).withValues(alpha: 0.3),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
@@ -268,7 +268,7 @@ class _TrackingHistoryDetailsScreenState
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -360,7 +360,7 @@ class _TrackingHistoryDetailsScreenState
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -435,7 +435,7 @@ class _TrackingHistoryDetailsScreenState
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -511,12 +511,12 @@ class _TrackingHistoryDetailsScreenState
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(radiusLg),
         border: Border.all(
-          color: CustomAppColors.secondaryText.withOpacity(0.2),
+          color: CustomAppColors.secondaryText.withValues(alpha: 0.2),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -545,7 +545,7 @@ class _TrackingHistoryDetailsScreenState
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(radiusMd),
-              border: Border.all(color: Colors.grey.withOpacity(0.2), width: 1),
+              border: Border.all(color: Colors.grey.withValues(alpha: 0.2), width: 1),
             ),
             child: Text(
               workout.notes!,
@@ -627,7 +627,7 @@ class _TrackingHistoryDetailsScreenState
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Icon(icon, size: 16, color: color),

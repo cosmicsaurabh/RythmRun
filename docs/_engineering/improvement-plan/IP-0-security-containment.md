@@ -10,7 +10,7 @@ published: false
 | Priority | P0 / release blocker |
 | Target | 1–2 days after the required operational access is available |
 | Owner | Unassigned |
-| Last updated | 2026-07-10 |
+| Last updated | 2026-07-11 |
 | Entry condition | None; containment begins immediately |
 | Exit condition | All criteria in [Exit gate](#exit-gate) have evidence |
 
@@ -19,6 +19,8 @@ published: false
 After this phase, an HTTP client cannot write a local filesystem path or arbitrary S3 key into a user record, no request can cause the backend to read or delete a file outside an approved avatar object, missing secrets stop startup, and the possible production exposure has a documented incident disposition.
 
 This file is a plan, not proof that production is safe.
+
+All hosted and human-operated gates are mirrored in the [manual verification register](./MANUAL-CHECKS.md). Keep them open until that register contains dated, independently reviewed evidence.
 
 ## Merged implementation checkpoint
 
@@ -328,7 +330,7 @@ This is operational work. Store sensitive evidence in the approved incident syst
 
 1. Deploy with avatar/profile routes still restricted.
 2. Apply safe data cleanup/migration against a sanitized snapshot or representative fixtures.
-3. Run backend tests, typecheck, dependency scan, and the negative HTTP suite.
+3. Run backend tests, typecheck, the approved MC-0.10 dependency scan, and the negative HTTP suite.
 4. Triage all production advisories from the dated scan—not only Multer. Upgrade/remove affected packages or record a time-bounded owner-approved exception with reachability evidence; no exposed critical/high advisory is accepted for reopen.
 5. Run a supported Flutter build through avatar upload/display/replacement.
 6. Verify logs contain request IDs and safe error categories but no secrets, raw keys beyond what is necessary, response bodies, signed URLs, or filesystem paths.
@@ -336,11 +338,40 @@ This is operational work. Store sensitive evidence in the approved incident syst
 8. Open routes in stages: registration/profile text fields first, S3 avatar request/confirm next. Never reopen local filesystem routes. Keep avatar routes contained if storage-boundary limits, intent checks, quota, or cleanup are incomplete.
 9. Monitor `4xx`, `5xx`, registration, avatar-confirm, storage rejection, and S3 error rates continuously, with an explicit 24-hour heightened observation window after reopen and an owner/on-call rollback trigger.
 
-### IP-0.7a — Current local package: Express HTTP security regressions and minimum backend CI
+#### IP-0.7 dependency-surface reduction — current repository package
 
 **Status**
 
-- Current local implementation package. The merged IP-0.2 through IP-0.5 application slice remains undeployed and production-unverified.
+- In progress on `ip0-dependency-advisories`.
+- This package reduces known dependency risk but does not satisfy the dated advisory gate. MC-0.10 remains blocked until an owner explicitly approves the outbound npm scan and every result is triaged.
+
+**Implementation**
+
+1. Replace end-of-support `aws-sdk` v2 with the minimum modular v3 packages required for S3 commands, S3 PUT/POST signing, and CloudFront read signing.
+2. Preserve the existing storage contract: explicit credentials/region, exact key/type/length POST policy, bounded expiry, object metadata verification, deletes, and signed CloudFront reads.
+3. Standardize backend development, CI, and deployment on Node.js 22.x because current AWS SDK v3 releases require Node 20+ and the CI package already uses Node 22. Do not deploy until MC-0.6 confirms the hosted runtime.
+4. Remove direct production dependencies only when repository-wide import/config and dependency-path checks prove they are unused. For this package those candidates are `joi`, `pg`, and `winston`.
+5. Add a dependency-surface regression that prevents reintroducing the monolithic SDK or the proven-unused direct packages.
+6. Keep build-tool placement unchanged in this slice. Moving Prisma, TypeScript, type packages, or `ts-node` between dependency classes requires a declared deployment install/build contract first.
+
+**How to verify**
+
+- Run a clean `npm ci --no-audit`, Prisma validation/generation, `npx tsc --noEmit`, `npm run build`, and the full backend suite on Node.js 22.x. Keep the separately approved, dated audit in MC-0.10 rather than relying on npm's implicit install-time submission.
+- Prove tests cover v3 PUT/POST signing inputs, S3 `HeadObject`/`DeleteObject` command dispatch, CloudFront expiry/signing inputs, and the existing avatar lifecycle behavior.
+- Confirm `npm ls aws-sdk joi pg winston` has no installed production path and source contains no `aws-sdk` v2 import.
+- Run MC-0.10 only after explicit outbound-scan approval; retain the full dated report and one decision per result.
+
+**Acceptance**
+
+- Repository checks pass with equivalent storage behavior and without AWS SDK v2 or the three proven-unused packages.
+- Node.js 22.x is explicit in package metadata, CI, and developer documentation.
+- Advisory closure, staging compatibility, deployed runtime, and production safety remain manual gates and are not inferred from this change.
+
+### IP-0.7a — Repository-delivered; hosted verification pending: Express HTTP security regressions and minimum backend CI
+
+**Status**
+
+- Repository implementation committed in `c52fb87`. Hosted success, intentional-failure, and branch-protection evidence remain open as MC-0.7 through MC-0.9. The merged IP-0.2 through IP-0.5 application slice remains undeployed and production-unverified.
 - No CI success is claimed until a GitHub Actions run URL demonstrates the committed workflow on the repository host.
 
 **Implementation**
@@ -428,3 +459,4 @@ This is operational work. Store sensitive evidence in the approved incident syst
 | 2026-07-10 | IP-0.7 | `flutter analyze` baseline comparison | Partial | Analyzer remains at the audited baseline of 159 findings (6 warnings, 153 info); no increase. Current production advisory scan could not run in the restricted environment and remains an explicit gate. |
 | 2026-07-10 | IP-0.2–IP-0.5 | `e33f314`, merged through `54a5b26` into `origin/main` | Merged; not deployed | Repository delivery is confirmed. Migration, staging, production, incident-response, credential-rotation, mobile-rollout, and infrastructure evidence remain open. |
 | 2026-07-10 | IP-0.7a | `http-security-boundary.test.ts` (16 tests); full backend suite (129 tests); `backend-security.yml` local structure review | Pass locally; hosted CI pending | Express-boundary regressions, typecheck, and local suite pass. No operational CI pass is claimed until a successful GitHub Actions run URL and intentional-failure probe are added. |
+| 2026-07-11 | IP-0.7 dependency surface | Node.js 22.22.3 clean install; Prisma validate/generate; TypeScript/build; focused dependency/storage suites (50 tests); full backend suite (141 tests); package/source scans | Pass locally; advisory/staging pending | Replaced AWS SDK v2 with modular v3, retained storage-contract coverage including real PUT presigning without an empty-body checksum and with signed content type, removed `joi`/`pg`/`winston`, and found no remaining v2 source/import or installed direct path. MC-0.6 and MC-0.10 remain open; no hosted, staging, deployment, or current-advisory claim is made. |

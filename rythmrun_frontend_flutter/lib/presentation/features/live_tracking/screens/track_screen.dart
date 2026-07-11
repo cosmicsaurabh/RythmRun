@@ -148,13 +148,13 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                           decoration: BoxDecoration(
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.15),
+                                color: Colors.black.withValues(alpha: 0.15),
                                 offset: const Offset(0, 8),
                                 blurRadius: 16,
                                 spreadRadius: -2,
                               ),
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
+                                color: Colors.black.withValues(alpha: 0.1),
                                 offset: const Offset(0, 4),
                                 blurRadius: 8,
                                 spreadRadius: -1,
@@ -167,7 +167,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                                 Theme.of(context).colorScheme.primary,
                                 Theme.of(
                                   context,
-                                ).colorScheme.primary.withOpacity(0.75),
+                                ).colorScheme.primary.withValues(alpha: 0.75),
                               ],
                             ),
                             borderRadius: BorderRadius.circular(radiusXl),
@@ -246,7 +246,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           Container(
             padding: const EdgeInsets.all(spacingMd),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(radiusMd),
             ),
             child: Icon(
@@ -276,7 +276,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                     fontSize: 14,
                     color: Theme.of(
                       context,
-                    ).colorScheme.onPrimary.withOpacity(0.8),
+                    ).colorScheme.onPrimary.withValues(alpha: 0.8),
                   ),
                 ),
               ],
@@ -285,7 +285,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           Icon(
             Icons.arrow_forward_ios,
             size: 20,
-            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
           ),
         ],
       ),
@@ -307,7 +307,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.3),
+              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -346,7 +346,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
         Container(
           padding: const EdgeInsets.all(spacingLg),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.15),
+            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -371,7 +371,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 15,
-            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.85),
+            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.85),
             height: 1.4,
           ),
         ),
@@ -463,7 +463,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     required VoidCallback onTap,
   }) {
     return Material(
-      color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.25),
+      color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.25),
       borderRadius: BorderRadius.circular(radiusLg),
       child: InkWell(
         onTap: onTap,
@@ -473,7 +473,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radiusLg),
             border: Border.all(
-              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
@@ -485,7 +485,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                 decoration: BoxDecoration(
                   color: Theme.of(
                     context,
-                  ).colorScheme.onPrimary.withOpacity(0.15),
+                  ).colorScheme.onPrimary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(radiusMd),
                 ),
                 child: Icon(
@@ -532,7 +532,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                   fontWeight: FontWeight.bold,
                   color: Theme.of(
                     context,
-                  ).colorScheme.onPrimary.withOpacity(0.8),
+                  ).colorScheme.onPrimary.withValues(alpha: 0.8),
                   letterSpacing: 1.0,
                 ),
               ),
@@ -617,7 +617,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           width: 1,
           height: 40,
           margin: const EdgeInsets.symmetric(horizontal: spacingMd),
-          color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.3),
+          color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.3),
         ),
         // Distance and Pace - compact horizontal layout
         Expanded(
@@ -632,7 +632,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
               Container(
                 width: 1,
                 height: 20,
-                color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+                color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
               ),
               _buildCompactMetric(
                 label: 'Pace',
@@ -657,7 +657,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
         children: [
           Icon(
             icon,
-            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
+            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8),
             size: 18,
           ),
           const SizedBox(height: spacingXs),
@@ -675,7 +675,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             label,
             style: TextStyle(
               fontSize: 10,
-              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
               fontWeight: FontWeight.w500,
             ),
             maxLines: 1,
@@ -699,10 +699,10 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     return Container(
       padding: const EdgeInsets.all(spacingMd),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.1),
+        color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(radiusMd),
         border: Border.all(
-          color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+          color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -757,7 +757,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           const SizedBox(height: spacingMd),
           // Session info
           Divider(
-            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
+            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
             height: 1,
           ),
           const SizedBox(height: spacingSm),
@@ -802,14 +802,14 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             Icon(
               icon,
               size: 16,
-              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
             ),
             const SizedBox(width: spacingXs),
             Text(
               label,
               style: TextStyle(
                 fontSize: 11,
-                color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+                color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -838,14 +838,14 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
         Icon(
           icon,
           size: 14,
-          color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.6),
+          color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.6),
         ),
         const SizedBox(width: spacingXs),
         Text(
           '$label: ',
           style: TextStyle(
             fontSize: 12,
-            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.6),
+            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.6),
           ),
         ),
         Text(
