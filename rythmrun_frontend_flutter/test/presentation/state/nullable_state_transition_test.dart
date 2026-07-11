@@ -80,7 +80,10 @@ void main() {
       final repository = _FakeWorkoutRepository(
         workoutResult: _workout('first'),
       );
-      final notifier = TrackingHistoryDetailsNotifier(repository);
+      final notifier = TrackingHistoryDetailsNotifier(
+        repository,
+        expectedUserId: 7,
+      );
       addTearDown(notifier.dispose);
 
       await notifier.loadWorkoutDetails('1');
@@ -97,6 +100,23 @@ void main() {
       await notifier.loadWorkoutDetails('2');
       expect(notifier.state.workout?.id, 'second');
       expect(notifier.state.errorMessage, isNull);
+    });
+
+    test('details reject a workout returned for another owner', () async {
+      final repository = _FakeWorkoutRepository(
+        workoutResult: _workout('other-owner', userId: 8),
+      );
+      final notifier = TrackingHistoryDetailsNotifier(
+        repository,
+        expectedUserId: 7,
+      );
+      addTearDown(notifier.dispose);
+
+      await notifier.loadWorkoutDetails('1');
+
+      expect(notifier.state.workout, isNull);
+      expect(notifier.state.isLoading, isFalse);
+      expect(notifier.state.errorMessage, contains('this account'));
     });
 
     test('history refresh discards and reloads cached overall stats', () async {
@@ -118,6 +138,7 @@ void main() {
       final notifier = ActivityImagesNotifier(
         repository: repository,
         workoutId: 42,
+        expectedUserId: 7,
       );
       addTearDown(notifier.dispose);
 
@@ -137,6 +158,7 @@ void main() {
       final notifier = ActivityImagesNotifier(
         repository: repository,
         workoutId: 42,
+        expectedUserId: 7,
       );
 
       final pendingLoad = notifier.load();
@@ -145,6 +167,50 @@ void main() {
 
       await expectLater(pendingLoad, completes);
       await expectLater(notifier.load(), completes);
+    });
+
+    test(
+      'image load drops a result after the expected owner changes',
+      () async {
+        final repository = _FakeActivityImageRepository(failLoads: false);
+        final loadCompleter = Completer<List<ActivityImageEntity>>();
+        repository.loadCompleter = loadCompleter;
+        var isExpectedOwnerActive = true;
+        final notifier = ActivityImagesNotifier(
+          repository: repository,
+          workoutId: 42,
+          expectedUserId: 7,
+          isExpectedOwnerActive: (_) => isExpectedOwnerActive,
+        );
+        addTearDown(notifier.dispose);
+
+        final pendingLoad = notifier.load();
+        isExpectedOwnerActive = false;
+        loadCompleter.complete(<ActivityImageEntity>[_image(workoutId: 42)]);
+        await pendingLoad;
+
+        expect(notifier.state.images, isEmpty);
+        expect(notifier.state.isLoading, isFalse);
+        expect(notifier.state.errorMessage, contains('this account'));
+      },
+    );
+
+    test('image load rejects rows returned for another workout', () async {
+      final repository = _FakeActivityImageRepository(
+        failLoads: false,
+        loadResult: <ActivityImageEntity>[_image(workoutId: 99)],
+      );
+      final notifier = ActivityImagesNotifier(
+        repository: repository,
+        workoutId: 42,
+        expectedUserId: 7,
+      );
+      addTearDown(notifier.dispose);
+
+      await notifier.load();
+
+      expect(notifier.state.images, isEmpty);
+      expect(notifier.state.errorMessage, contains('invalid owner scope'));
     });
   });
 }
@@ -243,9 +309,13 @@ class _FakeWorkoutRepository implements WorkoutRepository {
 }
 
 class _FakeActivityImageRepository implements ActivityImageRepository {
-  _FakeActivityImageRepository({required this.failLoads});
+  _FakeActivityImageRepository({
+    required this.failLoads,
+    this.loadResult = const <ActivityImageEntity>[],
+  });
 
   bool failLoads;
+  List<ActivityImageEntity> loadResult;
   Completer<List<ActivityImageEntity>>? loadCompleter;
 
   @override
@@ -259,20 +329,35 @@ class _FakeActivityImageRepository implements ActivityImageRepository {
     if (failLoads) {
       throw StateError('simulated image load failure');
     }
-    return const [];
+    return loadResult;
   }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-WorkoutSessionEntity _workout(String id) {
+WorkoutSessionEntity _workout(String id, {int userId = 7}) {
   return WorkoutSessionEntity(
     id: id,
     clientSyncId: 'client-$id',
     type: WorkoutType.running,
     status: WorkoutStatus.completed,
-    userId: 7,
+    userId: userId,
+  );
+}
+
+ActivityImageEntity _image({required int workoutId}) {
+  final now = DateTime.utc(2026, 7, 11);
+  return ActivityImageEntity(
+    localId: workoutId,
+    localWorkoutId: workoutId,
+    clientImageId: 'image-$workoutId',
+    localPath: '/synthetic/image-$workoutId.jpg',
+    contentType: 'image/jpeg',
+    sizeBytes: 10,
+    status: ActivityImageSyncStatus.queued,
+    createdAt: now,
+    updatedAt: now,
   );
 }
 

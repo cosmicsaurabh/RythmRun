@@ -4,7 +4,7 @@ published: false
 
 # RythmRun improvement program
 
-> Program status: IP-0 remains the release blocker and its operational evidence is still open. The maintainer has explicitly selected repository-only IP-1 work in parallel and the current package is IP-1.3; this does not authorize migration execution, deployment, or production enablement.
+> Program status: IP-0 remains the release blocker and its operational evidence is still open. The maintainer has explicitly selected repository-only IP-1 work in parallel and the current package is IP-1.4; this does not authorize migration execution, deployment, or production enablement.
 
 This directory turns the repository audit dated 2026-07-10 into an implementation-ready hardening program. It is the canonical place to track the current improvement phase, the next five phases, their decisions, and the evidence required to mark work complete.
 
@@ -28,7 +28,8 @@ The first code-remediation slice, commit `e33f314`, is merged into `origin/main`
 - **Repository-delivered; advisory verification pending:** IP-0.7 dependency-surface reduction is committed in `fc33dca`; MC-0.10 remains open and no current advisory-clean claim is made.
 - **Repository-delivered; rollout pending:** IP-1.1 canonical metric contracts and provenance are committed in `ba7b288`; production sampling, backup, rollout, and compatibility remain MC-1.1 through MC-1.4.
 - **Repository-delivered; device verification pending:** IP-1.2 one GPS acceptance policy, deterministic pause timeline, provider-owned route, and map/elevation segmentation is committed in `c41d3dc`; MC-1.5 remains open.
-- **Current repository package:** IP-1.3 explicit nullable-state clearing, serialized live/auth operations, restart-safe credential cleanup, active-workout exit decisions, and A→B cache isolation. Device/staging verification remains MC-1.6.
+- **Repository-delivered; device/staging verification pending:** IP-1.3 explicit nullable-state clearing, serialized live/auth operations, restart-safe credential cleanup, active-workout exit decisions, and A→B cache isolation is committed in `06369b7`. MC-1.6 remains open.
+- **Current repository package:** IP-1.4 owner-bound local workout/image access plus SQLite v6 foreign-key, orphan-repair, duplicate-quarantine, cascade, and index enforcement. Hosted Flutter CI and Android in-place migration proof remain open under IP-1.6 and MC-1.7.
 - **Manual/hosted gates:** use [MANUAL-CHECKS.md](./MANUAL-CHECKS.md) for hosted CI, intentional-failure, branch-protection, dependency-audit, deployment, incident, infrastructure, staging, and controlled-reopen evidence.
 - **Concurrent owner action:** IP-0.6 — determine exposure and rotate/revoke credentials when it cannot be excluded.
 
@@ -182,6 +183,7 @@ Do not mark a phase complete using only a commit hash. Include the test or opera
 | D-009 | Offline local access lasts at most seven days from a successful server verification and is limited to the verified user's local data. | It preserves offline value without treating a stale local identity as indefinite server authorization. Clock rollback triggers conservative online verification. |
 | D-010 | Access tokens include a session ID and authenticated requests verify that the session remains active. | Logout/password/account revocation must take effect before natural access-token expiry at current MVP scale. |
 | D-011 | Voluntary logout/account switch requires Finish or Discard while a workout is active; forced authentication loss attempts local finalization and blocks cleanup on failed save/GPS shutdown until recovery; direct cross-user authentication is rejected until prior-user live, sync, profile, and auth work drains and durable credentials clear. | Tracking and late callbacks must never continue silently or move state to another account. Durable process-death recovery remains IP-3. |
+| D-012 | For an exact same-user `client_sync_id` collision, retain one deterministic canonical row and quarantine additional local rows from synchronization; if the rows already map to different remote activities, fail and roll back the migration. Never turn an ambiguous duplicate into a new uploadable identity. | A new uploadable ID could create a second remote activity after a lost response. Quarantine preserves local data while failing closed on remote identity ambiguity. |
 
 ## Decisions that still require an owner
 

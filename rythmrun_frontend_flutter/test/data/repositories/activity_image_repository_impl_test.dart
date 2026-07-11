@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/activity_image_file_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
@@ -42,7 +43,8 @@ void main() {
 
     setUp(() {
       events = <String>[];
-      localDataSource = FakeActivityImageLocalDataSource(events);
+      localDataSource = FakeActivityImageLocalDataSource(events)
+        ..workoutOwners[localWorkoutId] = userId;
       remoteDataSource = FakeActivityImageRemoteDataSource(events);
       fileService =
           FakeActivityImageFileService(events)
@@ -266,7 +268,7 @@ void main() {
           ),
         );
         remoteDataSource.beforeConfirm = () async {
-          await localDataSource.markImageDeleteQueued(1);
+          await localDataSource.markImageDeleteQueued(1, userId: userId);
         };
 
         await repository.syncPendingImages();
@@ -317,6 +319,118 @@ void main() {
         expect(remoteDataSource.requestUploadUrlCount, 0);
       },
     );
+
+    test('claimed upload retries after authentication refresh', () async {
+      remoteDataSource.requestUploadUrlError = UnauthorizedException('expired');
+      authRepository.onRefresh = () {
+        remoteDataSource.requestUploadUrlError = null;
+      };
+      localDataSource.addImage(
+        _image(
+          localId: 1,
+          localWorkoutId: localWorkoutId,
+          clientImageId: clientImageId,
+          localPath: appPrivatePath,
+          thumbnailPath: thumbnailPath,
+          status: ActivityImageSyncStatus.queued,
+        ),
+      );
+
+      await repository.syncPendingImages();
+
+      expect(remoteDataSource.requestUploadUrlCount, 2);
+      expect(
+        localDataSource.images[1]!.status,
+        ActivityImageSyncStatus.uploaded,
+      );
+    });
+
+    test('claimed delete retries after authentication refresh', () async {
+      remoteDataSource.deleteRemoteImageError = UnauthorizedException(
+        'expired',
+      );
+      authRepository.onRefresh = () {
+        remoteDataSource.deleteRemoteImageError = null;
+      };
+      localDataSource.addImage(
+        _image(
+          localId: 1,
+          localWorkoutId: localWorkoutId,
+          remoteActivityId: remoteActivityId,
+          remoteImageId: remoteImageId,
+          clientImageId: clientImageId,
+          localPath: appPrivatePath,
+          thumbnailPath: thumbnailPath,
+          status: ActivityImageSyncStatus.deleteQueued,
+        ),
+      );
+
+      await repository.syncPendingImages();
+
+      expect(remoteDataSource.deleteRemoteImageCount, 2);
+      expect(
+        localDataSource.images[1]!.status,
+        ActivityImageSyncStatus.deleted,
+      );
+      expect(fileService.deletedPaths, contains(appPrivatePath));
+    });
+
+    test('failed auth refresh keeps remote delete retryable', () async {
+      remoteDataSource.deleteRemoteImageError = UnauthorizedException(
+        'expired',
+      );
+      authRepository.refreshError = Exception('refresh unavailable');
+      localDataSource.addImage(
+        _image(
+          localId: 1,
+          localWorkoutId: localWorkoutId,
+          remoteActivityId: remoteActivityId,
+          remoteImageId: remoteImageId,
+          clientImageId: clientImageId,
+          localPath: appPrivatePath,
+          thumbnailPath: thumbnailPath,
+          status: ActivityImageSyncStatus.deleteQueued,
+        ),
+      );
+
+      await repository.syncPendingImages();
+
+      expect(remoteDataSource.deleteRemoteImageCount, 1);
+      expect(
+        localDataSource.images[1]!.status,
+        ActivityImageSyncStatus.deleteQueued,
+      );
+      expect(localDataSource.images[1]!.retryCount, 1);
+      expect(
+        localDataSource.images[1]!.lastError,
+        contains('Auth refresh failed'),
+      );
+    });
+
+    test('remote image not found completes local deletion', () async {
+      remoteDataSource.deleteRemoteImageError = NotFoundException('gone');
+      localDataSource.addImage(
+        _image(
+          localId: 1,
+          localWorkoutId: localWorkoutId,
+          remoteActivityId: remoteActivityId,
+          remoteImageId: remoteImageId,
+          clientImageId: clientImageId,
+          localPath: appPrivatePath,
+          thumbnailPath: thumbnailPath,
+          status: ActivityImageSyncStatus.deleteQueued,
+        ),
+      );
+
+      await repository.syncPendingImages();
+
+      expect(remoteDataSource.deleteRemoteImageCount, 1);
+      expect(
+        localDataSource.images[1]!.status,
+        ActivityImageSyncStatus.deleted,
+      );
+      expect(fileService.deletedPaths, contains(appPrivatePath));
+    });
 
     test('missing local file is a permanent failed state', () async {
       fileService.existingPaths.clear();
@@ -452,7 +566,184 @@ void main() {
       expect(fileService.deletedPaths, isEmpty);
       expect(remoteDataSource.deleteRemoteImageCount, 0);
     });
+
+    test(
+      'foreign workout and image IDs have no local, file, or remote effects',
+      () async {
+        localDataSource.addImage(
+          _image(
+            localId: 1,
+            localWorkoutId: localWorkoutId,
+            clientImageId: clientImageId,
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.queued,
+          ),
+          userId: userId,
+        );
+        authRepository.currentUser = _user(2);
+
+        expect(await repository.getImagesForWorkout(localWorkoutId), isEmpty);
+        await expectLater(
+          repository.attachImage(
+            localWorkoutId: localWorkoutId,
+            image: XFile('/tmp/foreign.jpg', mimeType: 'image/jpeg'),
+          ),
+          throwsA(isA<Exception>()),
+        );
+        await expectLater(repository.deleteImage(1), throwsA(isA<Exception>()));
+        await expectLater(
+          repository.replaceImage(
+            oldLocalImageId: 1,
+            newImage: XFile('/tmp/foreign.jpg', mimeType: 'image/jpeg'),
+          ),
+          throwsA(isA<Exception>()),
+        );
+        await expectLater(repository.retryImage(1), throwsA(isA<Exception>()));
+        await repository.refreshRemoteImagesForWorkout(localWorkoutId);
+
+        expect(
+          localDataSource.images[1]!.status,
+          ActivityImageSyncStatus.queued,
+        );
+        expect(localDataSource.insertedImages, isEmpty);
+        expect(fileService.deletedPaths, isEmpty);
+        expect(events, isNot(contains('prepare')));
+        expect(remoteDataSource.requestUploadUrlCount, 0);
+        expect(remoteDataSource.deleteRemoteImageCount, 0);
+      },
+    );
+
+    test(
+      'owner change during file preparation cleans files and skips insert',
+      () async {
+        final reachedPrepare = Completer<void>();
+        final allowPrepare = Completer<void>();
+        fileService.beforePrepare = () async {
+          reachedPrepare.complete();
+          await allowPrepare.future;
+        };
+
+        final attach = repository.attachImage(
+          localWorkoutId: localWorkoutId,
+          image: XFile('/tmp/picked.jpg', mimeType: 'image/jpeg'),
+        );
+        await reachedPrepare.future;
+        authRepository.currentUser = _user(2);
+        allowPrepare.complete();
+
+        await expectLater(attach, throwsA(isA<Exception>()));
+        expect(localDataSource.insertedImages, isEmpty);
+        expect(
+          fileService.deletedPaths,
+          containsAll(<String>[appPrivatePath, thumbnailPath]),
+        );
+      },
+    );
+
+    test(
+      'owner change after remote confirmation leaves original row retryable',
+      () async {
+        localDataSource.addImage(
+          _image(
+            localId: 1,
+            localWorkoutId: localWorkoutId,
+            clientImageId: clientImageId,
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.queued,
+          ),
+        );
+        remoteDataSource.beforeConfirm = () async {
+          authRepository.currentUser = _user(2);
+        };
+
+        await repository.syncPendingImages();
+
+        expect(
+          localDataSource.images[1]!.status,
+          ActivityImageSyncStatus.uploading,
+        );
+        expect(localDataSource.images[1]!.remoteImageId, isNull);
+        expect(
+          localDataSource.statusEvents,
+          isNot(contains(ActivityImageSyncStatus.uploaded)),
+        );
+      },
+    );
+
+    test('failed delete claim does not call the remote delete', () async {
+      localDataSource
+        ..deleteClaimEnabled = false
+        ..addImage(
+          _image(
+            localId: 1,
+            localWorkoutId: localWorkoutId,
+            remoteActivityId: remoteActivityId,
+            remoteImageId: remoteImageId,
+            clientImageId: clientImageId,
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.deleteQueued,
+          ),
+        );
+
+      await repository.syncPendingImages();
+
+      expect(remoteDataSource.deleteRemoteImageCount, 0);
+      expect(
+        localDataSource.images[1]!.status,
+        ActivityImageSyncStatus.deleteQueued,
+      );
+    });
+
+    test('account teardown drains foreground image preparation', () async {
+      final gate = UserScopeOperationGate()..activate(userId);
+      repository = ActivityImageRepositoryImpl(
+        localDataSource: localDataSource,
+        remoteDataSource: remoteDataSource,
+        fileService: fileService,
+        authRepository: authRepository,
+        authLocalDataSource: authLocalDataSource,
+        workoutLocalDataSource: workoutLocalDataSource,
+        random: Random(0),
+        operationGate: gate,
+      );
+      final reachedPrepare = Completer<void>();
+      final allowPrepare = Completer<void>();
+      fileService.beforePrepare = () async {
+        reachedPrepare.complete();
+        await allowPrepare.future;
+      };
+
+      final attach = repository.attachImage(
+        localWorkoutId: localWorkoutId,
+        image: XFile('/tmp/picked.jpg', mimeType: 'image/jpeg'),
+      );
+      await reachedPrepare.future;
+
+      var didDrain = false;
+      final drain = gate.suspendAndDrain().then((_) => didDrain = true);
+      await _pumpMicrotasks();
+      expect(didDrain, isFalse);
+
+      allowPrepare.complete();
+      await attach;
+      await drain;
+
+      expect(didDrain, isTrue);
+      expect(localDataSource.insertedImages, hasLength(1));
+    });
   });
+}
+
+UserEntity _user(int id) {
+  return UserEntity(
+    id: '$id',
+    firstName: 'Test',
+    lastName: 'User',
+    email: 'test$id@example.com',
+  );
 }
 
 Future<void> _pumpMicrotasks([int times = 20]) async {
@@ -561,6 +852,7 @@ ActivityImageEntity _copyImage(
 class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   final List<String> events;
   final Map<int, ActivityImageEntity> images = <int, ActivityImageEntity>{};
+  final Map<int, int> workoutOwners = <int, int>{};
   final List<ActivityImageEntity> insertedImages = <ActivityImageEntity>[];
   final List<ActivityImageSyncStatus> statusEvents =
       <ActivityImageSyncStatus>[];
@@ -568,10 +860,12 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   int _nextId = 1;
   bool resetStaleUploadingCalled = false;
   bool readyImagesEnabled = true;
+  bool deleteClaimEnabled = true;
 
   FakeActivityImageLocalDataSource(this.events);
 
-  void addImage(ActivityImageEntity image) {
+  void addImage(ActivityImageEntity image, {int userId = 1}) {
+    workoutOwners.putIfAbsent(image.localWorkoutId, () => userId);
     images[image.localId!] = image;
     if (image.localId! >= _nextId) {
       _nextId = image.localId! + 1;
@@ -579,7 +873,13 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   }
 
   @override
-  Future<int> insertWorkoutImage(ActivityImageEntity image) async {
+  Future<int> insertWorkoutImage(
+    ActivityImageEntity image, {
+    required int userId,
+  }) async {
+    if (workoutOwners[image.localWorkoutId] != userId) {
+      throw StateError('Workout is not owned by user');
+    }
     final localId = _nextId++;
     final saved = _copyImage(image, localId: localId);
     images[localId] = saved;
@@ -589,7 +889,13 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   }
 
   @override
-  Future<List<ActivityImageEntity>> getWorkoutImages(int workoutId) async {
+  Future<List<ActivityImageEntity>> getWorkoutImages(
+    int workoutId, {
+    required int userId,
+  }) async {
+    if (workoutOwners[workoutId] != userId) {
+      return <ActivityImageEntity>[];
+    }
     return images.values
         .where(
           (image) =>
@@ -601,8 +907,12 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   }
 
   @override
-  Future<ActivityImageEntity?> getWorkoutImage(int localImageId) async {
-    return images[localImageId];
+  Future<ActivityImageEntity?> getWorkoutImage(
+    int localImageId, {
+    required int userId,
+  }) async {
+    final image = images[localImageId];
+    return image != null && _isOwned(image, userId) ? image : null;
   }
 
   @override
@@ -615,6 +925,7 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
     }
 
     return images.values.where((image) {
+      if (!_isOwned(image, userId)) return false;
       final statusReady =
           image.status == ActivityImageSyncStatus.queued ||
           image.status == ActivityImageSyncStatus.waitingForActivitySync ||
@@ -631,6 +942,7 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
     int userId,
   ) async {
     return images.values.where((image) {
+      if (!_isOwned(image, userId)) return false;
       return image.status == ActivityImageSyncStatus.queued ||
           image.status == ActivityImageSyncStatus.waitingForActivitySync ||
           image.status == ActivityImageSyncStatus.uploading ||
@@ -642,8 +954,12 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   }
 
   @override
-  Future<bool> markImageUploadingIfReady(int localImageId) async {
-    final image = images[localImageId]!;
+  Future<bool> markImageUploadingIfReady(
+    int localImageId, {
+    required int userId,
+  }) async {
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return false;
     final ready =
         image.status == ActivityImageSyncStatus.queued ||
         image.status == ActivityImageSyncStatus.waitingForActivitySync ||
@@ -656,8 +972,12 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   }
 
   @override
-  Future<bool> markImageWaitingForActivitySyncIfReady(int localImageId) async {
-    final image = images[localImageId]!;
+  Future<bool> markImageWaitingForActivitySyncIfReady(
+    int localImageId, {
+    required int userId,
+  }) async {
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return false;
     final ready =
         image.status == ActivityImageSyncStatus.queued ||
         image.status == ActivityImageSyncStatus.waitingForActivitySync ||
@@ -672,13 +992,15 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   @override
   Future<ActivityImageSyncStatus?> recordImageUploadResult({
     required int localImageId,
+    required int userId,
     required int remoteActivityId,
     required int remoteImageId,
     required String remoteUrl,
     required DateTime? remoteUrlExpiresAt,
     required String s3Key,
   }) async {
-    final image = images[localImageId]!;
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return null;
     final finalStatus =
         image.status == ActivityImageSyncStatus.deleteQueued ||
                 image.status == ActivityImageSyncStatus.deleting ||
@@ -704,11 +1026,13 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   @override
   Future<void> markImageRetrying({
     required int localImageId,
+    required int userId,
     required String error,
     required DateTime nextRetryAt,
     required int retryCount,
   }) async {
-    final image = images[localImageId]!;
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return;
     images[localImageId] = _copyImage(
       image,
       status: ActivityImageSyncStatus.retrying,
@@ -722,9 +1046,11 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   @override
   Future<void> markImageFailed({
     required int localImageId,
+    required int userId,
     required String error,
   }) async {
-    final image = images[localImageId]!;
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return;
     images[localImageId] = _copyImage(
       image,
       status: ActivityImageSyncStatus.failed,
@@ -736,11 +1062,13 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   @override
   Future<void> markImageDeleteQueuedRetrying({
     required int localImageId,
+    required int userId,
     required String error,
     required DateTime nextRetryAt,
     required int retryCount,
   }) async {
-    final image = images[localImageId]!;
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return;
     images[localImageId] = _copyImage(
       image,
       status: ActivityImageSyncStatus.deleteQueued,
@@ -752,17 +1080,31 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   }
 
   @override
-  Future<void> markImageDeleteQueued(int localImageId) async {
+  Future<void> markImageDeleteQueued(
+    int localImageId, {
+    required int userId,
+  }) async {
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return;
     _setStatus(localImageId, ActivityImageSyncStatus.deleteQueued);
   }
 
   @override
-  Future<void> markImageReplaceQueued(int localImageId) async {
+  Future<void> markImageReplaceQueued(
+    int localImageId, {
+    required int userId,
+  }) async {
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return;
     _setStatus(localImageId, ActivityImageSyncStatus.replaceQueued);
   }
 
   @override
-  Future<void> markReplaceQueuedImagesDeleteQueued(int workoutId) async {
+  Future<void> markReplaceQueuedImagesDeleteQueued(
+    int workoutId, {
+    required int userId,
+  }) async {
+    if (workoutOwners[workoutId] != userId) return;
     for (final entry in images.entries.toList()) {
       final image = entry.value;
       if (image.localWorkoutId == workoutId &&
@@ -777,20 +1119,39 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   }
 
   @override
-  Future<void> markImageDeleting(int localImageId) async {
+  Future<bool> markImageDeleting(
+    int localImageId, {
+    required int userId,
+  }) async {
+    final image = images[localImageId];
+    if (!deleteClaimEnabled ||
+        image == null ||
+        !_isOwned(image, userId) ||
+        image.status != ActivityImageSyncStatus.deleteQueued) {
+      return false;
+    }
     _setStatus(localImageId, ActivityImageSyncStatus.deleting);
+    return true;
   }
 
   @override
-  Future<void> markImageDeleted(int localImageId) async {
+  Future<void> markImageDeleted(int localImageId, {required int userId}) async {
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return;
     _setStatus(localImageId, ActivityImageSyncStatus.deleted);
   }
 
   @override
-  Future<void> resetStaleUploadingImages(DateTime staleBefore) async {
+  Future<void> resetStaleUploadingImages(
+    int userId,
+    DateTime staleBefore,
+  ) async {
     resetStaleUploadingCalled = true;
     for (final entry in images.entries.toList()) {
       final image = entry.value;
+      if (!_isOwned(image, userId)) {
+        continue;
+      }
       if (!image.updatedAt.isBefore(staleBefore)) {
         continue;
       }
@@ -810,12 +1171,15 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
 
   @override
   Future<void> updateRemoteImageUrl({
+    required int userId,
     required int remoteImageId,
     required String remoteUrl,
     required DateTime? remoteUrlExpiresAt,
   }) async {
     final entry = images.entries.firstWhere(
-      (entry) => entry.value.remoteImageId == remoteImageId,
+      (entry) =>
+          entry.value.remoteImageId == remoteImageId &&
+          _isOwned(entry.value, userId),
     );
     images[entry.key] = _copyImage(
       entry.value,
@@ -827,13 +1191,15 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
   @override
   Future<void> updateRemoteImageMetadata({
     required int localImageId,
+    required int userId,
     required int remoteActivityId,
     required int remoteImageId,
     required String remoteUrl,
     required DateTime? remoteUrlExpiresAt,
     required String s3Key,
   }) async {
-    final image = images[localImageId]!;
+    final image = images[localImageId];
+    if (image == null || !_isOwned(image, userId)) return;
     images[localImageId] = _copyImage(
       image,
       remoteActivityId: remoteActivityId,
@@ -848,6 +1214,10 @@ class FakeActivityImageLocalDataSource implements ActivityImageLocalDataSource {
     images[localImageId] = _copyImage(images[localImageId]!, status: status);
     statusEvents.add(status);
     events.add(status.name);
+  }
+
+  bool _isOwned(ActivityImageEntity image, int userId) {
+    return workoutOwners[image.localWorkoutId] == userId;
   }
 }
 
@@ -956,6 +1326,7 @@ class FakeActivityImageFileService implements ActivityImageFileService {
   final Set<String> existingPaths = <String>{};
   final List<String> deletedPaths = <String>[];
   late PreparedActivityImage preparedImage;
+  Future<void> Function()? beforePrepare;
 
   FakeActivityImageFileService(this.events);
 
@@ -966,6 +1337,7 @@ class FakeActivityImageFileService implements ActivityImageFileService {
     required XFile pickedFile,
   }) async {
     events.add('prepare');
+    await beforePrepare?.call();
     return preparedImage;
   }
 
@@ -995,13 +1367,18 @@ class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
 
   @override
   Future<WorkoutSessionEntity?> getWorkoutFromLocalDatabase(
-    int workoutId,
-  ) async {
-    return workouts[workoutId];
+    int workoutId, {
+    required int userId,
+  }) async {
+    final workout = workouts[workoutId];
+    return workout?.userId == userId ? workout : null;
   }
 
   @override
-  Future<int> saveWorkoutInLocalDatabase(WorkoutSessionEntity workout) async {
+  Future<int> saveWorkoutInLocalDatabase(
+    WorkoutSessionEntity workout, {
+    required int userId,
+  }) async {
     throw UnimplementedError();
   }
 
@@ -1013,7 +1390,10 @@ class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
   }
 
   @override
-  Future<void> deleteWorkoutFromLocalDatabase(int workoutId) async {
+  Future<void> deleteWorkoutFromLocalDatabase(
+    int workoutId, {
+    required int userId,
+  }) async {
     throw UnimplementedError();
   }
 
@@ -1025,12 +1405,29 @@ class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
   }
 
   @override
-  Future<void> markWorkoutAsSyncedInLocalDatabase(int workoutId) async {
+  Future<void> markWorkoutAsSyncedInLocalDatabase(
+    int workoutId, {
+    required int userId,
+  }) async {
     throw UnimplementedError();
   }
 
   @override
-  Future<void> updateRemoteActivityId(int localId, int remoteId) async {
+  Future<void> updateRemoteActivityId(
+    int localId,
+    int remoteId, {
+    required int userId,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> recordWorkoutSyncSuccess({
+    required int userId,
+    required int localWorkoutId,
+    required String clientSyncId,
+    required int remoteActivityId,
+  }) async {
     throw UnimplementedError();
   }
 
@@ -1043,13 +1440,17 @@ class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
   }
 
   @override
-  Future<void> markWorkoutDeleteDeleting(int queueId) async {
+  Future<bool> markWorkoutDeleteDeleting(
+    int queueId, {
+    required int userId,
+  }) async {
     throw UnimplementedError();
   }
 
   @override
   Future<void> markWorkoutDeleteRetrying({
     required int queueId,
+    required int userId,
     required int retryCount,
     required String error,
     required DateTime nextRetryAt,
@@ -1061,22 +1462,26 @@ class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
   Future<void> completeWorkoutDelete({
     required int queueId,
     required int localWorkoutId,
+    required int userId,
   }) async {
     throw UnimplementedError();
   }
 
   @override
-  Future<void> resetStaleWorkoutDeletes(DateTime staleBefore) async {
+  Future<void> resetStaleWorkoutDeletes(
+    int userId,
+    DateTime staleBefore,
+  ) async {
     throw UnimplementedError();
   }
 
   @override
-  Future<void> ensureClientSyncIds() async {
+  Future<void> ensureClientSyncIds(int userId) async {
     throw UnimplementedError();
   }
 
   @override
-  Future<void> clearAllDataFromLocalDatabase() async {
+  Future<void> clearUserDataFromLocalDatabase(int userId) async {
     throw UnimplementedError();
   }
 
@@ -1119,6 +1524,8 @@ class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
 
 class FakeAuthRepository implements AuthRepository {
   UserEntity? currentUser;
+  Object? refreshError;
+  void Function()? onRefresh;
 
   FakeAuthRepository({required this.currentUser});
 
@@ -1126,7 +1533,14 @@ class FakeAuthRepository implements AuthRepository {
   Future<UserEntity?> getCurrentUser() async => currentUser;
 
   @override
-  Future<UserEntity> refreshToken() async => currentUser!;
+  Future<UserEntity> refreshToken() async {
+    onRefresh?.call();
+    final error = refreshError;
+    if (error != null) {
+      throw error;
+    }
+    return currentUser!;
+  }
 
   @override
   Future<UserEntity> login(LoginRequestEntity request) async {

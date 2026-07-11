@@ -45,9 +45,18 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<int> saveWorkout(WorkoutSessionEntity workout) async {
     try {
+      final userId = await getCurrentUserId();
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+      if (workout.userId != userId) {
+        throw StateError('Workout owner does not match the active user');
+      }
+
       // Save to local database
       final workoutId = await _localDataSource.saveWorkoutInLocalDatabase(
         workout,
+        userId: userId,
       );
 
       // Fire-and-forget sync. Local save remains the source of truth.
@@ -81,7 +90,14 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<WorkoutSessionEntity?> getWorkout(int workoutId) async {
     try {
-      return await _localDataSource.getWorkoutFromLocalDatabase(workoutId);
+      final userId = await getCurrentUserId();
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+      return await _localDataSource.getWorkoutFromLocalDatabase(
+        workoutId,
+        userId: userId,
+      );
     } catch (e) {
       throw Exception('Failed to get workout: $e');
     }
@@ -90,7 +106,14 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<void> deleteWorkout(int workoutId) async {
     try {
-      await _localDataSource.deleteWorkoutFromLocalDatabase(workoutId);
+      final userId = await getCurrentUserId();
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+      await _localDataSource.deleteWorkoutFromLocalDatabase(
+        workoutId,
+        userId: userId,
+      );
       syncWorkouts().catchError((e) {
         log('Failed to sync workout delete: $e');
       });
@@ -118,7 +141,14 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<void> markWorkoutAsSynced(int workoutId) async {
     try {
-      await _localDataSource.markWorkoutAsSyncedInLocalDatabase(workoutId);
+      final userId = await getCurrentUserId();
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+      await _localDataSource.markWorkoutAsSyncedInLocalDatabase(
+        workoutId,
+        userId: userId,
+      );
     } catch (e) {
       throw Exception('Failed to mark workout as synced: $e');
     }
@@ -144,15 +174,19 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
         return;
       }
 
-      await _localDataSource.ensureClientSyncIds();
+      await _localDataSource.ensureClientSyncIds(userId);
 
       final initialAuthHeaders = await _authLocalDataSource.getAuthHeaders();
       if (initialAuthHeaders == null) {
         return;
       }
+      if (!await _isCurrentUser(userId)) {
+        return;
+      }
       var authHeaders = initialAuthHeaders;
 
       await _localDataSource.resetStaleWorkoutDeletes(
+        userId,
         DateTime.now().subtract(const Duration(minutes: 15)),
       );
 
@@ -182,14 +216,22 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
         if (workout.remoteActivityId != null) {
           await _localDataSource.markWorkoutAsSyncedInLocalDatabase(
             localWorkoutId,
+            userId: userId,
           );
           continue;
         }
 
         try {
-          await _pushWorkout(workout, localWorkoutId, authHeaders);
+          if (!await _pushWorkout(
+            workout,
+            localWorkoutId,
+            authHeaders,
+            userId,
+          )) {
+            return;
+          }
         } on UnauthorizedException catch (_) {
-          final refreshedAuthHeaders = await _refreshAuthHeaders();
+          final refreshedAuthHeaders = await _refreshAuthHeaders(userId);
           if (refreshedAuthHeaders == null) {
             log(
               'Workout sync halted after auth refresh failed for ${workout.id}',
@@ -199,7 +241,14 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
           authHeaders = refreshedAuthHeaders;
 
           try {
-            await _pushWorkout(workout, localWorkoutId, authHeaders);
+            if (!await _pushWorkout(
+              workout,
+              localWorkoutId,
+              authHeaders,
+              userId,
+            )) {
+              return;
+            }
           } catch (retryError) {
             log(
               'Failed to sync workout ${workout.id} after auth refresh: '
@@ -207,7 +256,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
             );
           }
         } on ForbiddenException catch (_) {
-          final refreshedAuthHeaders = await _refreshAuthHeaders();
+          final refreshedAuthHeaders = await _refreshAuthHeaders(userId);
           if (refreshedAuthHeaders == null) {
             log(
               'Workout sync halted after auth refresh failed for ${workout.id}',
@@ -217,7 +266,14 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
           authHeaders = refreshedAuthHeaders;
 
           try {
-            await _pushWorkout(workout, localWorkoutId, authHeaders);
+            if (!await _pushWorkout(
+              workout,
+              localWorkoutId,
+              authHeaders,
+              userId,
+            )) {
+              return;
+            }
           } catch (retryError) {
             log(
               'Failed to sync workout ${workout.id} after auth refresh: '
@@ -234,22 +290,27 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
     }
   }
 
-  Future<void> _pushWorkout(
+  Future<bool> _pushWorkout(
     WorkoutSessionEntity workout,
     int localWorkoutId,
     Map<String, String> authHeaders,
+    int userId,
   ) async {
     final activityJson = ActivitySyncModel.toJson(workout);
     final remoteActivityId = await _remoteDataSource.createActivity(
       activityJson,
       authHeaders,
     );
+    if (!await _isCurrentUser(userId)) {
+      return false;
+    }
 
-    await _localDataSource.updateRemoteActivityId(
-      localWorkoutId,
-      remoteActivityId,
+    return _localDataSource.recordWorkoutSyncSuccess(
+      userId: userId,
+      localWorkoutId: localWorkoutId,
+      clientSyncId: workout.clientSyncId,
+      remoteActivityId: remoteActivityId,
     );
-    await _localDataSource.markWorkoutAsSyncedInLocalDatabase(localWorkoutId);
   }
 
   Future<Map<String, String>?> _syncPendingWorkoutDeletes(
@@ -264,54 +325,92 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
 
     for (final deleteEntry in pendingDeletes) {
       try {
-        await _deleteRemoteWorkout(deleteEntry, currentAuthHeaders);
+        if (!await _deleteRemoteWorkout(
+          deleteEntry,
+          currentAuthHeaders,
+          userId,
+        )) {
+          return null;
+        }
       } on UnauthorizedException catch (_) {
-        final refreshedAuthHeaders = await _refreshAuthHeaders();
+        final refreshedAuthHeaders = await _refreshAuthHeaders(userId);
         if (refreshedAuthHeaders == null) {
           log(
             'Workout delete sync halted after auth refresh failed for '
             '${deleteEntry.remoteActivityId}',
           );
-          await _markWorkoutDeleteRetrying(deleteEntry, 'Auth refresh failed');
+          await _markWorkoutDeleteRetrying(
+            deleteEntry,
+            'Auth refresh failed',
+            userId,
+          );
           return null;
         }
         currentAuthHeaders = refreshedAuthHeaders;
 
         try {
-          await _deleteRemoteWorkout(deleteEntry, currentAuthHeaders);
+          if (!await _deleteRemoteWorkout(
+            deleteEntry,
+            currentAuthHeaders,
+            userId,
+            claimDelete: false,
+          )) {
+            return null;
+          }
         } catch (retryError) {
-          await _markWorkoutDeleteRetrying(deleteEntry, retryError);
+          await _markWorkoutDeleteRetrying(deleteEntry, retryError, userId);
         }
       } on ForbiddenException catch (_) {
-        final refreshedAuthHeaders = await _refreshAuthHeaders();
+        final refreshedAuthHeaders = await _refreshAuthHeaders(userId);
         if (refreshedAuthHeaders == null) {
           log(
             'Workout delete sync halted after auth refresh failed for '
             '${deleteEntry.remoteActivityId}',
           );
-          await _markWorkoutDeleteRetrying(deleteEntry, 'Auth refresh failed');
+          await _markWorkoutDeleteRetrying(
+            deleteEntry,
+            'Auth refresh failed',
+            userId,
+          );
           return null;
         }
         currentAuthHeaders = refreshedAuthHeaders;
 
         try {
-          await _deleteRemoteWorkout(deleteEntry, currentAuthHeaders);
+          if (!await _deleteRemoteWorkout(
+            deleteEntry,
+            currentAuthHeaders,
+            userId,
+            claimDelete: false,
+          )) {
+            return null;
+          }
         } catch (retryError) {
-          await _markWorkoutDeleteRetrying(deleteEntry, retryError);
+          await _markWorkoutDeleteRetrying(deleteEntry, retryError, userId);
         }
       } catch (error) {
-        await _markWorkoutDeleteRetrying(deleteEntry, error);
+        await _markWorkoutDeleteRetrying(deleteEntry, error, userId);
       }
     }
 
     return currentAuthHeaders;
   }
 
-  Future<void> _deleteRemoteWorkout(
+  Future<bool> _deleteRemoteWorkout(
     WorkoutDeleteQueueEntry deleteEntry,
     Map<String, String> authHeaders,
-  ) async {
-    await _localDataSource.markWorkoutDeleteDeleting(deleteEntry.id);
+    int userId, {
+    bool claimDelete = true,
+  }) async {
+    if (claimDelete) {
+      final didClaim = await _localDataSource.markWorkoutDeleteDeleting(
+        deleteEntry.id,
+        userId: userId,
+      );
+      if (!didClaim) {
+        return true;
+      }
+    }
 
     try {
       await _remoteDataSource.deleteActivity(
@@ -322,19 +421,30 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
       // Idempotent success: the server-side activity is already gone.
     }
 
+    if (!await _isCurrentUser(userId)) {
+      return false;
+    }
+
     await _localDataSource.completeWorkoutDelete(
       queueId: deleteEntry.id,
       localWorkoutId: deleteEntry.localWorkoutId,
+      userId: userId,
     );
+    return true;
   }
 
   Future<void> _markWorkoutDeleteRetrying(
     WorkoutDeleteQueueEntry deleteEntry,
     Object error,
+    int userId,
   ) async {
+    if (!await _isCurrentUser(userId)) {
+      return;
+    }
     final retryCount = deleteEntry.retryCount + 1;
     await _localDataSource.markWorkoutDeleteRetrying(
       queueId: deleteEntry.id,
+      userId: userId,
       retryCount: retryCount,
       error: error.toString(),
       nextRetryAt: DateTime.now().add(_workoutDeleteRetryDelay(retryCount)),
@@ -353,14 +463,25 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
     return const Duration(hours: 6);
   }
 
-  Future<Map<String, String>?> _refreshAuthHeaders() async {
+  Future<Map<String, String>?> _refreshAuthHeaders(int userId) async {
     try {
       await _authRepository.refreshToken();
-      return await _authLocalDataSource.getAuthHeaders();
+      if (!await _isCurrentUser(userId)) {
+        return null;
+      }
+      final authHeaders = await _authLocalDataSource.getAuthHeaders();
+      if (!await _isCurrentUser(userId)) {
+        return null;
+      }
+      return authHeaders;
     } catch (e) {
       log('Failed to refresh auth token during workout sync: $e');
       return null;
     }
+  }
+
+  Future<bool> _isCurrentUser(int userId) async {
+    return await getCurrentUserId() == userId;
   }
 
   int? _parseLocalWorkoutId(String? workoutId) {

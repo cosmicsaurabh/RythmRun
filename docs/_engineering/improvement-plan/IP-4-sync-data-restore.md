@@ -347,6 +347,7 @@ Digest contract: SHA-256 of the exact canonical UTF-8 JSON bytes. The v2 schema 
 - Activity and activity-image delete services
 - New worker entry point/service
 - `RythmRun_backend_nodejs/src/app.ts` timer removal
+- Mobile SQLite local-file cleanup outbox plus the activity-image file service
 - Worker tests and deployment process documentation
 
 **Implementation**
@@ -360,6 +361,7 @@ Digest contract: SHA-256 of the exact canonical UTF-8 JSON bytes. The v2 schema 
 7. Add dead-letter/alert state after a bounded retry policy, with manual safe retry.
 8. Add leases/multi-replica coordination to the existing durable runner, then remove the per-web-process 15-minute image timer only after the worker is deployed and backlog is drained/owned.
 9. Use the same injected Prisma client lifecycle in web code; worker may own one separately managed process client.
+10. On mobile, persist validated app-private original/thumbnail paths to an owner-scoped local cleanup outbox in the same SQLite transaction that deletes an image row or cascades a workout. Delete only paths revalidated beneath the application image root, treat missing files as success, and acknowledge the job after deletion so process death cannot permanently strand files after their metadata rows disappear.
 
 **Tests**
 
@@ -368,6 +370,7 @@ Digest contract: SHA-256 of the exact canonical UTF-8 JSON bytes. The v2 schema 
 - Worker death after S3 success but before DB acknowledgement retries safely.
 - Two workers cannot process one active lease concurrently.
 - Invalid prefix job is quarantined, not executed.
+- Workout/image-row cascade plus process death leaves a replayable local file-cleanup job; another user's paths and any path outside the application image root are never deleted.
 
 ## Compatibility and rollout order
 

@@ -7,10 +7,14 @@ import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history
 class TrackingHistoryDetailsNotifier
     extends StateNotifier<TrackingHistoryDetailsState> {
   final WorkoutRepository _workoutRepository;
+  final int _expectedUserId;
   bool _isDisposed = false;
 
-  TrackingHistoryDetailsNotifier(this._workoutRepository)
-    : super(const TrackingHistoryDetailsState());
+  TrackingHistoryDetailsNotifier(
+    this._workoutRepository, {
+    required int expectedUserId,
+  }) : _expectedUserId = expectedUserId,
+       super(const TrackingHistoryDetailsState());
 
   /// Load full workout details including tracking points and status changes
   Future<void> loadWorkoutDetails(String workoutId) async {
@@ -33,6 +37,14 @@ class TrackingHistoryDetailsNotifier
 
       if (workout == null) {
         throw Exception('Workout not found');
+      }
+      if (workout.userId != _expectedUserId) {
+        state = state.copyWith(
+          workout: null,
+          isLoading: false,
+          errorMessage: 'Workout details are not available for this account.',
+        );
+        return;
       }
 
       state = state.copyWith(
@@ -63,6 +75,8 @@ final trackingHistoryDetailsProvider = StateNotifierProvider.autoDispose.family<
   ({int userId, int workoutId})
 >((ref, key) {
   final workoutRepository = ref.watch(workoutRepositoryProvider);
-  return TrackingHistoryDetailsNotifier(workoutRepository)
-    ..loadWorkoutDetails(key.workoutId.toString());
+  return TrackingHistoryDetailsNotifier(
+    workoutRepository,
+    expectedUserId: key.userId,
+  )..loadWorkoutDetails(key.workoutId.toString());
 });
