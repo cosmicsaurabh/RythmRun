@@ -53,6 +53,7 @@ class TrackingPointEntity {
 
   @override
   String toString() {
-    return 'TrackingPointEntity{lat: $latitude, lng: $longitude, time: $timestamp}';
+    return 'TrackingPointEntity{coordinate: redacted, '
+        'hasAccuracy: ${accuracy != null}, hasSpeed: ${speed != null}}';
   }
 }

@@ -1,8 +1,10 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/core/di/injection_container.dart';
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
+import 'package:rythmrun_frontend_flutter/core/tracking/gps_point_acceptance_policy.dart';
+import 'package:rythmrun_frontend_flutter/core/tracking/workout_route_segmenter.dart';
+import 'package:rythmrun_frontend_flutter/core/tracking/workout_timeline.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/calculation_helper.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/client_sync_id_generator.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
@@ -15,33 +17,60 @@ import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
 
+typedef PeriodicTimerFactory =
+    Timer Function(Duration duration, void Function(Timer timer) callback);
+
+Future<void> _noopWorkoutAdded() async {}
+
 class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   final LiveTrackingRepository _liveTrackingRepository;
   final WorkoutRepository _workoutRepository;
-  final Ref _ref;
+  final int? Function() _currentUserId;
+  final Future<void> Function() _onWorkoutAdded;
+  final GpsPointAcceptancePolicy _pointAcceptancePolicy;
+  final PeriodicTimerFactory _periodicTimerFactory;
 
   StreamSubscription<TrackingPointEntity>? _locationSubscription;
   Timer? _elapsedTimer;
-  DateTime? _sessionStartTime;
-  DateTime? _pausedTime;
-  Duration _totalPausedDuration = Duration.zero;
+  WorkoutTimeline? _timeline;
+  TrackingPointEntity? _lastAcceptedPoint;
+  TrackingPointEntity? _activeDistanceAnchor;
+  DateTime? _activeSegmentStartedAt;
+  WorkoutSessionEntity? _unsavedCompletedWorkout;
+  int _operationGeneration = 0;
+  bool _isStarting = false;
+  bool _isStopping = false;
+  bool _isResetting = false;
+  bool _cleanupRequired = false;
+  bool _isDisposed = false;
 
   LiveTrackingNotifier(
     this._liveTrackingRepository,
-    this._workoutRepository,
-    this._ref,
-  ) : super(const LiveTrackingState());
+    this._workoutRepository, {
+    required int? Function() currentUserId,
+    Future<void> Function()? onWorkoutAdded,
+    GpsPointAcceptancePolicy pointAcceptancePolicy =
+        const GpsPointAcceptancePolicy(),
+    PeriodicTimerFactory periodicTimerFactory = Timer.periodic,
+  }) : _currentUserId = currentUserId,
+       _onWorkoutAdded = onWorkoutAdded ?? _noopWorkoutAdded,
+       _pointAcceptancePolicy = pointAcceptancePolicy,
+       _periodicTimerFactory = periodicTimerFactory,
+       super(const LiveTrackingState());
 
   void clearErrorMessage() {
+    if (_isDisposed) return;
     state = state.copyWith(clearErrorMessage: true);
   }
 
   /// Check location permissions
   Future<void> checkPermissions() async {
+    if (_isDisposed) return;
     try {
       state = state.copyWith(isLoading: true);
       LocationServiceStatus permissionStatus =
           await _liveTrackingRepository.checkPermissions();
+      if (_isDisposed) return;
 
       bool hasPermission = LocationErrorHandler.isLocationServicesEnabled(
         permissionStatus,
@@ -60,10 +89,11 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
         errorMessage: errorMessage,
         locationServiceStatus: permissionStatus,
       );
-    } catch (e) {
+    } catch (_) {
+      if (_isDisposed) return;
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Failed to check location permissions: $e',
+        errorMessage: 'Failed to check location permissions.',
         hasLocationPermission: false,
         locationServiceStatus: LocationServiceStatus.permissionDenied,
       );
@@ -73,48 +103,88 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   /// Request location service to be enabled (shows system dialog on Android)
   /// After requesting, re-checks permissions to update state
   Future<void> requestLocationService() async {
+    if (_isDisposed) return;
     try {
       state = state.copyWith(isLoading: true);
       final serviceEnabled =
           await _liveTrackingRepository.requestLocationService();
+      if (_isDisposed) return;
 
       // Re-check permissions after requesting service
       // This will update the state with the new permission status
       await checkPermissions();
 
-      if (serviceEnabled) {
-        log('✅ Location service enabled successfully');
-      }
-    } catch (e) {
+      if (serviceEnabled) return;
+    } catch (_) {
+      if (_isDisposed) return;
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Failed to request location service: $e',
+        errorMessage: 'Failed to request location service.',
       );
-      log('❌ Failed to request location service: $e');
     }
   }
 
   /// Start a new workout session
   Future<void> startWorkout(WorkoutType type) async {
-    try {
-      // Clear any previous error
-      state = state.copyWith(isLoading: true, errorMessage: null);
+    if (_isDisposed ||
+        _isStarting ||
+        _isStopping ||
+        _isResetting ||
+        _unsavedCompletedWorkout != null ||
+        (state.currentSession != null &&
+            state.currentSession!.status != WorkoutStatus.completed)) {
+      if (_unsavedCompletedWorkout != null && !_isDisposed) {
+        state = state.copyWith(
+          errorMessage:
+              'The previous workout is not saved yet. Keep this screen open.',
+        );
+      }
+      return;
+    }
 
-      // Check permissions first
-      if (!state.hasLocationPermission) {
-        await checkPermissions();
-        if (!state.hasLocationPermission) {
+    _isStarting = true;
+    final operationGeneration = ++_operationGeneration;
+    StreamSubscription<TrackingPointEntity>? pendingSubscription;
+
+    try {
+      state = state.copyWith(isLoading: true, clearErrorMessage: true);
+
+      if (_cleanupRequired) {
+        final cleanupSucceeded = await _retryRequiredCleanup();
+        if (!_isOperationCurrent(operationGeneration)) return;
+        if (!cleanupSucceeded) {
           state = state.copyWith(
             isLoading: false,
-            errorMessage: 'Location permission is required to track workouts',
+            errorMessage:
+                'Location tracking cleanup is still pending. Please retry.',
           );
           return;
         }
       }
 
-      // Get current user ID
-      final sessionData = _ref.read(sessionProvider);
-      final userId = sessionData.user?.id;
+      if (!state.hasLocationPermission) {
+        final permissionStatus =
+            await _liveTrackingRepository.checkPermissions();
+        if (!_isOperationCurrent(operationGeneration)) return;
+        final hasPermission = LocationErrorHandler.isLocationServicesEnabled(
+          permissionStatus,
+        );
+        state = state.copyWith(
+          hasLocationPermission: hasPermission,
+          locationServiceStatus: permissionStatus,
+        );
+        if (!hasPermission) {
+          state = state.copyWith(
+            isLoading: false,
+            errorMessage: LocationErrorHandler.getLocationErrorMessage(
+              permissionStatus,
+            ),
+          );
+          return;
+        }
+      }
+
+      final userId = _currentUserId();
       if (userId == null) {
         state = state.copyWith(
           isLoading: false,
@@ -123,8 +193,8 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
         return;
       }
 
-      // Create initial status change event
-      final startTime = DateTime.now();
+      final startTime = _liveTrackingRepository.now();
+      final timeline = WorkoutTimeline.start(startTime);
       final initialStatusChange = StatusChangeEvent(
         status: WorkoutStatus.active,
         timestamp: startTime,
@@ -134,283 +204,304 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
       final newSession = WorkoutSessionEntity(
         clientSyncId: ClientSyncIdGenerator.generate(
           startTime: startTime,
-          userId: int.parse(userId.toString()),
+          userId: userId,
         ),
         type: type,
         status: WorkoutStatus.active,
         startTime: startTime,
         statusChanges: [initialStatusChange],
-        userId: int.parse(userId.toString()),
+        userId: userId,
       );
 
-      // Start location tracking
+      pendingSubscription = _liveTrackingRepository.locationStream.listen(
+        _onLocationUpdate,
+        onError: _onLocationError,
+      );
+      _locationSubscription = pendingSubscription;
       await _liveTrackingRepository.startTracking();
+      if (!_isOperationCurrent(operationGeneration)) {
+        await _cleanupTrackingResources(pendingSubscription);
+        return;
+      }
 
-      // Set up location updates listener
-      _locationSubscription = LiveTrackingService.instance.locationStream
-          .listen(_onLocationUpdate, onError: _onLocationError);
-
-      // Start elapsed time timer
-      _startElapsedTimer();
-
+      _timeline = timeline;
+      _lastAcceptedPoint = null;
+      _activeDistanceAnchor = null;
+      _activeSegmentStartedAt = startTime;
       state = state.copyWith(
         currentSession: newSession,
         isTracking: true,
         isLoading: false,
         elapsedTime: Duration.zero,
+        currentPace: 0,
       );
-
-      _sessionStartTime = DateTime.now();
-      log('🏃 Workout started: ${type.name}');
-    } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: 'Failed to start workout: $e',
-      );
+      _startElapsedTimer();
+    } catch (_) {
+      await _cleanupTrackingResources(pendingSubscription);
+      _resetInternalTrackingState();
+      if (_isOperationCurrent(operationGeneration)) {
+        state = LiveTrackingState(
+          isLoading: false,
+          errorMessage: 'Failed to start workout. Please try again.',
+          hasLocationPermission: state.hasLocationPermission,
+          locationServiceStatus: state.locationServiceStatus,
+        );
+      }
+    } finally {
+      _isStarting = false;
     }
   }
 
   /// Pause the current workout
   void pauseWorkout() {
-    if (state.currentSession == null || !state.isTracking) return;
+    final session = state.currentSession;
+    final timeline = _timeline;
+    if (_isDisposed ||
+        _isStarting ||
+        _isStopping ||
+        _isResetting ||
+        session == null ||
+        session.status != WorkoutStatus.active ||
+        timeline == null ||
+        timeline.phase != WorkoutTimelinePhase.active) {
+      return;
+    }
 
-    // Don't stop GPS tracking during pause - keep collecting points
-    // _liveTrackingRepository.stopTracking();
-    // _locationSubscription?.cancel();
     _elapsedTimer?.cancel();
+    _elapsedTimer = null;
 
-    _pausedTime = DateTime.now();
-
-    // Create pause status change event
+    final pausedTimeline = timeline.pause(_liveTrackingRepository.now());
+    _timeline = pausedTimeline;
+    _activeDistanceAnchor = null;
+    _activeSegmentStartedAt = null;
     final pauseStatusChange = StatusChangeEvent(
       status: WorkoutStatus.paused,
-      timestamp: _pausedTime!,
+      timestamp: pausedTimeline.lastTransitionAt,
     );
-
-    // Add status change to session
-    final updatedStatusChanges = [
-      ...state.currentSession!.statusChanges,
-      pauseStatusChange,
-    ];
+    final snapshot = pausedTimeline.snapshotAt(pausedTimeline.lastTransitionAt);
 
     state = state.copyWith(
-      currentSession: state.currentSession!.copyWith(
+      currentSession: session.copyWith(
         status: WorkoutStatus.paused,
-        statusChanges: updatedStatusChanges,
+        statusChanges: <StatusChangeEvent>[
+          ...session.statusChanges,
+          pauseStatusChange,
+        ],
       ),
       isTracking: false,
+      elapsedTime: snapshot.activeDuration,
     );
-
-    log('⏸️ Workout paused at $_pausedTime');
   }
 
   /// Resume the paused workout
   Future<void> resumeWorkout() async {
-    if (state.currentSession == null ||
-        state.currentSession!.status != WorkoutStatus.paused) {
+    final session = state.currentSession;
+    final timeline = _timeline;
+    if (_isDisposed ||
+        _isStarting ||
+        _isStopping ||
+        _isResetting ||
+        session == null ||
+        session.status != WorkoutStatus.paused ||
+        timeline == null ||
+        timeline.phase != WorkoutTimelinePhase.paused) {
       return;
     }
 
     try {
-      final resumeTime = DateTime.now();
-
-      // Calculate paused duration
-      if (_pausedTime != null) {
-        _totalPausedDuration += resumeTime.difference(_pausedTime!);
-      }
-
-      // Create resume status change event
+      final resumedTimeline = timeline.resume(_liveTrackingRepository.now());
+      _timeline = resumedTimeline;
+      _activeDistanceAnchor = null;
+      _activeSegmentStartedAt = resumedTimeline.lastTransitionAt;
       final resumeStatusChange = StatusChangeEvent(
         status: WorkoutStatus.active,
-        timestamp: resumeTime,
+        timestamp: resumedTimeline.lastTransitionAt,
       );
-
-      // Add status change to session
-      final updatedStatusChanges = [
-        ...state.currentSession!.statusChanges,
-        resumeStatusChange,
-      ];
-
-      // Location tracking should already be running (not stopped during pause)
-      // await _liveTrackingRepository.startTracking();
-      // _locationSubscription = LiveTrackingService.instance.locationStream
-      //     .listen(_onLocationUpdate, onError: _onLocationError);
-
-      // Resume elapsed timer
-      _startElapsedTimer();
+      final snapshot = resumedTimeline.snapshotAt(
+        resumedTimeline.lastTransitionAt,
+      );
 
       state = state.copyWith(
-        currentSession: state.currentSession!.copyWith(
+        currentSession: session.copyWith(
           status: WorkoutStatus.active,
-          statusChanges: updatedStatusChanges,
+          statusChanges: <StatusChangeEvent>[
+            ...session.statusChanges,
+            resumeStatusChange,
+          ],
         ),
         isTracking: true,
+        elapsedTime: snapshot.activeDuration,
+        currentPace: 0,
       );
-
-      log('▶️ Workout resumed at $resumeTime');
-    } catch (e) {
-      state = state.copyWith(errorMessage: 'Failed to resume workout: $e');
+      _startElapsedTimer();
+    } catch (_) {
+      state = state.copyWith(
+        errorMessage: 'Failed to resume workout. Please try again.',
+      );
     }
   }
 
   /// Stop and complete the current workout
   Future<void> stopWorkout() async {
-    if (state.currentSession == null) return;
-
-    // Stop tracking and timers
-    await _liveTrackingRepository.stopTracking();
-    _locationSubscription?.cancel();
-    _elapsedTimer?.cancel();
-
-    // Calculate final metrics
-    final session = state.currentSession!;
-    final endTime = DateTime.now();
-    final totalDuration = endTime.difference(session.startTime!);
-    final activeDuration = totalDuration - _totalPausedDuration;
-
-    // Calculate elevation gain and loss
-    final elevationData = calculateElevationData(session.trackingPoints);
-
-    // TODO: Get user weight from profile for calorie calculation
-    const userWeight = 70.0; // Default weight, should come from user profile
-    final completionMetrics = calculateWorkoutCompletionMetrics(
-      distanceInMeters: session.totalDistance,
-      activeDuration: activeDuration,
-      userWeightKilograms: userWeight,
-    );
-
-    // Add final completed status change event
-    final completedStatusChange = StatusChangeEvent(
-      status: WorkoutStatus.completed,
-      timestamp: endTime,
-    );
-
-    final updatedStatusChanges = [
-      ...session.statusChanges,
-      completedStatusChange,
-    ];
-
-    final completedSession = session.copyWith(
-      status: WorkoutStatus.completed,
-      endTime: endTime,
-      pausedDuration: _totalPausedDuration,
-      averageSpeed: completionMetrics.averageSpeedMetersPerSecond,
-      averagePace: completionMetrics.averagePaceMinutesPerKilometer,
-      calories: completionMetrics.estimatedCalories,
-      elevationGain: elevationData.gain,
-      elevationLoss: elevationData.loss,
-      statusChanges: updatedStatusChanges,
-    );
-
-    state = state.copyWith(currentSession: completedSession, isTracking: false);
-
-    // Reset tracking state
-    _sessionStartTime = null;
-    _pausedTime = null;
-    _totalPausedDuration = Duration.zero;
-
-    log(
-      '🏁 Workout completed: ${session.totalDistance}m in ${activeDuration.inMinutes} minutes',
-    );
-    log('📊 Status changes count: ${completedSession.statusChanges.length}');
-    for (int i = 0; i < completedSession.statusChanges.length; i++) {
-      final change = completedSession.statusChanges[i];
-      log('  $i: ${change.status.name} at ${change.timestamp}');
+    final session = state.currentSession;
+    final timeline = _timeline;
+    if (_isDisposed ||
+        _isStarting ||
+        _isStopping ||
+        _isResetting ||
+        session == null ||
+        (session.status != WorkoutStatus.active &&
+            session.status != WorkoutStatus.paused) ||
+        timeline == null) {
+      return;
     }
 
-    // Save to database
+    _isStopping = true;
     try {
-      final workoutId = await _workoutRepository.saveWorkout(completedSession);
-      log(
-        '💾 Workout saved with ID: $workoutId (including ${completedSession.statusChanges.length} status changes)',
+      final completedTimeline = timeline.complete(
+        _liveTrackingRepository.now(),
+      );
+      _timeline = completedTimeline;
+      final endTime =
+          completedTimeline.completedAt ?? completedTimeline.lastTransitionAt;
+      final timing = completedTimeline.snapshotAt(endTime);
+
+      _elapsedTimer?.cancel();
+      _elapsedTimer = null;
+      final subscription = _locationSubscription;
+      final cleanupSucceeded = await _cleanupTrackingResources(subscription);
+
+      // TODO: Get user weight from profile for calorie calculation
+      const userWeight = 70.0; // Default weight, should come from user profile
+      final completionMetrics = calculateWorkoutCompletionMetrics(
+        distanceInMeters: session.totalDistance,
+        activeDuration: timing.activeDuration,
+        userWeightKilograms: userWeight,
       );
 
-      // Notify history that a new workout was added
-      await _ref.read(trackingHistoryProvider.notifier).onWorkoutAdded();
+      final completedStatusChange = StatusChangeEvent(
+        status: WorkoutStatus.completed,
+        timestamp: endTime,
+      );
+      final updatedStatusChanges = <StatusChangeEvent>[
+        ...session.statusChanges,
+        completedStatusChange,
+      ];
+      final sessionWithFinalTimeline = session.copyWith(
+        status: WorkoutStatus.completed,
+        endTime: endTime,
+        pausedDuration: timing.pausedDuration,
+        statusChanges: updatedStatusChanges,
+      );
+      final elevationData = calculateSegmentedElevationData(
+        WorkoutRouteSegmenter.buildActivePointSegments(
+          sessionWithFinalTimeline,
+        ),
+      );
 
-      // Test retrieval to verify data integrity
-      _testWorkoutRetrieval(workoutId);
-    } catch (e) {
-      log('❌ Failed to save workout: $e');
-      state = state.copyWith(errorMessage: 'Failed to save workout: $e');
-    }
-  }
+      final completedSession = sessionWithFinalTimeline.copyWith(
+        averageSpeed: completionMetrics.averageSpeedMetersPerSecond,
+        averagePace: completionMetrics.averagePaceMinutesPerKilometer,
+        calories: completionMetrics.estimatedCalories,
+        elevationGain: elevationData.gain,
+        elevationLoss: elevationData.loss,
+      );
+      _unsavedCompletedWorkout = completedSession;
 
-  /// Test workout retrieval to verify data integrity
-  Future<void> _testWorkoutRetrieval(int workoutId) async {
-    try {
-      final retrievedWorkout = await _workoutRepository.getWorkout(workoutId);
-      if (retrievedWorkout != null) {
-        log('✅ Workout retrieval test successful');
-        log(
-          '📊 Retrieved ${retrievedWorkout.trackingPoints.length} tracking points',
+      if (!_isDisposed) {
+        state = state.copyWith(
+          currentSession: completedSession,
+          isTracking: false,
+          elapsedTime: timing.activeDuration,
+          errorMessage:
+              cleanupSucceeded
+                  ? null
+                  : 'Location tracking cleanup was incomplete.',
+          clearErrorMessage: cleanupSucceeded,
         );
-        log(
-          '📊 Retrieved ${retrievedWorkout.statusChanges.length} status changes',
-        );
-
-        for (int i = 0; i < retrievedWorkout.statusChanges.length; i++) {
-          final change = retrievedWorkout.statusChanges[i];
-          log('   Retrieved: ${change.status.name} at ${change.timestamp}');
-        }
-      } else {
-        log('❌ Workout retrieval test failed: workout not found');
       }
-    } catch (e) {
-      log('❌ Workout retrieval test failed: $e');
+
+      _lastAcceptedPoint = null;
+      _activeDistanceAnchor = null;
+      _activeSegmentStartedAt = null;
+      _timeline = null;
+
+      try {
+        await _workoutRepository.saveWorkout(completedSession);
+        _unsavedCompletedWorkout = null;
+        try {
+          await _onWorkoutAdded();
+        } catch (_) {
+          // A history refresh failure must not make the durable save look failed.
+        }
+      } catch (_) {
+        if (!_isDisposed) {
+          state = state.copyWith(
+            errorMessage: 'Workout is not saved yet. Keep this screen open.',
+          );
+        }
+      }
+    } catch (_) {
+      if (!_isDisposed) {
+        state = state.copyWith(
+          errorMessage: 'Failed to finish workout. Please try again.',
+        );
+      }
+    } finally {
+      _isStopping = false;
     }
   }
 
   /// Handle new location updates
   void _onLocationUpdate(TrackingPointEntity point) {
-    if (state.currentSession == null) return;
+    if (_isDisposed ||
+        _isStarting ||
+        _isStopping ||
+        _isResetting ||
+        state.currentSession == null) {
+      return;
+    }
     final session = state.currentSession!;
-    final newPoints = [...session.trackingPoints, point];
+    if (session.status == WorkoutStatus.completed) return;
 
-    // Calculate new distance
-    double newDistance = session.totalDistance;
-    if (session.trackingPoints.isNotEmpty) {
-      final lastPoint = session.trackingPoints.last;
-      newDistance += LiveTrackingService.calculateDistance(lastPoint, point);
-    }
-
-    // Calculate current pace (based on last few points for more responsive updates)
-    double currentPace = 0;
-    if (newPoints.length >= 2) {
-      final recentPoints =
-          newPoints.length > 5
-              ? newPoints.sublist(newPoints.length - 5)
-              : newPoints;
-      if (recentPoints.length >= 2) {
-        double recentDistance = 0;
-        for (int i = 1; i < recentPoints.length; i++) {
-          recentDistance += LiveTrackingService.calculateDistance(
-            recentPoints[i - 1],
-            recentPoints[i],
-          );
-        }
-        final recentDuration = recentPoints.last.timestamp.difference(
-          recentPoints.first.timestamp,
-        );
-        final pace = calculatePace(recentDistance, recentDuration);
-        if (pace != null && pace > 0 && pace < 30) {
-          // reasonable pace range
-          currentPace = pace;
-        }
-      }
-    }
-
-    // Calculate max speed
-    double maxSpeed = session.maxSpeed;
-    if (point.speed != null && point.speed! > maxSpeed) {
-      maxSpeed = point.speed!;
-    }
-
-    final updatedSession = session.copyWith(
-      trackingPoints: newPoints,
-      totalDistance: newDistance,
-      maxSpeed: maxSpeed,
+    final isWorkoutActive = session.status == WorkoutStatus.active;
+    final decision = _pointAcceptancePolicy.evaluate(
+      point: point,
+      workoutType: session.type,
+      isWorkoutActive: isWorkoutActive,
+      previousAcceptedPoint: _lastAcceptedPoint,
+      activeDistanceAnchor: _activeDistanceAnchor,
+      activeSegmentStartedAt: _activeSegmentStartedAt,
     );
+    if (!decision.accepted) return;
+
+    _lastAcceptedPoint = point;
+    if (!isWorkoutActive) {
+      _activeDistanceAnchor = null;
+      state = state.copyWith(currentLocation: point);
+      return;
+    }
+
+    var currentPace = 0.0;
+    if (decision.contributesActiveDistance && decision.timestampDelta != null) {
+      currentPace =
+          calculatePace(
+            decision.distanceDeltaMeters,
+            decision.timestampDelta!,
+          ) ??
+          0;
+    }
+
+    final impliedSpeed = decision.impliedSpeedMetersPerSecond ?? 0;
+    final updatedSession = session.copyWith(
+      trackingPoints: <TrackingPointEntity>[...session.trackingPoints, point],
+      totalDistance: session.totalDistance + decision.distanceDeltaMeters,
+      maxSpeed:
+          impliedSpeed > session.maxSpeed ? impliedSpeed : session.maxSpeed,
+    );
+    if (decision.canAdvanceActiveDistanceAnchor) {
+      _activeDistanceAnchor = point;
+    }
 
     state = state.copyWith(
       currentSession: updatedSession,
@@ -420,47 +511,138 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   }
 
   /// Handle location tracking errors
-  void _onLocationError(dynamic error) {
-    log('❌ Location tracking error: $error');
-    state = state.copyWith(errorMessage: 'Location tracking error: $error');
+  void _onLocationError(Object error, StackTrace stackTrace) {
+    if (_isDisposed) return;
+    final session = state.currentSession;
+    if (_isStarting ||
+        _isStopping ||
+        _isResetting ||
+        session == null ||
+        session.status == WorkoutStatus.completed) {
+      return;
+    }
+    state = state.copyWith(errorMessage: 'Location tracking was interrupted.');
   }
 
   /// Start the elapsed time timer
   void _startElapsedTimer() {
     _elapsedTimer?.cancel();
-    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (state.currentSession != null && _sessionStartTime != null) {
-        final elapsed =
-            DateTime.now().difference(_sessionStartTime!) -
-            _totalPausedDuration;
-        state = state.copyWith(elapsedTime: elapsed);
+    _elapsedTimer = _periodicTimerFactory(const Duration(seconds: 1), (_) {
+      if (_isDisposed || _isStarting || _isStopping || _isResetting) {
+        return;
       }
+      final timeline = _timeline;
+      if (timeline == null ||
+          timeline.phase != WorkoutTimelinePhase.active ||
+          state.currentSession == null) {
+        return;
+      }
+
+      final observedTimeline = timeline.observe(_liveTrackingRepository.now());
+      _timeline = observedTimeline;
+      final snapshot = observedTimeline.snapshotAt(
+        observedTimeline.latestObservedAt,
+      );
+      state = state.copyWith(elapsedTime: snapshot.activeDuration);
     });
   }
 
   /// Clear error message
   void clearError() {
+    if (_isDisposed) return;
     state = state.clearError();
   }
 
+  bool _isOperationCurrent(int generation) {
+    return !_isDisposed && generation == _operationGeneration;
+  }
+
+  Future<bool> _cleanupTrackingResources(
+    StreamSubscription<TrackingPointEntity>? subscription,
+  ) async {
+    var subscriptionCancelled = true;
+    if (subscription != null) {
+      try {
+        await subscription.cancel();
+      } catch (_) {
+        subscriptionCancelled = false;
+      }
+    }
+
+    if (subscriptionCancelled) {
+      if (identical(_locationSubscription, subscription)) {
+        _locationSubscription = null;
+      }
+    } else {
+      _locationSubscription = subscription;
+    }
+
+    var sourceStopped = true;
+    try {
+      await _liveTrackingRepository.stopTracking();
+    } catch (_) {
+      sourceStopped = false;
+    }
+
+    _cleanupRequired = !subscriptionCancelled || !sourceStopped;
+    return !_cleanupRequired;
+  }
+
+  Future<bool> _retryRequiredCleanup() {
+    return _cleanupTrackingResources(_locationSubscription);
+  }
+
   /// Reset workout state (useful for starting fresh)
-  void resetWorkout() {
-    _liveTrackingRepository.stopTracking();
-    _locationSubscription?.cancel();
+  Future<void> resetWorkout() async {
+    if (_isDisposed || _isStopping || _isResetting) return;
+    if (_unsavedCompletedWorkout != null) {
+      state = state.copyWith(
+        errorMessage:
+            'The previous workout could not be saved. Reset is blocked.',
+      );
+      return;
+    }
+
+    _isResetting = true;
+    _operationGeneration += 1;
     _elapsedTimer?.cancel();
+    _elapsedTimer = null;
 
-    _sessionStartTime = null;
-    _pausedTime = null;
-    _totalPausedDuration = Duration.zero;
+    try {
+      final cleanupSucceeded = await _cleanupTrackingResources(
+        _locationSubscription,
+      );
+      _resetInternalTrackingState();
 
-    state = const LiveTrackingState();
+      if (!_isDisposed) {
+        state = LiveTrackingState(
+          errorMessage:
+              cleanupSucceeded
+                  ? null
+                  : 'Location tracking cleanup is still pending.',
+        );
+      }
+    } finally {
+      _isResetting = false;
+    }
+  }
+
+  void _resetInternalTrackingState() {
+    _elapsedTimer?.cancel();
+    _elapsedTimer = null;
+    _timeline = null;
+    _lastAcceptedPoint = null;
+    _activeDistanceAnchor = null;
+    _activeSegmentStartedAt = null;
   }
 
   @override
   void dispose() {
-    _liveTrackingRepository.stopTracking();
-    _locationSubscription?.cancel();
-    _elapsedTimer?.cancel();
+    _isDisposed = true;
+    _operationGeneration += 1;
+    final subscription = _locationSubscription;
+    unawaited(_cleanupTrackingResources(subscription));
+    _resetInternalTrackingState();
     super.dispose();
   }
 }
@@ -473,7 +655,12 @@ final liveTrackingProvider =
       return LiveTrackingNotifier(
         liveTrackingRepository,
         workoutRepository,
-        ref,
+        currentUserId: () {
+          final id = ref.read(sessionProvider).user?.id;
+          return id == null ? null : int.tryParse(id);
+        },
+        onWorkoutAdded:
+            () => ref.read(trackingHistoryProvider.notifier).onWorkoutAdded(),
       );
     });
 

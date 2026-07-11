@@ -1,17 +1,16 @@
-import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
+import 'package:rythmrun_frontend_flutter/core/di/injection_container.dart';
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_segment_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/map_controller_button.dart';
-import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_segment_builder.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
@@ -32,7 +31,6 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
   final List<Marker> _markers = [];
   final List<Polyline> _solidPolylines = [];
   final List<Polyline> _dashedPolylines = [];
-  StreamSubscription<TrackingPointEntity>? _locationSubscription;
 
   // Default camera position (San Francisco)
   LatLng _center = const LatLng(28.6139, 77.2090); // Default to Delhi
@@ -48,7 +46,6 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
   @override
   void initState() {
     super.initState();
-    print('🚀 LiveMapFeed initialized');
     _mapController = MapController();
     _animationController = AnimationController(
       vsync: this,
@@ -72,7 +69,6 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
   @override
   void dispose() {
     _animationController.dispose();
-    _locationSubscription?.cancel();
     super.dispose();
   }
 
@@ -81,7 +77,9 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
 
     // Get current location for initial camera position
     final currentLocation =
-        await LiveTrackingService.instance.getCurrentLocation();
+        await ref
+            .read(liveTrackingRepositoryProvider)
+            .getCurrentLocation();
     if (currentLocation != null && mounted) {
       final newCenter = LatLng(
         currentLocation.latitude,
@@ -104,39 +102,17 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
       // Programmatically move the map to the user's current location
       _animatedMove(newCenter, _zoom);
     } else {
-      // If we can't get current location, show error but don't fall back to Delhi
-      debugPrint('❌ Could not get current location for map initialization');
-      // Keep the default center but don't animate to it
+      // Keep the default center but do not pretend it is a live location.
     }
-
-    // Listen to location updates
-    _locationSubscription = LiveTrackingService.instance.locationStream.listen(
-      (point) => _onLocationUpdate(point, ref.read(liveTrackingProvider)),
-      onError: (error) {
-        debugPrint('❌ Map location error: $error');
-      },
-    );
   }
 
-  void _onLocationUpdate(
+  void _onAcceptedLocationUpdate(
     TrackingPointEntity point,
     LiveTrackingState liveTrackingState,
   ) {
     if (_mapController == null) return;
 
     final newLatLng = LatLng(point.latitude, point.longitude);
-    print('🌍 Location update received: ${point.latitude}, ${point.longitude}');
-
-    // Validate location to prevent jumping (basic sanity check)
-    if (!_isValidLocationForPolyline(
-      newLatLng,
-      liveTrackingState.currentSession,
-    )) {
-      print(
-        '⚠️ Invalid location detected: ${point.latitude}, ${point.longitude}',
-      );
-      return;
-    }
 
     // Update current location marker
     _updateCurrentLocationMarker(
@@ -145,49 +121,10 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
       liveTrackingState.currentSession,
     );
 
-    // Update tracking path
-    _updateTrackingPath();
-
     // Follow current location only if following is enabled and user isn't interacting
     if (_isFollowing && !_manualByUser) {
       _animateToCurrentLocation(newLatLng);
     }
-  }
-
-  bool _isValidLocationForPolyline(
-    LatLng location,
-    WorkoutSessionEntity? session,
-  ) {
-    // Different thresholds based on session status
-    double threshold;
-    if (session?.status == WorkoutStatus.active) {
-      threshold = 300; // Stricter for active
-    } else if (session?.status == WorkoutStatus.paused) {
-      threshold = 1000; // More lenient for paused
-    } else {
-      return true; // Allow all for other statuses
-    }
-    // Basic validation - check if coordinates are within valid ranges
-    if (location.latitude < -90 || location.latitude > 90) return false;
-    if (location.longitude < -180 || location.longitude > 180) return false;
-
-    // Check for obviously invalid coordinates (0,0 or similar)
-    if (location.latitude == 0 && location.longitude == 0) return false;
-
-    if (session?.trackingPoints.isNotEmpty ?? false) {
-      final lastPoint = session!.trackingPoints.last;
-      final distance = calculateDistance(
-        LatLng(lastPoint.latitude, lastPoint.longitude),
-        location,
-      );
-      if (distance > threshold) {
-        print(
-          '⚠️ Large location jump detected: ${distance.toStringAsFixed(2)}m',
-        );
-        return false;
-      }
-    }
-    return true;
   }
 
   void _updateTrackingPath() {
@@ -196,35 +133,25 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
 
     // If no session exists or session has ended, clear the map
     if (session == null || session.status == WorkoutStatus.completed) {
-      print('🧹 No session or completed, clearing map data');
       _clearMapData();
       return;
     }
 
     if (session.status == WorkoutStatus.notStarted) {
-      print('🧹 Session not started, clearing map data');
       _clearMapData();
       return;
     }
 
     // If no tracking points, just clear polylines but keep current location marker
     if (session.trackingPoints.isEmpty) {
-      print('📍 No tracking points, clearing tracking data');
       _clearTrackingData();
       return;
     }
-
-    print(
-      '📊 Processing ${session.trackingPoints.length} tracking points and ${session.statusChanges.length} status changes',
-    );
 
     // Build segments based on workout status changes
     final List<TrackingSegment> segments = LiveMapSegmentBuilder.buildSegments(
       session,
     );
-
-    // Debug segments
-    LiveMapSegmentBuilder.debugSegments(segments);
 
     // Clear existing polylines
     _solidPolylines.clear();
@@ -266,7 +193,6 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
     setState(() {
       _solidPolylines.add(solidPolyline);
     });
-    print('✅ Created solid polyline with ${points.length} points');
   }
 
   void _createDashedPolylineFromPoints(List<LatLng> points, WorkoutType type) {
@@ -282,7 +208,6 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
     setState(() {
       _dashedPolylines.add(dashedPolyline);
     });
-    print('✅ Created dashed polyline with ${points.length} points');
   }
 
   void _updateCurrentLocationMarker(
@@ -399,29 +324,30 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
   }
 
   void _handleSessionStateChanges(WorkoutSessionEntity? currentSession) {
-    // Only process if the session actually changed
-    if (_previousSession != currentSession) {
-      if (_previousSession != null &&
+    final previousSession = _previousSession;
+    if (previousSession != currentSession) {
+      final routeOrStatusChanged =
           currentSession != null &&
-          _previousSession!.status != currentSession.status) {
-        print(
-          '🧹 Session state changed: ${_previousSession!.status} -> ${currentSession.status}',
-        );
+          currentSession.status != WorkoutStatus.completed &&
+          (previousSession == null ||
+              previousSession.trackingPoints !=
+                  currentSession.trackingPoints ||
+              previousSession.status != currentSession.status);
+      if (routeOrStatusChanged) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
           _updateTrackingPath();
         });
       }
-      // If sess}ion ended (was active, now null or completed)
-      if (_previousSession != null &&
+      if (previousSession != null &&
           (currentSession == null ||
               currentSession.status == WorkoutStatus.completed)) {
-        debugPrint('🧹 Session ended, clearing map data');
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
           _clearMapData();
         });
       }
 
-      // Update previous session reference
       _previousSession = currentSession;
     }
   }
@@ -431,7 +357,6 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
     return Consumer(
       builder: (context, ref, child) {
         final liveTrackingState = ref.watch(liveTrackingProvider);
-        final sessionData = ref.watch(sessionProvider);
 
         // Listen for error messages and show them in a SnackBar
         ref.listen<String?>(
@@ -443,15 +368,22 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
             }
           },
         );
+        ref.listen<TrackingPointEntity?>(
+          liveTrackingProvider.select((state) => state.currentLocation),
+          (previous, next) {
+            if (next == null || next == previous) return;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              _onAcceptedLocationUpdate(
+                next,
+                ref.read(liveTrackingProvider),
+              );
+            });
+          },
+        );
 
         // Check for session state changes
         _handleSessionStateChanges(liveTrackingState.currentSession);
-
-        // Debug: Print session state
-        print('🗺️ LiveMapFeed: Session state: ${sessionData.state.name}');
-        print(
-          '🗺️ LiveMapFeed: Current session: ${liveTrackingState.currentSession?.id}',
-        );
 
         // Always use online flow - TileLayer will handle offline gracefully
         return Container(
@@ -582,10 +514,11 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
       // Center button enables following and clears manual override
       _isFollowing = true;
       _manualByUser = false;
+      final repository = ref.read(liveTrackingRepositoryProvider);
 
       // Check permissions first
-      final permissionStatus =
-          await LiveTrackingService.instance.checkPermissions();
+      final permissionStatus = await repository.checkPermissions();
+      if (!mounted) return;
       if (permissionStatus != LocationServiceStatus.granted) {
         _isFollowing = false;
         _showErrorSnackBar(
@@ -620,8 +553,8 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
         ),
       );
 
-      final currentLocation =
-          await LiveTrackingService.instance.getCurrentLocation();
+      final currentLocation = await repository.getCurrentLocation();
+      if (!mounted) return;
 
       if (currentLocation != null) {
         final newLatLng = LatLng(
@@ -656,8 +589,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
           'Unable to get your current location. Please check your location settings.',
         );
       }
-    } catch (e) {
-      debugPrint('❌ Error centering on current location: $e');
+    } catch (_) {
       _showErrorSnackBar('Failed to get your location. Please try again.');
     }
   }
@@ -763,7 +695,6 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
         // Ensure we're at the exact target location
         if (status == AnimationStatus.completed) {
           _mapController!.move(destLocation, destZoom);
-          debugPrint('✅ Animation completed - map locked at target location');
         }
       }
     });

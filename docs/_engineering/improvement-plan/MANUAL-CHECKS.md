@@ -38,6 +38,7 @@ Repository commits and local test results cannot change a manual check to `Verif
 | MC-1.2 | Metric migration backups and staging exercise | Database and mobile owners | Pending | PostgreSQL/SQLite backup references, migration runs, version counts, and rollback rehearsal | — | — | Current repository migration only tags provenance; historic values are not rewritten. |
 | MC-1.3 | Previous-client and device compatibility | Mobile and QA owners | Pending | Supported old-client matrix plus Android SQLite upgrade/reopen evidence | — | — | Backend migration must precede the corrected version-2 mobile writer. |
 | MC-1.4 | Coordinated metric rollout and observation | Deployment, mobile, and on-call owners | Pending | Backend/mobile versions, staged rollout timeline, metric-version telemetry, thresholds, and outcome | — | — | IP-0 containment must remain active throughout. |
+| MC-1.5 | GPS acceptance and pause behavior on devices | Mobile and QA owners | Pending | Release-build route run showing active/pause/resume distance, accepted route, persisted result, and sanitized-log review | — | — | Never attach exact coordinates, timestamps, or route exports to Git evidence. |
 
 ## Hosted CI procedure
 
@@ -142,3 +143,14 @@ Pass condition: both stores preserve unresolved legacy data, version-2 writes ro
 6. Once any unsynced version-2 workout exists, do not roll back to a client that omits `metricsVersion`: it would upload canonical m/s as legacy version 1. Stop sync and forward-fix, or first prove every version-2 row has been finalized safely.
 
 Pass condition: mixed-version compatibility, staged migration, and the observation window have dated owner/reviewer evidence while all IP-0 containment requirements remain enforced.
+
+### MC-1.5 — GPS acceptance and pause behavior
+
+1. Use an isolated test account and a reviewed release build on representative Android and iOS devices; record only build/device references in Git.
+2. Walk or run a measured short route, pause, move a deliberate large distance, resume, and finish. Confirm paused movement and the first resumed sample add zero distance.
+3. Compare the displayed map, completed local route, distance, active time, maximum speed, and synced route count. They must all derive from the same accepted sequence with visible breaks across pauses or sample gaps.
+4. Exercise poor-accuracy and implausible-jump conditions in an approved simulator/device harness. Confirm rejection does not change route, distance, pace, maximum speed, elevation, or calories.
+5. Finish once while paused and repeat pause/resume several times. Confirm the open pause closes once, active time is non-negative, and a duplicate finish does not create a second workout.
+6. Inspect release logs and crash/analytics breadcrumbs for the run. Exact coordinates, acquisition timestamps, and route payloads must be absent; store sensitive device evidence only in the access-controlled QA system.
+
+Pass condition: Android and iOS evidence shows one accepted route across UI/local/sync, deterministic pause timing, no resume bridge, and no exact-route logging.

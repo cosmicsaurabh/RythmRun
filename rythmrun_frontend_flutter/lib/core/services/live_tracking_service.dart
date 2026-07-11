@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:location/location.dart' as location_plugin;
 import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
@@ -26,7 +24,6 @@ class LiveTrackingService {
       StreamController<TrackingPointEntity>.broadcast();
 
   bool _isTracking = false;
-  TrackingPointEntity? _lastPoint;
 
   /// Stream of location updates
   Stream<TrackingPointEntity> get locationStream => _locationController.stream;
@@ -93,7 +90,6 @@ class LiveTrackingService {
       ).listen(_onLocationUpdate, onError: _onLocationError);
 
       _isTracking = true;
-      log('🎯 Tracking started with accuracy: $accuracy');
     } catch (e) {
       throw Exception('Failed to start location tracking: $e');
     }
@@ -106,42 +102,18 @@ class LiveTrackingService {
     await _positionSubscription?.cancel();
     _positionSubscription = null;
     _isTracking = false;
-    _lastPoint = null;
-
-    log('🛑 Tracking stopped');
   }
 
   /// Handle new location updates
   void _onLocationUpdate(Position position) {
-    final point = TrackingPointEntity(
-      latitude: position.latitude,
-      longitude: position.longitude,
-      altitude: position.altitude,
-      accuracy: position.accuracy,
-      speed: position.speed,
-      heading: position.heading,
-      timestamp: DateTime.now(),
-    );
+    final point = mapPosition(position);
 
-    // Optional: Filter out inaccurate readings
-    if (position.accuracy > 50) {
-      debugPrint(
-        '⚠️ Skipping inaccurate reading: ${position.accuracy}m accuracy',
-      );
-      return;
-    }
-
-    _lastPoint = point;
+    // Validation belongs to the versioned acceptance policy in the notifier.
     _locationController.add(point);
-
-    debugPrint(
-      '📍 Location update: ${point.latitude}, ${point.longitude}, ${point.accuracy}m accuracy ${point.speed}m/s speed ${point.heading}° heading ${point.altitude}m altitude ${point.timestamp} timestamp',
-    );
   }
 
   /// Handle location errors
   void _onLocationError(dynamic error) {
-    debugPrint('❌ Location error: $error');
     _locationController.addError(error);
   }
 
@@ -150,11 +122,9 @@ class LiveTrackingService {
     try {
       LocationServiceStatus permissionStatus = await checkPermissions();
       if (permissionStatus != LocationServiceStatus.granted) {
-        debugPrint('❌ Location permission not granted: $permissionStatus');
         return null;
       }
 
-      debugPrint('📍 Requesting current location...');
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -164,32 +134,31 @@ class LiveTrackingService {
 
       // Validate the position
       if (position.latitude == 0.0 && position.longitude == 0.0) {
-        debugPrint('❌ Invalid position received (0,0)');
         return null;
       }
 
-      debugPrint(
-        '✅ Current location obtained: ${position.latitude}, ${position.longitude} (accuracy: ${position.accuracy}m)',
-      );
-
-      return TrackingPointEntity(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        altitude: position.altitude,
-        accuracy: position.accuracy,
-        speed: position.speed,
-        heading: position.heading,
-        timestamp: DateTime.now(),
-      );
-    } catch (e) {
-      debugPrint('❌ Failed to get current location: $e');
+      return mapPosition(position);
+    } catch (_) {
       return null;
     }
   }
 
-  void dispose() {
-    stopTracking();
-    _locationController.close();
+  /// Convert the platform sample without replacing its acquisition timestamp.
+  static TrackingPointEntity mapPosition(Position position) {
+    return TrackingPointEntity(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      altitude: position.altitude,
+      accuracy: position.accuracy,
+      speed: position.speed,
+      heading: position.heading,
+      timestamp: position.timestamp,
+    );
+  }
+
+  Future<void> dispose() async {
+    await stopTracking();
+    await _locationController.close();
   }
 
   /// Calculate distance between two points using Haversine formula
@@ -210,8 +179,7 @@ class LiveTrackingService {
     try {
       final location = await getCurrentLocation();
       return location?.altitude;
-    } catch (e) {
-      debugPrint('❌ Failed to get current elevation: $e');
+    } catch (_) {
       return null;
     }
   }
@@ -226,15 +194,13 @@ class LiveTrackingService {
       if (Platform.isAndroid) {
         final location = location_plugin.Location();
         bool serviceEnabled = await location.serviceEnabled();
-        
+
         if (!serviceEnabled) {
           // This shows the Samsung-style system dialog with "Turn on" button
           serviceEnabled = await location.requestService();
           if (serviceEnabled) {
-            log('✅ Location service enabled via system dialog');
             return true;
           } else {
-            log('❌ User declined to enable location service');
             return false;
           }
         } else {
@@ -246,8 +212,7 @@ class LiveTrackingService {
         await Geolocator.openLocationSettings();
         return false; // We can't know if user enabled it, so return false
       }
-    } catch (e) {
-      debugPrint('❌ Failed to request location service: $e');
+    } catch (_) {
       // Fallback: open location settings
       try {
         await Geolocator.openLocationSettings();

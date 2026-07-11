@@ -173,6 +173,22 @@ ElevationState calculateElevationData(List<TrackingPointEntity> points) {
   return ElevationState(gain: totalGain, loss: totalLoss);
 }
 
+/// Calculate elevation without joining independent route segments.
+ElevationState calculateSegmentedElevationData(
+  Iterable<List<TrackingPointEntity>> segments,
+) {
+  var totalGain = 0.0;
+  var totalLoss = 0.0;
+
+  for (final segment in segments) {
+    final elevation = calculateElevationData(segment);
+    totalGain += elevation.gain;
+    totalLoss += elevation.loss;
+  }
+
+  return ElevationState(gain: totalGain, loss: totalLoss);
+}
+
 /// Apply simple moving average to smooth elevation data
 List<TrackingPointEntity> smoothElevationData(
   List<TrackingPointEntity> points,

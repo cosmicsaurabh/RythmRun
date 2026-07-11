@@ -49,7 +49,7 @@ The audit's next highest risks are user-visible trust failures and cross-account
 
 ## Non-goals
 
-- Active-workout persistence and background service implementation; IP-3 owns those.
+- Active-workout persistence and background service implementation; IP-3 owns those. Durable retry after an initial completed-workout local-save failure also remains IP-3; IP-1.2 keeps that workout in memory and blocks overwrite, but does not claim process-death recovery.
 - Full refresh-token repair or secure token migration; IP-2 owns those.
 - Cloud pull/restore or a final chunked route protocol; IP-4 owns those.
 - A wholesale split of `local_db_service.dart` or large UI files. Extract only the boundaries needed to test this phase.
@@ -136,6 +136,8 @@ Any implementation that uses ambiguous names such as `calculateSpeed` must be re
 **Architecture decision**
 
 Every raw point passes through one pure acceptance policy before it reaches distance, pace, maximum speed, persistence, or the drawn route. The map consumes accepted provider state and no longer has a second singleton GPS subscription or a competing jump filter.
+
+Repository delivery uses GPS policy version 1 within the not-yet-deployed metrics-version-2 contract. If version 2 is released before this package, assign distinct persisted policy provenance rather than silently changing its meaning.
 
 **Implementation**
 
@@ -409,10 +411,10 @@ Every raw point passes through one pure acceptance policy before it reaches dist
 - [ ] Historical speed migration was sampled, backed up, versioned, and exercised safely.
 - [x] Calories receive km/h exactly once and are labeled as an estimate.
 - [x] Overall/per-type duration statistics subtract paused time and match detail semantics.
-- [ ] One GPS policy governs map, metrics, and persistence.
-- [ ] Paused movement and resume bridging add no active distance.
-- [ ] Finish-while-paused active duration is correct.
-- [ ] Exact coordinates are absent from release logging.
+- [x] One GPS policy governs map, metrics, and persistence.
+- [x] Paused movement and resume bridging add no active distance.
+- [x] Finish-while-paused active duration is correct.
+- [x] Exact coordinates are absent from release logging.
 - [ ] Nullable state can be explicitly cleared across all audited state models.
 - [ ] Logout/account switch stops user-scoped work and invalidates state.
 - [ ] Every local get/mutation by row ID is owner-scoped.
@@ -430,3 +432,5 @@ Every raw point passes through one pure acceptance policy before it reaches dist
 | --- | --- | --- | --- | --- |
 | 2026-07-11 | IP-1.1 | Flutter metric/state/sync/SQLite suites; Prisma validation/generation; backend build; focused activity suites | Pass locally; full backend and rollout pending | Flutter 39/39 passed, including 18/18 focused metric tests. Backend changed suites 22/22 and all non-HTTP suites 134/134 passed under Node 22; the unchanged 16-test socket suite could not be rerun because external execution approval hit its usage limit. Full backend, PostgreSQL migration exercise, production sampling, backup, compatibility, and rollout remain open. |
 | 2026-07-11 | IP-1.1 | `flutter analyze`; changed-file analysis | Baseline only; no new metric findings | Repository analyzer baseline is now 45 findings (1 warning, 44 info) after the maintainer's preceding Dart-fix commit; metric/local DB files add none. |
+| 2026-07-11 | IP-1.2 | Pure GPS policy/timeline/route tests; provider stream and pause tests; native timestamp mapping; full Flutter suite | Pass locally; device verification pending | Flutter 71/71 passed, including 32/32 focused IP-1.2 tests. The authoritative route excludes paused/rejected points, stop time is captured before teardown, route/elevation segments break across pause and >30-second gaps, and start/reset/stop/dispose cleanup is serialized. A failed initial local save remains in memory and blocks overwrite; durable retry remains IP-3. MC-1.5 remains pending. |
+| 2026-07-11 | IP-1.2 | `flutter analyze`; source scans for raw stream listeners and coordinate/timestamp logging | Pass with existing baseline only | Repository analyzer baseline is 20 informational findings and no warnings after removing tracking-path release logs. Production has one `locationStream.listen` consumer, and audited release paths contain no exact coordinate/timestamp/route logging. |
