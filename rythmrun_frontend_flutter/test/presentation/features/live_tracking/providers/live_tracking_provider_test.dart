@@ -13,6 +13,32 @@ void main() {
   final start = DateTime.utc(2026, 7, 11, 10);
 
   group('LiveTrackingNotifier GPS and pause state machine', () {
+    test('a successful permission retry clears the previous error', () async {
+      final context = _TestContext(start);
+      context.repository.permissionStatus =
+          LocationServiceStatus.permissionDenied;
+
+      await context.notifier.checkPermissions();
+
+      expect(context.notifier.state.hasLocationPermission, isFalse);
+      expect(context.notifier.state.errorMessage, isNotNull);
+      expect(
+        context.notifier.state.locationServiceStatus,
+        LocationServiceStatus.permissionDenied,
+      );
+
+      context.repository.permissionStatus = LocationServiceStatus.granted;
+      await context.notifier.checkPermissions();
+
+      expect(context.notifier.state.hasLocationPermission, isTrue);
+      expect(context.notifier.state.errorMessage, isNull);
+      expect(
+        context.notifier.state.locationServiceStatus,
+        LocationServiceStatus.granted,
+      );
+      await context.dispose();
+    });
+
     test(
       'paused movement and the first resumed point add no distance',
       () async {
@@ -308,6 +334,60 @@ void main() {
       },
     );
 
+    test(
+      'account exit cancels a pending start and awaits GPS cleanup',
+      () async {
+        final context = _TestContext(start);
+        final startCompleter = Completer<void>();
+        context.repository.startCompleter = startCompleter;
+
+        final pendingStart = context.notifier.startWorkout(WorkoutType.running);
+        await _flushAsyncWork();
+        expect(context.repository.hasLocationListener, isTrue);
+
+        var didQuiesce = false;
+        final pendingQuiesce = context.notifier.quiesceForAccountExit().then((
+          result,
+        ) {
+          didQuiesce = true;
+          return result;
+        });
+        await _flushAsyncWork();
+        expect(didQuiesce, isFalse);
+
+        startCompleter.complete();
+        await pendingStart;
+        expect(await pendingQuiesce, isTrue);
+
+        expect(context.notifier.state.currentSession, isNull);
+        expect(context.repository.hasLocationListener, isFalse);
+        expect(context.notifier.hasPendingTrackingCleanup, isFalse);
+        await context.dispose();
+      },
+    );
+
+    test(
+      'account-exit latch rejects a new GPS start until A is restored',
+      () async {
+        final context = _TestContext(start);
+
+        expect(await context.notifier.quiesceForAccountExit(), isTrue);
+        await context.notifier.startWorkout(WorkoutType.running);
+
+        expect(context.repository.startCalls, 0);
+        expect(context.repository.locationStreamReads, 0);
+        expect(context.notifier.state.currentSession, isNull);
+
+        context.notifier.resumeAfterBlockedAccountExit();
+        await context.notifier.startWorkout(WorkoutType.running);
+
+        expect(context.repository.startCalls, 1);
+        expect(context.repository.locationStreamReads, 1);
+        await context.notifier.stopWorkout();
+        await context.dispose();
+      },
+    );
+
     test('a late stream error cannot write state after dispose', () async {
       final context = _TestContext(start);
       await context.notifier.startWorkout(WorkoutType.running);
@@ -382,6 +462,57 @@ void main() {
       await context.dispose();
     });
 
+    test(
+      'concurrent finish calls await one finalization and one save',
+      () async {
+        final context = _TestContext(start);
+        await context.notifier.startWorkout(WorkoutType.running);
+        final saveCompleter = Completer<void>();
+        context.workoutRepository.saveCompleter = saveCompleter;
+
+        final firstStop = context.notifier.stopWorkout();
+        await _flushAsyncWork();
+        final secondStop = context.notifier.stopWorkout();
+
+        expect(identical(firstStop, secondStop), isTrue);
+        expect(context.workoutRepository.saved, hasLength(1));
+
+        saveCompleter.complete();
+        final results = await Future.wait(
+          <Future<LiveWorkoutFinalizationResult>>[firstStop, secondStop],
+        );
+
+        expect(
+          results.map((result) => result.status),
+          everyElement(LiveWorkoutFinalizationStatus.saved),
+        );
+        expect(context.workoutRepository.saved, hasLength(1));
+        await context.dispose();
+      },
+    );
+
+    test('failed GPS cleanup remains pending until retry succeeds', () async {
+      final context = _TestContext(start);
+      await context.notifier.startWorkout(WorkoutType.running);
+      context.repository.failCancellation = true;
+      context.repository.failStop = true;
+
+      await context.notifier.stopWorkout();
+
+      expect(context.notifier.hasPendingTrackingCleanup, isTrue);
+      expect(context.repository.hasLocationListener, isTrue);
+
+      context.repository.failCancellation = false;
+      context.repository.failStop = false;
+      final didCleanUp = await context.notifier.retryPendingTrackingCleanup();
+
+      expect(didCleanUp, isTrue);
+      expect(context.notifier.hasPendingTrackingCleanup, isFalse);
+      expect(context.repository.hasLocationListener, isFalse);
+      expect(context.notifier.state.errorMessage, isNull);
+      await context.dispose();
+    });
+
     test('a failed save remains visible and cannot be overwritten', () async {
       final context = _TestContext(start);
       await context.notifier.startWorkout(WorkoutType.running);
@@ -405,6 +536,50 @@ void main() {
       );
       await context.dispose();
     });
+
+    test(
+      'an in-memory failed save can be retried before account exit',
+      () async {
+        final context = _TestContext(start);
+        await context.notifier.startWorkout(WorkoutType.running);
+        context.workoutRepository.failSave = true;
+
+        final finish = await context.notifier.stopWorkout();
+        expect(finish.status, LiveWorkoutFinalizationStatus.savePending);
+        expect(context.notifier.hasUnsavedCompletedWorkout, isTrue);
+
+        context.workoutRepository.failSave = false;
+        final didRetry = await context.notifier.retryUnsavedWorkoutSave();
+
+        expect(didRetry, isTrue);
+        expect(context.notifier.hasUnsavedCompletedWorkout, isFalse);
+        expect(context.notifier.state.errorMessage, isNull);
+        expect(context.workoutRepository.saved, hasLength(2));
+        await context.dispose();
+      },
+    );
+
+    test(
+      'explicit discard clears a failed save and allows a new workout',
+      () async {
+        final context = _TestContext(start);
+        await context.notifier.startWorkout(WorkoutType.running);
+        context.workoutRepository.failSave = true;
+        await context.notifier.stopWorkout();
+
+        await context.notifier.discardWorkout();
+        context.workoutRepository.failSave = false;
+        await context.notifier.startWorkout(WorkoutType.cycling);
+
+        expect(context.notifier.hasUnsavedCompletedWorkout, isFalse);
+        expect(
+          context.notifier.state.currentSession!.type,
+          WorkoutType.cycling,
+        );
+        await context.notifier.stopWorkout();
+        await context.dispose();
+      },
+    );
   });
 }
 
@@ -455,6 +630,7 @@ class _FakeLiveTrackingRepository implements LiveTrackingRepository {
   int stopCalls = 0;
   bool failCancellation = false;
   bool failStop = false;
+  LocationServiceStatus permissionStatus = LocationServiceStatus.granted;
   Completer<void>? startCompleter;
   Completer<void>? stopCompleter;
   void Function()? onStop;
@@ -488,7 +664,7 @@ class _FakeLiveTrackingRepository implements LiveTrackingRepository {
 
   @override
   Future<LocationServiceStatus> checkPermissions() async {
-    return LocationServiceStatus.granted;
+    return permissionStatus;
   }
 
   @override

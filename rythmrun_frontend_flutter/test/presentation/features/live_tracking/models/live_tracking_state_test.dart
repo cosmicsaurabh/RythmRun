@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
 
@@ -39,6 +41,41 @@ void main() {
         LiveTrackingState(currentPace: double.infinity).formattedPace,
         '--:--',
       );
+    });
+
+    test('omitted nullable values retain and explicit null clears them', () {
+      final workout = _workout(averageSpeed: 1, maxSpeed: 2);
+      final location = TrackingPointEntity(
+        latitude: 12,
+        longitude: 77,
+        timestamp: DateTime.utc(2026, 7, 11),
+      );
+      final original = LiveTrackingState(
+        currentSession: workout,
+        currentLocation: location,
+        errorMessage: 'old error',
+        locationServiceStatus: LocationServiceStatus.permissionDenied,
+      );
+
+      final retained = original.copyWith();
+      expect(retained.currentSession, same(workout));
+      expect(retained.currentLocation, same(location));
+      expect(retained.errorMessage, 'old error');
+      expect(
+        retained.locationServiceStatus,
+        LocationServiceStatus.permissionDenied,
+      );
+
+      final cleared = original.copyWith(
+        currentSession: null,
+        currentLocation: null,
+        errorMessage: null,
+        locationServiceStatus: null,
+      );
+      expect(cleared.currentSession, isNull);
+      expect(cleared.currentLocation, isNull);
+      expect(cleared.errorMessage, isNull);
+      expect(cleared.locationServiceStatus, isNull);
     });
   });
 }

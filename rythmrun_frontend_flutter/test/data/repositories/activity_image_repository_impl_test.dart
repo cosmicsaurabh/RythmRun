@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:rythmrun_frontend_flutter/core/services/activity_image_file_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
+import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/auth_local_datasource.dart';
@@ -140,6 +142,85 @@ void main() {
       expect(localDataSource.images[1]!.remoteActivityId, remoteActivityId);
       expect(localDataSource.images[1]!.remoteImageId, remoteImageId);
     });
+
+    test(
+      'user-scope suspension waits for in-flight image sync and blocks new sync',
+      () async {
+        final gate = UserScopeOperationGate()..activate(userId);
+        repository = ActivityImageRepositoryImpl(
+          localDataSource: localDataSource,
+          remoteDataSource: remoteDataSource,
+          fileService: fileService,
+          authRepository: authRepository,
+          authLocalDataSource: authLocalDataSource,
+          workoutLocalDataSource: workoutLocalDataSource,
+          random: Random(0),
+          operationGate: gate,
+        );
+        localDataSource.addImage(
+          _image(
+            localId: 1,
+            localWorkoutId: localWorkoutId,
+            clientImageId: clientImageId,
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.queued,
+          ),
+        );
+        final reachedConfirm = Completer<void>();
+        final allowConfirm = Completer<void>();
+        remoteDataSource.beforeConfirm = () async {
+          if (!reachedConfirm.isCompleted) {
+            reachedConfirm.complete();
+          }
+          await allowConfirm.future;
+        };
+
+        final sync = repository.syncPendingImages();
+        await reachedConfirm.future;
+
+        var didDrain = false;
+        final drain = gate.suspendAndDrain().then((_) {
+          didDrain = true;
+        });
+        await _pumpMicrotasks();
+
+        expect(didDrain, isFalse);
+        expect(gate.tryAcquire(userId), isNull);
+
+        allowConfirm.complete();
+        await sync;
+        await drain;
+        expect(didDrain, isTrue);
+
+        localDataSource.addImage(
+          _image(
+            localId: 2,
+            localWorkoutId: localWorkoutId,
+            clientImageId: 'img_client_second',
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.queued,
+          ),
+        );
+        final requestCountBeforeSuspendedSync =
+            remoteDataSource.requestUploadUrlCount;
+
+        await repository.syncPendingImages();
+
+        expect(
+          remoteDataSource.requestUploadUrlCount,
+          requestCountBeforeSuspendedSync,
+        );
+
+        gate.activate(userId);
+        await repository.syncPendingImages();
+        expect(
+          remoteDataSource.requestUploadUrlCount,
+          greaterThan(requestCountBeforeSuspendedSync),
+        );
+      },
+    );
 
     test('network error changes uploading to retrying', () async {
       remoteDataSource.uploadError = Exception('network down');
@@ -1076,7 +1157,7 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<bool> validateSession() async {
+  Future<SessionValidationStatus> validateSession() async {
     throw UnimplementedError();
   }
 
@@ -1087,6 +1168,16 @@ class FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> clearAuthData() async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> markAuthCleanupPending() async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> hasPendingAuthCleanup() async {
     throw UnimplementedError();
   }
 

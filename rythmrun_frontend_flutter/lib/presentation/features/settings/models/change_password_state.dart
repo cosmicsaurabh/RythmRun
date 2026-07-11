@@ -1,4 +1,6 @@
 class ChangePasswordState {
+  static const Object _unset = Object();
+
   final bool isLoading;
   final bool isSuccess;
   final String? errorMessage;
@@ -16,12 +18,15 @@ class ChangePasswordState {
   ChangePasswordState copyWith({
     bool? isLoading,
     bool? isSuccess,
-    String? errorMessage,
+    Object? errorMessage = _unset,
   }) {
     return ChangePasswordState(
       isLoading: isLoading ?? this.isLoading,
       isSuccess: isSuccess ?? this.isSuccess,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage:
+          identical(errorMessage, _unset)
+              ? this.errorMessage
+              : errorMessage as String?,
     );
   }
 

@@ -17,8 +17,9 @@ Hosted and human-operated evidence is tracked in the [manual verification regist
 - Repository-delivered; hosted verification pending: IP-0.7a Express HTTP security regressions and minimum backend CI are committed in `c52fb87`; do not call CI operational until MC-0.7 through MC-0.9 pass.
 - Repository-delivered; advisory verification pending: IP-0.7 dependency-surface reduction is committed in `fc33dca`; the dated advisory gate remains open until MC-0.10 records an approved scan and reviewed disposition for every result.
 - Repository-delivered; rollout pending: IP-1.1 canonical metrics and provenance are committed in `ba7b288`; production migration and rollout remain gated.
-- Current repository package: IP-1.2 one GPS acceptance policy, deterministic pause timing, provider-owned route state, and shared map/elevation segmentation. This is repository work only; device proof remains open.
-- Manual/hosted gates: [MC-0.1 through MC-0.12 and MC-1.1 through MC-1.5](./MANUAL-CHECKS.md), including hosted CI, dependency review, security operations, metric sampling/backups, compatibility, GPS device proof, staging, and controlled rollout.
+- Repository-delivered; device verification pending: IP-1.2 one GPS acceptance policy, deterministic pause timing, provider-owned route state, and shared map/elevation segmentation is committed in `c41d3dc`; MC-1.5 remains open.
+- Current repository package: IP-1.3 explicit nullable-state clearing, coordinated user-scope teardown, live/sync/profile/auth operation draining, durable credential-cleanup recovery, and A→B cache isolation. This is repository work only; MC-1.6 remains open.
+- Manual/hosted gates: [MC-0.1 through MC-0.12 and MC-1.1 through MC-1.6](./MANUAL-CHECKS.md), including hosted CI, dependency review, security operations, metric sampling/backups, compatibility, GPS and account-exit device proof, staging, and controlled rollout.
 - Concurrent owner action: IP-0.6 exposure review and credential rotation decision.
 
 ## P0/P1 findings
@@ -37,8 +38,8 @@ Hosted and human-operated evidence is tracked in the [manual verification regist
 | Finish while paused counts open pause as active | P1 | IP-1.2 | Fake-clock finish-during-pause test |
 | Map rejects GPS jumps after metrics already accepted them | P1 | IP-1.2 | Shared accepted-point route/metric equivalence test |
 | Exact coordinates and paths appear in device logs | P1 | IP-1.2, IP-5.2 | Release-log scan and redaction tests |
-| Nullable state cannot clear user/errors/workout | P1/P2 | IP-1.3 | Explicit-null copy tests for every audited state |
-| User providers/tracking survive logout/account switch | P1 | IP-1.3 | A→logout→B provider teardown test |
+| Nullable state cannot clear user/errors/workout | P1/P2 | IP-1.3 | Explicit-null contracts plus fail→success transition tests for every audited state |
+| User providers/tracking survive logout/account switch | P1 | IP-1.3 | A→logout→B invalidation, live/auth/user-work drains, durable local-clear retry, and late-callback rejection tests |
 | Local detail/delete uses row ID without owner | P1 | IP-1.4 | Known foreign-ID read/delete tests |
 | SQLite foreign keys/cascades are disabled | P1 | IP-1.4 | `foreign_keys`, cascade, migration, `foreign_key_check` tests |
 | Ordinary 750-point workout exceeds default JSON limit | P1 | IP-1.5, superseded by IP-4.2 | Interim 750-point fixture; bounded batch E2E |

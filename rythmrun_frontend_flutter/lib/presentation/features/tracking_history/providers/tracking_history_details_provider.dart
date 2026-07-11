@@ -7,6 +7,7 @@ import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history
 class TrackingHistoryDetailsNotifier
     extends StateNotifier<TrackingHistoryDetailsState> {
   final WorkoutRepository _workoutRepository;
+  bool _isDisposed = false;
 
   TrackingHistoryDetailsNotifier(this._workoutRepository)
     : super(const TrackingHistoryDetailsState());
@@ -14,7 +15,11 @@ class TrackingHistoryDetailsNotifier
   /// Load full workout details including tracking points and status changes
   Future<void> loadWorkoutDetails(String workoutId) async {
     try {
-      state = state.copyWith(isLoading: true, errorMessage: null);
+      state = state.copyWith(
+        workout: null,
+        isLoading: true,
+        errorMessage: null,
+      );
 
       // Parse workout ID
       final id = int.tryParse(workoutId);
@@ -24,26 +29,40 @@ class TrackingHistoryDetailsNotifier
 
       // Fetch full workout data from repository
       final workout = await _workoutRepository.getWorkout(id);
+      if (_isDisposed) return;
 
       if (workout == null) {
         throw Exception('Workout not found');
       }
 
-      state = state.copyWith(workout: workout, isLoading: false);
+      state = state.copyWith(
+        workout: workout,
+        isLoading: false,
+        errorMessage: null,
+      );
     } catch (e) {
+      if (_isDisposed) return;
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Failed to load workout details: $e',
       );
     }
   }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
+  }
 }
 
 // Provider for workout details
-final trackingHistoryDetailsProvider = StateNotifierProvider.autoDispose<
+final trackingHistoryDetailsProvider = StateNotifierProvider.autoDispose.family<
   TrackingHistoryDetailsNotifier,
-  TrackingHistoryDetailsState
->((ref) {
+  TrackingHistoryDetailsState,
+  ({int userId, int workoutId})
+>((ref, key) {
   final workoutRepository = ref.watch(workoutRepositoryProvider);
-  return TrackingHistoryDetailsNotifier(workoutRepository);
+  return TrackingHistoryDetailsNotifier(workoutRepository)
+    ..loadWorkoutDetails(key.workoutId.toString());
 });

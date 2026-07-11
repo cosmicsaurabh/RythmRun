@@ -1,4 +1,6 @@
 class UserEntity {
+  static const Object _unset = Object();
+
   final String id;
   final String firstName;
   final String lastName;
@@ -22,18 +24,27 @@ class UserEntity {
     String? firstName,
     String? lastName,
     String? email,
-    String? profilePicturePath,
-    String? profilePictureType,
-    DateTime? createdAt,
+    Object? profilePicturePath = _unset,
+    Object? profilePictureType = _unset,
+    Object? createdAt = _unset,
   }) {
     return UserEntity(
       id: id ?? this.id,
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,
       email: email ?? this.email,
-      profilePicturePath: profilePicturePath ?? this.profilePicturePath,
-      profilePictureType: profilePictureType ?? this.profilePictureType,
-      createdAt: createdAt ?? this.createdAt,
+      profilePicturePath:
+          identical(profilePicturePath, _unset)
+              ? this.profilePicturePath
+              : profilePicturePath as String?,
+      profilePictureType:
+          identical(profilePictureType, _unset)
+              ? this.profilePictureType
+              : profilePictureType as String?,
+      createdAt:
+          identical(createdAt, _unset)
+              ? this.createdAt
+              : createdAt as DateTime?,
     );
   }
 

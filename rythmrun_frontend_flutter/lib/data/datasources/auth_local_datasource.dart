@@ -45,6 +45,14 @@ class AuthLocalDataSource {
     await AuthPersistenceService.clearAuthData();
   }
 
+  Future<void> markAuthCleanupPending() async {
+    await AuthPersistenceService.markAuthCleanupPending();
+  }
+
+  Future<bool> hasPendingAuthCleanup() async {
+    return AuthPersistenceService.hasPendingAuthCleanup();
+  }
+
   /// Check if backend sync is required (7 days since last sync)
   Future<bool> needsBackendSync() async {
     return await AuthPersistenceService.needsBackendSync();

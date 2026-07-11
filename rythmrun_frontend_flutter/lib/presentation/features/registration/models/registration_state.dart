@@ -1,9 +1,10 @@
-
 import 'package:flutter/foundation.dart';
 import '../../../../core/utils/validation_helper.dart';
 
 @immutable
 class RegistrationState {
+  static const Object _unset = Object();
+
   final String firstName;
   final String lastName;
   final String email;
@@ -40,7 +41,7 @@ class RegistrationState {
     String? confirmPassword,
     bool? acceptedTerms,
     bool? isLoading,
-    String? errorMessage,
+    Object? errorMessage = _unset,
     bool? isSuccess,
     bool? obscurePassword,
     bool? obscureConfirmPassword,
@@ -54,7 +55,10 @@ class RegistrationState {
       confirmPassword: confirmPassword ?? this.confirmPassword,
       acceptedTerms: acceptedTerms ?? this.acceptedTerms,
       isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage:
+          identical(errorMessage, _unset)
+              ? this.errorMessage
+              : errorMessage as String?,
       isSuccess: isSuccess ?? this.isSuccess,
       obscurePassword: obscurePassword ?? this.obscurePassword,
       obscureConfirmPassword:
@@ -81,7 +85,6 @@ class RegistrationState {
           obscureConfirmPassword == other.obscureConfirmPassword &&
           passwordStrength == other.passwordStrength;
 
-  
   @override
   String toString() {
     return 'RegistrationState{firstName: $firstName, lastName: $lastName, email: $email, acceptedTerms: $acceptedTerms, isLoading: $isLoading, errorMessage: $errorMessage, isSuccess: $isSuccess, passwordStrength: $passwordStrength}';

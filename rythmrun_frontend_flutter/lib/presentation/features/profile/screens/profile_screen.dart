@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/providers/user_scope_teardown_provider.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/session/user_scope_teardown.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/profile_menu_item.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/profile_stat_card.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/quick_action_card.dart';
@@ -644,7 +646,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => _logout(context, ref),
+          onTap: () => _logout(ref),
           borderRadius: BorderRadius.circular(radiusLg),
           child: const Padding(
             padding: EdgeInsets.symmetric(vertical: spacingLg),
@@ -827,32 +829,138 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
   }
 
-  void _logout(BuildContext context, WidgetRef ref) {
-    showDialog(
+  Future<void> _logout(WidgetRef ref) async {
+    final teardown = ref.read(userScopeTeardownProvider);
+    final requirement = teardown.requirementFor(
+      UserScopeExitReason.voluntaryLogout,
+    );
+    UserScopeExitDecision? decision;
+
+    if (requirement == UserScopeExitRequirement.none) {
+      final confirmed = await _showIdleLogoutConfirmation(context);
+      if (!mounted || !confirmed) return;
+    } else {
+      decision = await _showWorkoutLogoutDecision(context, requirement);
+      if (!mounted || decision == null) return;
+    }
+
+    final result = await ref
+        .read(sessionProvider.notifier)
+        .logout(decision: decision);
+    if (!mounted || result.isCompleted) return;
+    if (result.requirement != UserScopeExitRequirement.none) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message ?? 'Unable to sign out safely.'),
+        backgroundColor: CustomAppColors.statusError,
+      ),
+    );
+  }
+
+  Future<bool> _showIdleLogoutConfirmation(BuildContext context) async {
+    return await showDialog<bool>(
+          context: context,
+          builder:
+              (dialogContext) => AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(radiusLg),
+                ),
+                title: const Text('Logout'),
+                content: const Text('Are you sure you want to logout?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CustomAppColors.statusError,
+                      foregroundColor: CustomAppColors.white,
+                    ),
+                    child: const Text('Logout'),
+                  ),
+                ],
+              ),
+        ) ??
+        false;
+  }
+
+  Future<UserScopeExitDecision?> _showWorkoutLogoutDecision(
+    BuildContext context,
+    UserScopeExitRequirement requirement,
+  ) {
+    late final String title;
+    late final String content;
+    late final String actionLabel;
+    late final UserScopeExitDecision action;
+    var canDiscard = false;
+
+    switch (requirement) {
+      case UserScopeExitRequirement.activeWorkout:
+        title = 'Workout in progress';
+        content =
+            'Finish and save the active workout, or explicitly discard it before logout.';
+        actionLabel = 'Finish & logout';
+        action = UserScopeExitDecision.finishWorkout;
+        canDiscard = true;
+        break;
+      case UserScopeExitRequirement.unsavedWorkout:
+        title = 'Workout not saved';
+        content =
+            'Retry the local save or explicitly discard this workout before logout.';
+        actionLabel = 'Retry save';
+        action = UserScopeExitDecision.retrySave;
+        canDiscard = true;
+        break;
+      case UserScopeExitRequirement.trackingCleanup:
+        title = 'Tracking cleanup incomplete';
+        content =
+            'Location tracking is still shutting down. Retry cleanup before logout.';
+        actionLabel = 'Retry tracking cleanup';
+        action = UserScopeExitDecision.retryTrackingCleanup;
+        break;
+      case UserScopeExitRequirement.localCredentialCleanup:
+        title = 'Sign-out cleanup incomplete';
+        content =
+            'Local credentials could not be cleared. Retry cleanup before another account can sign in.';
+        actionLabel = 'Retry credential cleanup';
+        action = UserScopeExitDecision.retryCredentialCleanup;
+        break;
+      case UserScopeExitRequirement.accountCleanup:
+        title = 'Account cleanup incomplete';
+        content = 'Account cleanup could not finish safely. Retry logout.';
+        actionLabel = 'Retry account cleanup';
+        action = UserScopeExitDecision.retryAccountCleanup;
+        break;
+      case UserScopeExitRequirement.none:
+        return Future<UserScopeExitDecision?>.value();
+    }
+
+    return showDialog<UserScopeExitDecision>(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: false,
       builder:
-          (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(radiusLg),
-            ),
-            title: const Text('Logout'),
-            content: const Text('Are you sure you want to logout?'),
+          (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: Text(content),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Stay signed in'),
               ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ref.read(sessionProvider.notifier).logout();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CustomAppColors.statusError,
-                  foregroundColor: CustomAppColors.white,
+              if (canDiscard)
+                TextButton(
+                  onPressed:
+                      () => Navigator.pop(
+                        dialogContext,
+                        UserScopeExitDecision.discardWorkout,
+                      ),
+                  child: const Text('Discard & logout'),
                 ),
-                child: const Text('Logout'),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, action),
+                child: Text(actionLabel),
               ),
             ],
           ),

@@ -22,6 +22,23 @@ typedef PeriodicTimerFactory =
 
 Future<void> _noopWorkoutAdded() async {}
 
+enum LiveWorkoutFinalizationStatus {
+  noActiveWorkout,
+  saved,
+  savePending,
+  failed,
+}
+
+class LiveWorkoutFinalizationResult {
+  final LiveWorkoutFinalizationStatus status;
+
+  const LiveWorkoutFinalizationResult(this.status);
+
+  bool get isDurablySaved =>
+      status == LiveWorkoutFinalizationStatus.saved ||
+      status == LiveWorkoutFinalizationStatus.noActiveWorkout;
+}
+
 class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   final LiveTrackingRepository _liveTrackingRepository;
   final WorkoutRepository _workoutRepository;
@@ -42,7 +59,10 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   bool _isStopping = false;
   bool _isResetting = false;
   bool _cleanupRequired = false;
+  bool _isAccountExitQuiescing = false;
   bool _isDisposed = false;
+  Future<void>? _startFuture;
+  Future<LiveWorkoutFinalizationResult>? _stopFuture;
 
   LiveTrackingNotifier(
     this._liveTrackingRepository,
@@ -60,7 +80,7 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
 
   void clearErrorMessage() {
     if (_isDisposed) return;
-    state = state.copyWith(clearErrorMessage: true);
+    state = state.copyWith(errorMessage: null);
   }
 
   /// Check location permissions
@@ -125,8 +145,24 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   }
 
   /// Start a new workout session
-  Future<void> startWorkout(WorkoutType type) async {
+  Future<void> startWorkout(WorkoutType type) {
+    if (_isAccountExitQuiescing) return Future<void>.value();
+    final pendingStart = _startFuture;
+    if (pendingStart != null) return pendingStart;
+
+    late final Future<void> trackedStart;
+    trackedStart = _startWorkoutOnce(type).whenComplete(() {
+      if (identical(_startFuture, trackedStart)) {
+        _startFuture = null;
+      }
+    });
+    _startFuture = trackedStart;
+    return trackedStart;
+  }
+
+  Future<void> _startWorkoutOnce(WorkoutType type) async {
     if (_isDisposed ||
+        _isAccountExitQuiescing ||
         _isStarting ||
         _isStopping ||
         _isResetting ||
@@ -147,7 +183,7 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
     StreamSubscription<TrackingPointEntity>? pendingSubscription;
 
     try {
-      state = state.copyWith(isLoading: true, clearErrorMessage: true);
+      state = state.copyWith(isLoading: true, errorMessage: null);
 
       if (_cleanupRequired) {
         final cleanupSucceeded = await _retryRequiredCleanup();
@@ -230,6 +266,7 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
       _activeSegmentStartedAt = startTime;
       state = state.copyWith(
         currentSession: newSession,
+        currentLocation: null,
         isTracking: true,
         isLoading: false,
         elapsedTime: Duration.zero,
@@ -257,6 +294,7 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
     final session = state.currentSession;
     final timeline = _timeline;
     if (_isDisposed ||
+        _isAccountExitQuiescing ||
         _isStarting ||
         _isStopping ||
         _isResetting ||
@@ -298,6 +336,7 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
     final session = state.currentSession;
     final timeline = _timeline;
     if (_isDisposed ||
+        _isAccountExitQuiescing ||
         _isStarting ||
         _isStopping ||
         _isResetting ||
@@ -342,7 +381,21 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   }
 
   /// Stop and complete the current workout
-  Future<void> stopWorkout() async {
+  Future<LiveWorkoutFinalizationResult> stopWorkout() {
+    final pendingStop = _stopFuture;
+    if (pendingStop != null) return pendingStop;
+
+    late final Future<LiveWorkoutFinalizationResult> trackedStop;
+    trackedStop = _stopWorkoutOnce().whenComplete(() {
+      if (identical(_stopFuture, trackedStop)) {
+        _stopFuture = null;
+      }
+    });
+    _stopFuture = trackedStop;
+    return trackedStop;
+  }
+
+  Future<LiveWorkoutFinalizationResult> _stopWorkoutOnce() async {
     final session = state.currentSession;
     final timeline = _timeline;
     if (_isDisposed ||
@@ -353,10 +406,17 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
         (session.status != WorkoutStatus.active &&
             session.status != WorkoutStatus.paused) ||
         timeline == null) {
-      return;
+      return LiveWorkoutFinalizationResult(
+        _unsavedCompletedWorkout == null
+            ? LiveWorkoutFinalizationStatus.noActiveWorkout
+            : LiveWorkoutFinalizationStatus.savePending,
+      );
     }
 
     _isStopping = true;
+    var result = const LiveWorkoutFinalizationResult(
+      LiveWorkoutFinalizationStatus.failed,
+    );
     try {
       final completedTimeline = timeline.complete(
         _liveTrackingRepository.now(),
@@ -417,7 +477,6 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
               cleanupSucceeded
                   ? null
                   : 'Location tracking cleanup was incomplete.',
-          clearErrorMessage: cleanupSucceeded,
         );
       }
 
@@ -426,29 +485,132 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
       _activeSegmentStartedAt = null;
       _timeline = null;
 
-      try {
-        await _workoutRepository.saveWorkout(completedSession);
-        _unsavedCompletedWorkout = null;
-        try {
-          await _onWorkoutAdded();
-        } catch (_) {
-          // A history refresh failure must not make the durable save look failed.
-        }
-      } catch (_) {
-        if (!_isDisposed) {
-          state = state.copyWith(
-            errorMessage: 'Workout is not saved yet. Keep this screen open.',
-          );
-        }
-      }
+      final didSave = await _persistCompletedWorkout(completedSession);
+      result = LiveWorkoutFinalizationResult(
+        didSave
+            ? LiveWorkoutFinalizationStatus.saved
+            : LiveWorkoutFinalizationStatus.savePending,
+      );
     } catch (_) {
       if (!_isDisposed) {
         state = state.copyWith(
           errorMessage: 'Failed to finish workout. Please try again.',
         );
       }
+      result = const LiveWorkoutFinalizationResult(
+        LiveWorkoutFinalizationStatus.failed,
+      );
     } finally {
       _isStopping = false;
+    }
+    return result;
+  }
+
+  bool get hasUnsavedCompletedWorkout => _unsavedCompletedWorkout != null;
+
+  bool get hasPendingTrackingCleanup => _cleanupRequired;
+
+  Future<bool> retryUnsavedWorkoutSave() async {
+    final workout = _unsavedCompletedWorkout;
+    if (_isDisposed ||
+        _isStarting ||
+        _isStopping ||
+        _isResetting ||
+        workout == null) {
+      return workout == null;
+    }
+
+    _isStopping = true;
+    try {
+      return await _persistCompletedWorkout(workout, clearSaveError: true);
+    } finally {
+      _isStopping = false;
+    }
+  }
+
+  Future<void> discardWorkout({bool forAccountExit = false}) async {
+    if (_isAccountExitQuiescing && !forAccountExit) return;
+    final pendingStop = _stopFuture;
+    if (pendingStop != null) {
+      await pendingStop;
+    }
+    if (_isDisposed || _isStopping || _isResetting) return;
+    _unsavedCompletedWorkout = null;
+    await resetWorkout(forAccountExit: forAccountExit);
+  }
+
+  Future<bool> retryPendingTrackingCleanup() async {
+    if (_isDisposed || _isStarting || _isStopping || _isResetting) {
+      return false;
+    }
+    if (!_cleanupRequired) return true;
+
+    _isResetting = true;
+    try {
+      final cleanupSucceeded = await _retryRequiredCleanup();
+      if (!_isDisposed) {
+        state = state.copyWith(
+          errorMessage:
+              cleanupSucceeded
+                  ? null
+                  : 'Location tracking cleanup is still pending.',
+        );
+      }
+      return cleanupSucceeded;
+    } finally {
+      _isResetting = false;
+    }
+  }
+
+  /// Cancels and awaits live operations already crossing an async boundary.
+  Future<bool> quiesceForAccountExit() async {
+    if (_isDisposed) return true;
+    _isAccountExitQuiescing = true;
+
+    final pendingStart = _startFuture;
+    if (pendingStart != null) {
+      _operationGeneration += 1;
+      await pendingStart;
+    }
+
+    final pendingStop = _stopFuture;
+    if (pendingStop != null) {
+      await pendingStop;
+    }
+
+    return !_isStarting && !_isStopping && !_isResetting;
+  }
+
+  void resumeAfterBlockedAccountExit() {
+    if (_isDisposed) return;
+    _isAccountExitQuiescing = false;
+  }
+
+  Future<bool> _persistCompletedWorkout(
+    WorkoutSessionEntity workout, {
+    bool clearSaveError = false,
+  }) async {
+    try {
+      await _workoutRepository.saveWorkout(workout);
+      if (identical(_unsavedCompletedWorkout, workout)) {
+        _unsavedCompletedWorkout = null;
+      }
+      if (!_isDisposed && clearSaveError) {
+        state = state.copyWith(errorMessage: null);
+      }
+      try {
+        await _onWorkoutAdded();
+      } catch (_) {
+        // A history refresh failure must not make the durable save look failed.
+      }
+      return true;
+    } catch (_) {
+      if (!_isDisposed) {
+        state = state.copyWith(
+          errorMessage: 'Workout is not saved yet. Keep this screen open.',
+        );
+      }
+      return false;
     }
   }
 
@@ -593,7 +755,8 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
   }
 
   /// Reset workout state (useful for starting fresh)
-  Future<void> resetWorkout() async {
+  Future<void> resetWorkout({bool forAccountExit = false}) async {
+    if (_isAccountExitQuiescing && !forAccountExit) return;
     if (_isDisposed || _isStopping || _isResetting) return;
     if (_unsavedCompletedWorkout != null) {
       state = state.copyWith(
@@ -648,7 +811,8 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
 }
 
 // Provider definition
-final liveTrackingProvider =
+final StateNotifierProvider<LiveTrackingNotifier, LiveTrackingState>
+liveTrackingProvider =
     StateNotifierProvider<LiveTrackingNotifier, LiveTrackingState>((ref) {
       final liveTrackingRepository = ref.watch(liveTrackingRepositoryProvider);
       final workoutRepository = ref.watch(workoutRepositoryProvider);

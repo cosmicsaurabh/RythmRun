@@ -8,17 +8,15 @@ import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history
 // Notifier for managing workout list state
 class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
   final WorkoutRepository _workoutRepository;
+  bool _isDisposed = false;
 
   TrackingHistoryNotifier(this._workoutRepository)
-    : super(const TrackingHistoryState()) {
-    // Load initial data
-    loadInitialData();
-  }
+    : super(const TrackingHistoryState());
 
   /// Load initial data (first page)
   Future<void> loadInitialData() async {
     try {
-      state = state.copyWith(isLoading: true, clearErrorMessage: true);
+      state = state.copyWith(isLoading: true, errorMessage: null);
 
       // Load first page of workouts
       final paginatedWorkouts = await _workoutRepository.getPaginatedWorkouts(
@@ -29,12 +27,14 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         endDate: state.endDate,
         loadTrackingPoints: false, // Don't load tracking points for list view
       );
+      if (_isDisposed) return;
 
       // Only load overall statistics if we don't have them yet or if this is a refresh
       WorkoutStatistics? overallStats = state.overallStatistics;
       if (overallStats == null) {
         debugPrint('📊 Loading overall statistics for the first time');
         overallStats = await _workoutRepository.getWorkoutStatistics();
+        if (_isDisposed) return;
       } else {
         debugPrint('📊 Reusing cached overall statistics');
       }
@@ -45,6 +45,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         startDate: state.startDate,
         endDate: state.endDate,
       );
+      if (_isDisposed) return;
 
       state = state.copyWith(
         workouts: paginatedWorkouts.workouts,
@@ -59,6 +60,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         isLoadingStats: false,
       );
     } catch (e) {
+      if (_isDisposed) return;
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Failed to load workouts: $e',
@@ -71,6 +73,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
     debugPrint('🔄 Refreshing overall statistics');
     try {
       final overallStats = await _workoutRepository.getWorkoutStatistics();
+      if (_isDisposed) return;
       state = state.copyWith(overallStatistics: overallStats);
     } catch (e) {
       debugPrint('❌ Error refreshing overall statistics: $e');
@@ -81,6 +84,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
   Future<void> onWorkoutAdded() async {
     debugPrint('➕ New workout added - refreshing statistics');
     await _refreshOverallStatistics();
+    if (_isDisposed) return;
     await loadInitialData();
   }
 
@@ -109,6 +113,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         endDate: state.endDate,
         loadTrackingPoints: false,
       );
+      if (_isDisposed) return;
 
       // Append new workouts to existing list
       final updatedWorkouts = [
@@ -128,6 +133,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         isLoadingMore: false,
       );
     } catch (e) {
+      if (_isDisposed) return;
       debugPrint('❌ Error loading more workouts: $e');
       state = state.copyWith(
         isLoadingMore: false,
@@ -145,10 +151,12 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
       }
 
       await _workoutRepository.deleteWorkout(id);
+      if (_isDisposed) return;
 
       // Reload initial data to reflect changes and refresh overall stats
       await onWorkoutAdded();
     } catch (e) {
+      if (_isDisposed) return;
       state = state.copyWith(errorMessage: 'Failed to delete workout: $e');
     }
   }
@@ -168,10 +176,7 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
         '🔍 Workout type filter changed: ${state.selectedWorkoutType} -> $workoutType',
       );
       if (workoutType == null) {
-        state = state.copyWith(
-          clearSelectedWorkoutType: true,
-          isLoadingStats: true,
-        );
+        state = state.copyWith(selectedWorkoutType: null, isLoadingStats: true);
       } else {
         state = state.copyWith(
           selectedWorkoutType: workoutType,
@@ -194,8 +199,6 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
       state = state.copyWith(
         startDate: startDate,
         endDate: endDate,
-        clearStartDate: startDate == null,
-        clearEndDate: endDate == null,
         isLoadingStats: true,
       );
       await loadInitialData(); // Only reload filtered data, keep overall stats cached
@@ -238,13 +241,19 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
 
   /// Check if showing all workouts or filtered subset
   bool get isShowingFilteredData => state.hasFilters;
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
+  }
 }
 
 // Provider for workout list
 final trackingHistoryProvider =
     StateNotifierProvider<TrackingHistoryNotifier, TrackingHistoryState>((ref) {
       final workoutRepository = ref.watch(workoutRepositoryProvider);
-      return TrackingHistoryNotifier(workoutRepository);
+      return TrackingHistoryNotifier(workoutRepository)..loadInitialData();
     });
 
 // Convenience providers

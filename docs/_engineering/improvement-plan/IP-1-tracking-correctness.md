@@ -18,7 +18,7 @@ published: false
 
 After this phase, a user can trust the app's distance, active duration, speed, pace, and calorie inputs; paused or rejected GPS movement cannot corrupt those metrics; completed local data is accessible only by its owner; SQLite cascades are enforced; unrelated backend edits preserve route history; and minimum CI protects the corrected behavior.
 
-Repository-only IP-1.1 work was explicitly selected by the maintainer on 2026-07-11 while IP-0 operational gates remain open. No migration execution, deployment, historic-value rewrite, or production enablement is authorized by this status change; those actions remain in the [manual verification register](./MANUAL-CHECKS.md).
+Repository-only IP-1 work was explicitly selected by the maintainer on 2026-07-11 while IP-0 operational gates remain open. No migration execution, deployment, historic-value rewrite, or production enablement is authorized by this status change; those actions remain in the [manual verification register](./MANUAL-CHECKS.md).
 
 ## Why this phase is next
 
@@ -190,11 +190,19 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 **Primary files**
 
 - `rythmrun_frontend_flutter/lib/presentation/common/providers/session_provider.dart`
-- State models for login, registration, tracking details, profile, change password, and live tracking
+- `rythmrun_frontend_flutter/lib/presentation/common/session/user_scope_teardown.dart`
+- `rythmrun_frontend_flutter/lib/presentation/common/providers/user_scope_teardown_provider.dart`
+- `rythmrun_frontend_flutter/lib/core/services/user_scope_operation_gate.dart`
+- `rythmrun_frontend_flutter/lib/core/services/authentication_attempt_gate.dart`
+- `rythmrun_frontend_flutter/lib/core/services/auth_persistence_service.dart`
+- `rythmrun_frontend_flutter/lib/domain/repositories/auth_repository.dart`
+- `rythmrun_frontend_flutter/lib/data/repositories/auth_repository_impl.dart`
+- Workout/activity-image repository sync gates and user-keyed history/detail/image providers
+- State models for login, registration, tracking history/details, profile, change password, user, and live tracking
 - `rythmrun_frontend_flutter/lib/main.dart`
 - `rythmrun_frontend_flutter/lib/presentation/features/profile/screens/profile_screen.dart`
 - `rythmrun_frontend_flutter/lib/core/di/injection_container.dart`
-- New user-scope teardown coordinator and tests
+- Focused tests under `test/core/services/`, `test/data/repositories/`, `test/presentation/common/`, `test/presentation/features/`, and `test/presentation/state/`
 
 **Implementation**
 
@@ -209,14 +217,19 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 4. Teardown order:
    - if a workout is active, require Finish or Discard before voluntary logout/account switch;
    - before IP-3 checkpoints ship, a forced server-auth loss stops tracking and attempts a blocking local finalization under the workout's original owner ID before session/provider teardown. If that local write fails, keep account switching blocked and show Retry/Discard; do not claim crash recovery, because it does not exist yet;
+   - cancel and await a start already crossing the native GPS boundary; serialize duplicate Finish calls; and keep exit blocked until subscription/source cleanup succeeds;
    - when network is merely unavailable, keep the same verified user in eligible offline mode rather than treating it as a forced logout;
    - stop GPS subscription and timers;
    - clear live in-memory state;
    - stop new sync work and let no completion callback write under a newly active user;
    - invalidate history, detail, profile, activity-image, sync/repository caches, settings tied to a user, and home tab state;
-   - clear session secrets/user state last for voluntary logout, while still guaranteeing local cleanup if the server call fails.
+   - clear session secrets/user state last for voluntary logout, while still guaranteeing local cleanup if the server call fails;
+   - write a durable cleanup-pending marker before local credential removal, remove it only after all auth values are confirmed absent, and finish that cleanup before restoring any user after restart;
+   - if local credential clearing itself fails, keep auth work suspended and the account exit blocked behind non-dismissible Retry cleanup. Do not publish a completed logout or permit B to activate.
 5. Key any retained provider cache by user ID or recreate it after user changes. A family keyed only by workout ID is insufficient if local IDs can be stale in UI state.
 6. Preserve completed offline rows on normal logout as stated in Decision D-004, but make them inaccessible until that same account authenticates again. Account deletion in IP-2 purges them.
+7. Represent session validation as `valid`, `invalid`, or `unavailable`: an explicitly invoked invalid result enters forced teardown, while network unavailability preserves only the same locally verified user. Natural end-to-end `401/403` propagation, session revocation, secure token storage, and the final offline-window policy remain IP-2.
+8. Put workout sync, image sync, and profile upload behind one owner-aware operation gate. Put login, registration, refresh, and validation persistence behind a second serialized auth-mutation gate plus session-generation admission token. Teardown rejects new work, awaits admitted A operations, invalidates state, persists/clears credentials, and only then permits B. Provider callbacks must also ignore writes after disposal or owner change.
 
 **Automated tests**
 
@@ -225,7 +238,18 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 - Logout during idle state invalidates all listed providers.
 - Voluntary logout with an active workout cannot silently proceed without a user choice.
 - Forced auth loss either durably finalizes locally before teardown or leaves account switching blocked on an explicit local-save error; it never silently continues or relabels the workout.
+- A local credential-clear failure remains a blocked account exit and cannot activate another user until cleanup retry succeeds.
 - Account A logout → account B login yields empty B-scoped providers even when A had loaded history/images.
+- A remote logout failure still completes safe local teardown; a local credential-clear failure does not.
+- Network-unavailable and explicitly invalid validation results take different non-destructive/forced-teardown paths.
+- In-flight sync/profile leases drain under A, and disposed or stale callbacks cannot publish under B.
+- A pending GPS start and duplicate Finish calls are awaited before teardown; failed native cleanup remains a recoverable blocked exit.
+- Delayed validation/refresh and concurrent login/registration cannot rewrite credentials or publish a stale user after exit begins.
+- A persisted cleanup marker prevents restart from restoring A after a failed credential deletion.
+
+**Manual verification**
+
+- Run [MC-1.6](./MANUAL-CHECKS.md#mc-16--user-scope-exit-and-account-switch-isolation) on a supported release build with synthetic staging accounts. This repository package does not claim device, restart, server-revocation, DAO-ownership, or process-death proof.
 
 **Acceptance**
 
@@ -398,7 +422,7 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 | Pause, move, resume | Paused and bridge movement add 0 m | Fake-stream test + device run |
 | Finish while paused | Open pause excluded exactly once | Fake-clock test |
 | GPS jump then valid point | Jump rejected; valid point uses last accepted anchor | Policy/provider test |
-| A logout → B login | No A state/data visible or mutable | Provider + repository integration test |
+| A logout → B login | A work drains; local clear succeeds; no A cache or late callback is visible under B | Session/provider/repository integration tests + MC-1.6 |
 | Delete owned workout | All child rows cascade; foreign key check clean | SQLite migration test |
 | PATCH name only | Route/status rows unchanged | Backend service/integration test |
 | 750-point payload | Activity created successfully | HTTP integration test |
@@ -415,8 +439,9 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 - [x] Paused movement and resume bridging add no active distance.
 - [x] Finish-while-paused active duration is correct.
 - [x] Exact coordinates are absent from release logging.
-- [ ] Nullable state can be explicitly cleared across all audited state models.
-- [ ] Logout/account switch stops user-scoped work and invalidates state.
+- [x] Nullable state can be explicitly cleared across all audited state models.
+- [x] Logout/account switch stops user-scoped work and invalidates state.
+- [ ] MC-1.6 proves idle/active/forced exit and A→B isolation on a supported release build and restart.
 - [ ] Every local get/mutation by row ID is owner-scoped.
 - [ ] SQLite foreign keys are on, orphans are handled, cascades pass, and required indexes exist.
 - [ ] SQLite host migration/DAO tests run under an explicitly initialized FFI database in CI; platform-only checks are assigned to device integration tests.
@@ -432,5 +457,7 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 | --- | --- | --- | --- | --- |
 | 2026-07-11 | IP-1.1 | Flutter metric/state/sync/SQLite suites; Prisma validation/generation; backend build; focused activity suites | Pass locally; full backend and rollout pending | Flutter 39/39 passed, including 18/18 focused metric tests. Backend changed suites 22/22 and all non-HTTP suites 134/134 passed under Node 22; the unchanged 16-test socket suite could not be rerun because external execution approval hit its usage limit. Full backend, PostgreSQL migration exercise, production sampling, backup, compatibility, and rollout remain open. |
 | 2026-07-11 | IP-1.1 | `flutter analyze`; changed-file analysis | Baseline only; no new metric findings | Repository analyzer baseline is now 45 findings (1 warning, 44 info) after the maintainer's preceding Dart-fix commit; metric/local DB files add none. |
-| 2026-07-11 | IP-1.2 | Pure GPS policy/timeline/route tests; provider stream and pause tests; native timestamp mapping; full Flutter suite | Pass locally; device verification pending | Flutter 71/71 passed, including 32/32 focused IP-1.2 tests. The authoritative route excludes paused/rejected points, stop time is captured before teardown, route/elevation segments break across pause and >30-second gaps, and start/reset/stop/dispose cleanup is serialized. A failed initial local save remains in memory and blocks overwrite; durable retry remains IP-3. MC-1.5 remains pending. |
+| 2026-07-11 | IP-1.2 | Commit `c41d3dc`; pure GPS policy/timeline/route tests; provider stream and pause tests; native timestamp mapping; full Flutter suite | Pass locally; device verification pending | Flutter 71/71 passed, including 32/32 focused IP-1.2 tests. The authoritative route excludes paused/rejected points, stop time is captured before teardown, route/elevation segments break across pause and >30-second gaps, and start/reset/stop/dispose cleanup is serialized. A failed initial local save remains in memory and blocks overwrite; durable retry remains IP-3. MC-1.5 remains pending. |
 | 2026-07-11 | IP-1.2 | `flutter analyze`; source scans for raw stream listeners and coordinate/timestamp logging | Pass with existing baseline only | Repository analyzer baseline is 20 informational findings and no warnings after removing tracking-path release logs. Production has one `locationStream.listen` consumer, and audited release paths contain no exact coordinate/timestamp/route logging. |
+| 2026-07-11 | IP-1.3 | Nullable-state, teardown/session, live/auth/user-operation drain, profile race, restart marker, credential-clear retry, and multi-provider A→B tests; focused and full Flutter suites | Pass locally; device/staging verification pending | Focused impacted suite 77/77 and final full Flutter suite 130/130 passed. Explicit `null` clears audited optional state; active/pending live operations and admitted sync/profile/auth work finish or block before invalidation; local-clear failure stays recoverable across restart; history/detail/image/live/profile/calculator/password/tab/sync state is recreated before B. MC-1.6 remains pending. |
+| 2026-07-11 | IP-1.3 | `flutter analyze`; `git diff --check`; independent integration review | Pass with existing analyzer baseline only | Analyzer reports the existing 20 informational findings and zero warnings/errors; the IP-1.3 diff adds none. Natural end-to-end refresh/revocation and strict offline-window enforcement remain IP-2, local DAO ownership remains IP-1.4, and durable recovery of a workout lost by process death remains IP-3. |
