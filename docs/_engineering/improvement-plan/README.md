@@ -4,7 +4,7 @@ published: false
 
 # RythmRun improvement program
 
-> Program status: IP-0 remains the release blocker and its operational evidence is still open. The maintainer has explicitly selected repository-only IP-1 work in parallel and the current package is IP-1.4; this does not authorize migration execution, deployment, or production enablement.
+> Program status: IP-0 remains the release blocker and its operational evidence is still open. The maintainer has explicitly selected repository-only IP-1 work in parallel and the current package is IP-1.5; this does not authorize migration execution, deployment, or production enablement.
 
 This directory turns the repository audit dated 2026-07-10 into an implementation-ready hardening program. It is the canonical place to track the current improvement phase, the next five phases, their decisions, and the evidence required to mark work complete.
 
@@ -29,7 +29,8 @@ The first code-remediation slice, commit `e33f314`, is merged into `origin/main`
 - **Repository-delivered; rollout pending:** IP-1.1 canonical metric contracts and provenance are committed in `ba7b288`; production sampling, backup, rollout, and compatibility remain MC-1.1 through MC-1.4.
 - **Repository-delivered; device verification pending:** IP-1.2 one GPS acceptance policy, deterministic pause timeline, provider-owned route, and map/elevation segmentation is committed in `c41d3dc`; MC-1.5 remains open.
 - **Repository-delivered; device/staging verification pending:** IP-1.3 explicit nullable-state clearing, serialized live/auth operations, restart-safe credential cleanup, active-workout exit decisions, and A→B cache isolation is committed in `06369b7`. MC-1.6 remains open.
-- **Current repository package:** IP-1.4 owner-bound local workout/image access plus SQLite v6 foreign-key, orphan-repair, duplicate-quarantine, cascade, and index enforcement. Hosted Flutter CI and Android in-place migration proof remain open under IP-1.6 and MC-1.7.
+- **Repository-delivered; device/hosted verification pending:** IP-1.4 owner-bound local workout/image access plus SQLite v6 foreign-key, orphan-repair, duplicate-quarantine, cascade, and index enforcement is committed in `a976f4c`. Hosted Flutter CI and MC-1.7 Android in-place migration proof remain open.
+- **Current repository package:** IP-1.5 preserves omitted PATCH history, serializes conflicting partial PATCH merges, bounds nested workout validation and error output, and gives only authenticated activity create/PATCH routes a measured 3 MiB parser behind interim per-user/process admission. The mobile client now emits UTC timestamps and durably stops retrying permanent `400`/`413`/`422` activity rejections by using the existing SQLite v6 block marker. Deployed proxy, memory/latency, real PostgreSQL rollback/concurrency, prior-client timestamp compatibility, and sanitized-telemetry proof remain open under MC-1.8.
 - **Manual/hosted gates:** use [MANUAL-CHECKS.md](./MANUAL-CHECKS.md) for hosted CI, intentional-failure, branch-protection, dependency-audit, deployment, incident, infrastructure, staging, and controlled-reopen evidence.
 - **Concurrent owner action:** IP-0.6 — determine exposure and rotate/revoke credentials when it cannot be excluded.
 

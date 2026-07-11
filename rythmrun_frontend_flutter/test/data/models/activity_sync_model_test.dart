@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rythmrun_frontend_flutter/data/models/activity_sync_model.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/status_change_event_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 
@@ -62,6 +63,35 @@ void main() {
       expect(overlongPause['pausedDuration'], 3600);
       expect(overlongPause['duration'], 0);
     });
+
+    test('emits UTC instants for every API timestamp', () {
+      final workout = _workout(
+        metricsVersion: 2,
+        averageSpeed: 2.7777777777777777,
+        maxSpeed: 4.5,
+        useLocalTimestamps: true,
+      );
+      final json = ActivitySyncModel.toJson(workout);
+
+      expect(json['startTime'], workout.startTime!.toUtc().toIso8601String());
+      expect(json['endTime'], workout.endTime!.toUtc().toIso8601String());
+      final location =
+          (json['locations']! as List<dynamic>).single as Map<String, dynamic>;
+      expect(
+        location['timestamp'],
+        workout.trackingPoints.single.timestamp.toUtc().toIso8601String(),
+      );
+      final statuses = json['statusChanges']! as List<dynamic>;
+      expect(
+        statuses
+            .cast<Map<String, dynamic>>()
+            .map((status) => status['timestamp'])
+            .toList(),
+        workout.statusChanges
+            .map((status) => status.timestamp.toUtc().toIso8601String())
+            .toList(),
+      );
+    });
   });
 }
 
@@ -70,8 +100,12 @@ WorkoutSessionEntity _workout({
   required double averageSpeed,
   required double maxSpeed,
   Duration? pausedDuration,
+  bool useLocalTimestamps = false,
 }) {
-  final startTime = DateTime.utc(2026, 7, 11, 6);
+  final startTime =
+      useLocalTimestamps
+          ? DateTime(2026, 7, 11, 6)
+          : DateTime.utc(2026, 7, 11, 6);
 
   return WorkoutSessionEntity(
     clientSyncId: 'metric-sync-v$metricsVersion',
@@ -92,6 +126,13 @@ WorkoutSessionEntity _workout({
         longitude: 56.78,
         speed: 3.25,
         timestamp: startTime,
+      ),
+    ],
+    statusChanges: [
+      StatusChangeEvent(status: WorkoutStatus.active, timestamp: startTime),
+      StatusChangeEvent(
+        status: WorkoutStatus.completed,
+        timestamp: startTime.add(const Duration(hours: 1)),
       ),
     ],
     userId: 1,

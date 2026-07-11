@@ -431,7 +431,7 @@ class LocalDbService {
         AND sync_blocked_reason IS NULL
       ''',
       whereArgs: [userId],
-      orderBy: 'start_time ASC',
+      orderBy: 'start_time ASC, id ASC',
     );
 
     List<WorkoutSessionEntity> result = [];
@@ -493,6 +493,38 @@ class LocalDbService {
         AND client_sync_id = ?
         AND synced = 0
         AND deleted_locally = 0
+        AND sync_blocked_reason IS NULL
+      ''',
+      whereArgs: [localWorkoutId, userId, clientSyncId],
+    );
+    return updated == 1;
+  }
+
+  Future<bool> markWorkoutSyncBlocked({
+    required int userId,
+    required int localWorkoutId,
+    required String clientSyncId,
+    required String reason,
+  }) async {
+    if (reason.isEmpty || reason.length > 80) {
+      throw ArgumentError.value(
+        reason,
+        'reason',
+        'Workout sync block reason must contain 1 to 80 characters',
+      );
+    }
+
+    final db = await database;
+    final updated = await db.update(
+      _workoutsTable,
+      {'sync_blocked_reason': reason},
+      where: '''
+        id = ?
+        AND user_id = ?
+        AND client_sync_id = ?
+        AND synced = 0
+        AND deleted_locally = 0
+        AND remote_activity_id IS NULL
         AND sync_blocked_reason IS NULL
       ''',
       whereArgs: [localWorkoutId, userId, clientSyncId],

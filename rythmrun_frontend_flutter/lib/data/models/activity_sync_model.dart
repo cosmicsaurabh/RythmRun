@@ -9,8 +9,8 @@ class ActivitySyncModel {
       'clientSyncId': workout.clientSyncId,
       'metricsVersion': workout.metricsVersion,
       'type': workout.type.name,
-      'startTime': workout.startTime!.toIso8601String(),
-      'endTime': workout.endTime!.toIso8601String(),
+      'startTime': workout.startTime!.toUtc().toIso8601String(),
+      'endTime': workout.endTime!.toUtc().toIso8601String(),
       'distance': workout.totalDistance,
       'duration': workout.activeDuration!.inSeconds,
       'avgSpeed': workout.averageSpeed,
@@ -32,7 +32,7 @@ class ActivitySyncModel {
                   'latitude': point.latitude,
                   'longitude': point.longitude,
                   'altitude': point.altitude,
-                  'timestamp': point.timestamp.toIso8601String(),
+                  'timestamp': point.timestamp.toUtc().toIso8601String(),
                   'accuracy': point.accuracy,
                   'speed': point.speed,
                   'heading': point.heading,
@@ -44,7 +44,7 @@ class ActivitySyncModel {
               .map(
                 (statusChange) => <String, dynamic>{
                   'status': statusChange.status.name,
-                  'timestamp': statusChange.timestamp.toIso8601String(),
+                  'timestamp': statusChange.timestamp.toUtc().toIso8601String(),
                 },
               )
               .toList(),

@@ -310,44 +310,70 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 **Primary files**
 
 - `RythmRun_backend_nodejs/src/app.ts`
+- `RythmRun_backend_nodejs/src/routes/activity.routes.ts`
 - `RythmRun_backend_nodejs/src/models/dto/activity.dto.ts`
+- `RythmRun_backend_nodejs/src/models/activity-domain-validation.ts`
+- `RythmRun_backend_nodejs/src/middleware/activity-validation.middleware.ts`
+- `RythmRun_backend_nodejs/src/middleware/validation.middleware.ts`
 - `RythmRun_backend_nodejs/src/controllers/activity.controller.ts`
 - `RythmRun_backend_nodejs/src/services/activity.service.ts`
-- `RythmRun_backend_nodejs/src/__tests__/activity.service.test.ts`
-- New controller/integration tests and a 750-point fixture generator
+- `rythmrun_frontend_flutter/lib/core/network/http_client.dart`
+- `rythmrun_frontend_flutter/lib/core/services/local_db_service.dart`
+- `rythmrun_frontend_flutter/lib/data/datasources/workout_local_datasource.dart`
+- `rythmrun_frontend_flutter/lib/data/models/activity_sync_model.dart`
+- `rythmrun_frontend_flutter/lib/data/repositories/workout_repository_impl.dart`
+- Activity boundary/domain/controller/service and Flutter HTTP/model/repository tests
 
 **Implementation**
 
-1. Keep a small default parser for ordinary routes. Apply the measured temporary activity-body limit only to authenticated activity create/update routes, after a minimal rate/concurrency guard and an early `Content-Length` rejection where present; the parser limit remains authoritative for chunked/missing-length bodies. Start measurement at 2 MiB, then commit the exact limit and fixtures before merge. Do not raise the global Express limit.
+1. Keep a small default parser for ordinary routes. Apply the measured temporary activity-body limit only to authenticated activity create/update routes, after a process-local concurrency admission guard and an early `Content-Length` rejection where present; the parser limit remains authoritative for chunked/missing-length bodies. Measurement showed that 2 MiB contradicts the 12,000-location/1,000-status caps, so the reviewed interim application limit is exactly 3 MiB while ordinary routes remain at 100 KiB. Do not raise the global Express limit.
 2. Bound and validate the domain independently of the body limit:
    - maximum 12,000 locations, with a serialized maximum fixture below the configured body limit;
    - maximum 1,000 status changes;
    - nested validation with `ValidateNested({ each: true })` and `Type`;
    - finite latitude `[-90,90]`, longitude `[-180,180]`, sane accuracy/speed/heading/elevation ranges, valid timestamps, and chronological bounds within the activity window;
    - workout type/status allowlists and bounded text/client ID lengths;
-   - internally consistent end time, active duration, paused duration, distance, and point count.
+   - internally consistent end time, active/paused duration, average speed, route distance, and route-observed maximum speed.
 3. Adjust the numeric cap after measuring realistic serialized fixtures; body limit and array cap must not contradict each other.
 4. Define PATCH collection semantics by property presence:
    - omitted `locations`/`statusChanges` preserves existing rows;
    - explicit empty array clears when the API intentionally permits it;
    - non-empty array replaces inside the transaction.
-5. Never delete either collection before validation of the complete replacement succeeds.
-6. Return actionable validation codes so the mobile sync layer can distinguish permanent malformed/oversized data from retryable network failure. UI visibility arrives in IP-4.
+5. Never delete either collection before validation of the complete replacement succeeds. Run the merge/read/validate/nested-write sequence at serializable isolation and retry serialization conflicts so concurrent application processes cannot commit complementary partial patches against the same stale snapshot.
+6. Return actionable validation codes so the mobile sync layer can distinguish permanent malformed/oversized data from retryable auth, admission, server, and network failure. Persist only the stable permanent reason in the existing SQLite v6 `sync_blocked_reason` column; do not persist raw responses. UI visibility arrives in IP-4.
+
+**Repository contract selected on 2026-07-11**
+
+- `POST /api/activities` and `PATCH /api/activities/:activityId` run authentication, a process-local admission guard, early declared-length rejection, then the 3 MiB parser. The parser-selection matcher follows Express's case-insensitive route contract. The interim guard permits one active mutation per user and four per process, rejects without queueing, and does not replace IP-2.6's proxy-aware/distributed controls.
+- The measured 750-point fixture is above 100 KiB. The full 12,000-location/1,000-status canonical fixture is above 2 MiB and below 3 MiB; the test asserts both facts so the body and collection caps cannot drift independently.
+- Structural failures use non-retryable `ACTIVITY_REQUEST_INVALID`, `ACTIVITY_PAYLOAD_INVALID_JSON`, or `ACTIVITY_PAYLOAD_TOO_LARGE`; semantic failures use non-retryable `ACTIVITY_DOMAIN_INVALID`; temporary admission pressure uses retryable `ACTIVITY_REQUEST_BUSY` plus `Retry-After`. An exact root allowlist and scalar/collection preflight run before transformation; generic traversal is iterative and bounded by depth/object/key budgets. DTO/domain responses contain at most 25 issues, bound path/message lengths, and include `issuesTruncated` rather than amplifying a bounded request into an unbounded error response.
+- Nullable scalar fields retain the current Flutter compatibility contract. Non-nullable PATCH fields and both collections reject `null`; omission preserves a collection, `[]` clears it, and a non-empty array replaces it in one owner-scoped nested Prisma update. The owner read, merged validation, and nested write use serializable isolation with up to three attempts on Prisma `P2034` conflicts.
+- Non-empty canonical status history supplies pause-segmentation provenance for route-distance and implied-speed reconstruction. Once history is intentionally absent or cleared, stored aggregates remain authoritative: individual timestamp/accuracy/coordinate/reported-speed checks still run, but later patches do not invent route bridges from history that no longer exists.
+- The current Flutter client serializes activity, location, and status timestamps as UTC. The backend temporarily accepts offset-less timestamps from previously supported clients; staging must prove that compatibility window before it is narrowed.
+- Version 1 retains broad legacy speed/GPS interpretation. Version 2 enforces canonical metres/second, the current GPS policy, workout/status allowlists, strict calendar timestamps, bounded/ordered timelines, and route/summary consistency. This relies on the documented invariant that version 2 was not deployed before IP-1.2; if release history disproves that invariant, introduce distinct tracking-policy provenance before rollout.
+- Flutter treats only activity-create `400`, `413`, and `422` as permanent, records the stable server code (or status-derived fallback) in the existing v6 block marker, and continues later rows. `401`, `403`, `429`, `5xx`, and network failures remain eligible after auth/backoff/recovery. An account switch cannot write a block reason into the newly active user's scope or launch another queued request with the prior user's cached headers.
+- Deployed edge/proxy alignment, memory/latency observation, real PostgreSQL rollback proof, previous-client timestamp compatibility, and sanitized telemetry remain open under [MC-1.8](./MANUAL-CHECKS.md#mc-18--bounded-activity-ingest-and-patch-history-in-staging).
 
 **Automated tests**
 
-- Audited 750-point/~103 KB fixture succeeds.
+Final-tree DTO/domain/controller/service and Flutter coverage below has passed. Updated socket-boundary cases cover the HTTP parser/admission bullets, but their final rerun remains required before the two socket exit gates can close.
+
+- Audited 750-point fixture above the 100 KiB ordinary-route limit succeeds.
 - A representative multi-hour fixture below both caps succeeds.
-- Above-limit body returns `413`; too many points returns deterministic `400/422` without persistence.
+- Above-limit body returns `413`; too many points returns deterministic `400/422` without reaching the create/update handler or service.
 - Oversized unauthenticated/high-concurrency requests are rejected before expensive JSON/domain work, and unrelated routes retain the small default limit.
 - Invalid nested coordinate/type/timestamp is rejected before transaction writes.
+- Wide unknown-root, deeply nested scalar, and attacker-sized key probes return small bounded structural errors; the declared 12,000/1,000 maxima remain inside the traversal budget.
 - PATCH of name only preserves locations and status history.
 - PATCH with explicit empty collection follows the documented clear rule.
-- Transaction failure leaves old collections intact.
+- A later route-affecting PATCH remains valid after status history was intentionally cleared instead of reconstructing a false pause bridge.
+- A simulated serializable conflict retries the complete owner read/validation/write sequence.
+- A stateful transaction fake leaves old collections intact when the nested update fails; real PostgreSQL rollback remains MC-1.8.
 
 **Acceptance**
 
-- Ordinary MVP workouts no longer fail at Express's default 100 KB limit, while the endpoint remains bounded.
+- Ordinary MVP workouts no longer fail at the explicit ordinary 100 KiB cap, while the activity mutation endpoint remains bounded.
+- Repository tests do not prove the deployed reverse proxy accepts 3 MiB or that the chosen concurrency/memory envelope is operationally safe; MC-1.8 must pass before rollout.
 
 ### IP-1.6 — Add minimum CI and phase gates
 
@@ -416,7 +442,7 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 - Metric migrations use a version marker and backup; rollback restores computed fields only from the captured pre-migration data, never by multiplying every row blindly.
 - If the new mobile tracking policy rejects too many valid points, roll back thresholds/config while keeping the single-policy architecture and pause correctness.
 - If SQLite migration fails, leave the old database intact and block destructive operations; never delete the user's database as a recovery shortcut.
-- If 2 MiB handling causes resource pressure, keep domain caps and reduce the limit based on measured fixtures; do not return to the unannounced 100 KB default.
+- If 3 MiB handling causes resource pressure, change the domain caps and body limit together from measured fixtures; do not return silently to the unannounced 100 KiB default.
 - CI can temporarily be non-required while infrastructure is repaired, but must continue reporting and cannot be marked complete until failure probes work.
 
 ## Verification matrix
@@ -429,9 +455,9 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 | GPS jump then valid point | Jump rejected; valid point uses last accepted anchor | Policy/provider test |
 | A logout → B login | A work drains; local clear succeeds; no A cache or late callback is visible under B | Session/provider/repository integration tests + MC-1.6 |
 | Delete owned workout | All child rows cascade; foreign key check clean | SQLite migration test |
-| PATCH name only | Route/status rows unchanged | Backend service/integration test |
-| 750-point payload | Activity created successfully | HTTP integration test |
-| Oversize/malformed payload | Stable non-retryable 4xx; no partial rows | HTTP + DB test |
+| PATCH name only | Route/status rows unchanged | Controller/service plus Prisma query-shape/stateful fake; real PostgreSQL in MC-1.8 |
+| 750-point payload | Authenticated body is parsed and reaches the create handler | Socket-boundary test (final rerun pending); persisted create in MC-1.8 |
+| Oversize/malformed payload | Stable non-retryable 4xx; no partial rows | HTTP boundary plus transaction query-shape/stateful-fake coverage; real PostgreSQL proof in MC-1.8 |
 | CI failure probe | Required job fails for intentional regression | CI run link |
 
 ## Exit gate
@@ -451,9 +477,10 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 - [x] SQLite foreign keys are on, orphans are handled, cascades pass, and required indexes exist in repository FFI coverage.
 - [ ] SQLite host migration/DAO tests run under an explicitly initialized FFI database in CI; platform-only checks are assigned to device integration tests.
 - [ ] MC-1.7 proves the v5→v6 in-place upgrade, reopen, owner denial, cascades, and forward-fix response on a supported Android release build.
-- [ ] Omitted PATCH collections are preserved.
-- [ ] Representative long workouts sync under explicit limits; invalid/oversized payloads fail safely.
-- [ ] The larger activity parser is authenticated, route-specific, rate/concurrency guarded, and does not raise unrelated route limits.
+- [x] Omitted PATCH collections are preserved in repository service/controller coverage; explicit empty arrays clear and non-empty arrays replace in one serializable nested update with conflict retry.
+- [ ] Final-tree socket coverage proves representative long-workout parsing plus invalid/oversized rejection; the updated cases are authored, but their final rerun remains pending.
+- [ ] Final-tree socket coverage proves the larger parser is authenticated, route-specific, concurrency guarded, and leaves unrelated routes at 100 KiB; the updated cases are authored, but their final rerun remains pending.
+- [ ] MC-1.8 proves deployed proxy alignment, resource bounds, PATCH rollback, and sanitized telemetry in isolated staging.
 - [ ] Backend and Flutter CI jobs run and fail on intentional regressions.
 - [ ] Debug/staging cannot use production AdMob IDs, and ads never appear before durable local completion.
 
@@ -469,3 +496,5 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 | 2026-07-11 | IP-1.3 | `flutter analyze`; `git diff --check`; independent integration review | Pass with existing analyzer baseline only | Analyzer reports the existing 20 informational findings and zero warnings/errors; the IP-1.3 diff adds none. Natural end-to-end refresh/revocation and strict offline-window enforcement remain IP-2, local DAO ownership remains IP-1.4, and durable recovery of a workout lost by process death remains IP-3. |
 | 2026-07-11 | IP-1.4 | Fresh/reopen schema; v1–v5 and shipped-v3-hybrid migrations; owner-denial/cascade/queue/image/provider/sync races; focused and full Flutter suites | Pass locally; hosted/device verification pending | Database-focused FFI suite 21/21, activity-image repository suite 20/20, workout sync/duplicate suite 4/4, sync coordinator suite 3/3, and full Flutter suite 165/165 passed. Exact indexes/FKs, transactional orphan repair and rollback, one uploadable duplicate identity, owner-bound row operations, late-completion denial, claimed-operation auth retry, and idempotent remote deletion are covered. Hosted Flutter CI and MC-1.7 remain open. |
 | 2026-07-11 | IP-1.4 | `flutter analyze`; `git diff --check`; independent migration/ownership/evidence review | Pass with existing analyzer baseline only | Analyzer reports the existing 20 informational findings and zero warnings/errors; IP-1.4 adds none. Android in-place migration/backup/forward-fix proof, physical orphan-image file cleanup, and hosted CI are not claimed. |
+| 2026-07-11 | IP-1.5 | Activity DTO/controller/domain/service suites; all backend non-socket suites; Flutter HTTP/model/repository suites and full suite; Prisma validation; backend build | Executed local gates pass; final socket/staging/hosted verification pending | Focused backend activity coverage 94/94 and all final-tree non-socket backend coverage 206/206 passed. Focused changed Flutter coverage 43/43 and the full Flutter suite 181/181 passed. The updated socket suite now covers the HTTP maximum fixture, POST/PATCH parser failures, case-insensitive auth/parser ordering, ordinary activity routes, and admission release, but its final-tree rerun could not obtain external execution approval after the local quota was exhausted; the earlier 13/13 predecessor run is not treated as final evidence. Owner-scoped serializable PATCH preserve/clear/replace, bounded adversarial validation, permanent/retryable mobile classification, account-switch halting, UTC instant preservation, idempotency, and stateful transaction-fake behavior are covered. MC-1.8 and hosted CI remain open. |
+| 2026-07-11 | IP-1.5 | Backend build and Prisma validation; `flutter analyze`; `git diff --check`; independent payload/transaction/documentation reviews | Pass with existing analyzer baseline | No Prisma or SQLite migration is included. Flutter reuses the v6 `sync_blocked_reason` column and adds UTC serialization plus permanent rejection classification. Analyzer reports the existing 20 informational findings and zero warnings/errors, with none in IP-1.5 files. The admission guard is deliberately process-local and interim; deployed proxy sizing, memory/latency, real PostgreSQL rollback, previous-client timestamp compatibility, and sanitized telemetry are not claimed by local tests. |

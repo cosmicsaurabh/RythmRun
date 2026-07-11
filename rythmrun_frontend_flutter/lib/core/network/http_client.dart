@@ -9,8 +9,9 @@ class AppHttpClient {
   late final http.Client _client;
   final Duration _timeout;
 
-  AppHttpClient({Duration? timeout}) : _timeout = timeout ?? AppConfig.timeout {
-    _client = http.Client();
+  AppHttpClient({Duration? timeout, http.Client? client})
+    : _timeout = timeout ?? AppConfig.timeout {
+    _client = client ?? http.Client();
   }
 
   /// Make a GET request
@@ -105,27 +106,62 @@ class AppHttpClient {
 
         // Handle specific error status codes
         // Try to get error message from response body
-        String errorMessage;
+        var errorMessage = response.reasonPhrase ?? 'Unknown error';
+        String? errorCode;
+        bool? retryable;
         try {
-          final Map<String, dynamic> errorBody = json.decode(response.body);
-          errorMessage =
-              errorBody['message'] ?? errorBody['error'] ?? 'Unknown error';
-        } catch (e) {
-          // Fallback if response body isn't JSON
-          errorMessage = response.reasonPhrase ?? 'Unknown error';
+          final decodedBody = json.decode(response.body);
+          if (decodedBody is Map<String, dynamic>) {
+            final responseMessage =
+                decodedBody['message'] ?? decodedBody['error'];
+            if (responseMessage is String && responseMessage.isNotEmpty) {
+              errorMessage = responseMessage;
+            }
+            final responseCode = decodedBody['code'];
+            if (responseCode is String && responseCode.isNotEmpty) {
+              errorCode = responseCode;
+            }
+            final responseRetryable = decodedBody['retryable'];
+            if (responseRetryable is bool) {
+              retryable = responseRetryable;
+            }
+          }
+        } on FormatException {
+          // Proxy and infrastructure errors are not guaranteed to be JSON.
         }
 
         switch (response.statusCode) {
           case 401:
-            throw UnauthorizedException(errorMessage);
+            throw UnauthorizedException(
+              errorMessage,
+              code: errorCode,
+              retryable: retryable,
+            );
           case 403:
-            throw ForbiddenException(errorMessage);
+            throw ForbiddenException(
+              errorMessage,
+              code: errorCode,
+              retryable: retryable,
+            );
           case 404:
-            throw NotFoundException(errorMessage);
+            throw NotFoundException(
+              errorMessage,
+              code: errorCode,
+              retryable: retryable,
+            );
           case 500:
-            throw ServerException(errorMessage);
+            throw ServerException(
+              errorMessage,
+              code: errorCode,
+              retryable: retryable,
+            );
           default:
-            throw HttpStatusException(response.statusCode, errorMessage);
+            throw HttpStatusException(
+              response.statusCode,
+              errorMessage,
+              code: errorCode,
+              retryable: retryable,
+            );
         }
       } on SocketException catch (e) {
         attempts++;
@@ -162,8 +198,15 @@ class AppHttpClient {
 class HttpStatusException implements Exception {
   final int statusCode;
   final String message;
+  final String? code;
+  final bool? retryable;
 
-  const HttpStatusException(this.statusCode, this.message);
+  const HttpStatusException(
+    this.statusCode,
+    this.message, {
+    this.code,
+    this.retryable,
+  });
 
   @override
   String toString() => 'HttpStatusException($statusCode): $message';
@@ -178,28 +221,32 @@ class NetworkException implements Exception {
 }
 
 class UnauthorizedException extends HttpStatusException {
-  UnauthorizedException(String message) : super(401, message);
+  UnauthorizedException(String message, {String? code, bool? retryable})
+    : super(401, message, code: code, retryable: retryable);
 
   @override
   String toString() => 'UnauthorizedException: $message';
 }
 
 class ForbiddenException extends HttpStatusException {
-  ForbiddenException(String message) : super(403, message);
+  ForbiddenException(String message, {String? code, bool? retryable})
+    : super(403, message, code: code, retryable: retryable);
 
   @override
   String toString() => 'ForbiddenException: $message';
 }
 
 class NotFoundException extends HttpStatusException {
-  NotFoundException(String message) : super(404, message);
+  NotFoundException(String message, {String? code, bool? retryable})
+    : super(404, message, code: code, retryable: retryable);
 
   @override
   String toString() => 'NotFoundException: $message';
 }
 
 class ServerException extends HttpStatusException {
-  ServerException(String message) : super(500, message);
+  ServerException(String message, {String? code, bool? retryable})
+    : super(500, message, code: code, retryable: retryable);
 
   @override
   String toString() => 'ServerException: $message';

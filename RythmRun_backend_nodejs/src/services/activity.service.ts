@@ -1,10 +1,15 @@
-import { PrismaClient } from '../../generated/prisma';
+import { Prisma, PrismaClient } from '../../generated/prisma';
 import {
     GetActivitiesQueryDto,
     CreateActivityDto,
     UpdateActivityDto,
     LEGACY_METRICS_VERSION,
 } from '../models/dto/activity.dto';
+import {
+    ActivityDomainValidationError,
+    validateActivityCreate,
+    validateMergedActivityUpdate,
+} from '../models/activity-domain-validation';
 import { injectable, inject } from "tsyringe";
 import s3Service from './s3.service';
 
@@ -16,6 +21,40 @@ type ActivityImageWithS3Key = {
 type ActivityWithImages = {
     images?: ActivityImageWithS3Key[] | null;
 };
+
+function isPrismaRecordNotFound(error: unknown): boolean {
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2025'
+    );
+}
+
+function isPrismaSerializationFailure(error: unknown): boolean {
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2034'
+    );
+}
+
+const MAX_ACTIVITY_TRANSACTION_ATTEMPTS = 3;
+
+export { ActivityDomainValidationError };
+
+export class ActivityNotFoundError extends Error {
+    readonly code = 'ACTIVITY_NOT_FOUND';
+    readonly statusCode = 404;
+    readonly retryable = false;
+
+    constructor() {
+        super('Activity not found or unauthorized');
+        this.name = 'ActivityNotFoundError';
+        Object.setPrototypeOf(this, ActivityNotFoundError.prototype);
+    }
+}
 
 @injectable()
 export class ActivityService {
@@ -62,6 +101,10 @@ export class ActivityService {
             if (existingActivity) {
                 return existingActivity;
             }
+
+            // Idempotent retries return above. A genuinely new activity must
+            // pass the complete semantic contract before the first write.
+            validateActivityCreate(dto);
 
             // Create the activity
             const activity = await tx.activity.create({
@@ -113,11 +156,19 @@ export class ActivityService {
                 });
             }
 
-            // Return activity with its locations and status changes
-            return await tx.activity.findUnique({
+            // Return activity with its locations and status changes. Treat an
+            // impossible missing read as a transaction failure so no partial
+            // activity can commit.
+            const persistedActivity = await tx.activity.findUnique({
                 where: { id: activity.id },
                 include: this.activityInclude
             });
+
+            if (!persistedActivity) {
+                throw new Error('Created activity could not be reloaded');
+            }
+
+            return persistedActivity;
         });
 
         return this.addImageUrls(activity);
@@ -179,81 +230,174 @@ export class ActivityService {
     }
 
     async updateActivity(userId: number, activityId: number, dto: UpdateActivityDto) {
-        // First check if activity exists and belongs to user
-        const existingActivity = await this.prisma.activity.findFirst({
-            where: {
-                id: activityId,
-                userId
-            }
-        });
+        const windowChanged =
+            dto.startTime !== undefined || dto.endTime !== undefined;
+        const routeMetricsChanged =
+            dto.distance !== undefined ||
+            dto.duration !== undefined ||
+            dto.avgSpeed !== undefined ||
+            dto.maxSpeed !== undefined;
+        const needsExistingLocations =
+            dto.locations === undefined &&
+            (windowChanged ||
+                dto.statusChanges !== undefined ||
+                dto.type !== undefined ||
+                routeMetricsChanged);
+        const needsExistingStatusChanges =
+            (dto.statusChanges === undefined &&
+                (windowChanged ||
+                    dto.locations !== undefined ||
+                    dto.pausedDuration !== undefined ||
+                    dto.type !== undefined ||
+                    routeMetricsChanged)) ||
+            (dto.statusChanges?.length === 0 && dto.locations === undefined);
 
-        if (!existingActivity) {
-            throw new Error('Activity not found or unauthorized');
+        for (
+            let attempt = 0;
+            attempt < MAX_ACTIVITY_TRANSACTION_ATTEMPTS;
+            attempt += 1
+        ) {
+            try {
+                const activity = await this.prisma.$transaction(async (tx) => {
+                // Read ownership and the state needed to validate a partial
+                // update inside the same transaction as the replacement.
+                const existingActivity = await tx.activity.findFirst({
+                    where: {
+                        id: activityId,
+                        userId
+                    },
+                    include: {
+                        locations: needsExistingLocations
+                            ? {
+                                select: {
+                                    latitude: true,
+                                    longitude: true,
+                                    accuracy: true,
+                                    speed: true,
+                                    timestamp: true
+                                },
+                                orderBy: { id: 'asc' }
+                            }
+                            : false,
+                        statusChanges: needsExistingStatusChanges
+                            ? {
+                                select: {
+                                    status: true,
+                                    timestamp: true
+                                },
+                                orderBy: { id: 'asc' }
+                            }
+                            : false
+                    }
+                });
+
+                if (!existingActivity) {
+                    throw new ActivityNotFoundError();
+                }
+
+                // This must complete before the single nested write below.
+                // Unrelated legacy rows remain patchable unless their metric,
+                // timeline, or collection is part of this update.
+                validateMergedActivityUpdate(existingActivity, dto);
+
+                const data: Prisma.ActivityUpdateInput = {
+                    ...(dto.type !== undefined && { type: dto.type }),
+                    ...(dto.startTime !== undefined && {
+                        startTime: new Date(dto.startTime)
+                    }),
+                    ...(dto.endTime !== undefined && {
+                        endTime: new Date(dto.endTime)
+                    }),
+                    ...(dto.distance !== undefined && { distance: dto.distance }),
+                    ...(dto.duration !== undefined && { duration: dto.duration }),
+                    ...(dto.avgSpeed !== undefined && { avgSpeed: dto.avgSpeed }),
+                    ...(dto.maxSpeed !== undefined && { maxSpeed: dto.maxSpeed }),
+                    ...(dto.calories !== undefined && { calories: dto.calories }),
+                    ...(dto.description !== undefined && {
+                        description: dto.description
+                    }),
+                    ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
+                    ...(dto.pausedDuration !== undefined && {
+                        pausedDuration: dto.pausedDuration
+                    }),
+                    ...(dto.name !== undefined && { name: dto.name }),
+                    ...(dto.elevationGain !== undefined && {
+                        elevationGain: dto.elevationGain
+                    }),
+                    ...(dto.elevationLoss !== undefined && {
+                        elevationLoss: dto.elevationLoss
+                    }),
+                    ...(dto.locations !== undefined && {
+                        locations: {
+                            deleteMany: {},
+                            ...(dto.locations.length > 0 && {
+                                createMany: {
+                                    data: dto.locations.map(loc => ({
+                                        latitude: loc.latitude,
+                                        longitude: loc.longitude,
+                                        altitude: loc.altitude,
+                                        timestamp: new Date(loc.timestamp),
+                                        accuracy: loc.accuracy,
+                                        speed: loc.speed,
+                                        heading: loc.heading,
+                                    }))
+                                }
+                            })
+                        }
+                    }),
+                    ...(dto.statusChanges !== undefined && {
+                        statusChanges: {
+                            deleteMany: {},
+                            ...(dto.statusChanges.length > 0 && {
+                                createMany: {
+                                    data: dto.statusChanges.map(statusChange => ({
+                                        status: statusChange.status,
+                                        timestamp: new Date(statusChange.timestamp),
+                                    }))
+                                }
+                            })
+                        }
+                    })
+                };
+
+                // Prisma executes both collection replacements as part of this
+                // one nested write. A rejected create therefore rolls back the
+                // scalar update and both deletes.
+                return tx.activity.update({
+                    where: {
+                        id: activityId,
+                        userId
+                    },
+                    data,
+                    include: this.activityInclude
+                });
+                }, {
+                    isolationLevel:
+                        Prisma.TransactionIsolationLevel.Serializable
+                });
+
+                return this.addImageUrls(activity);
+            } catch (error) {
+                if (
+                    isPrismaSerializationFailure(error) &&
+                    attempt < MAX_ACTIVITY_TRANSACTION_ATTEMPTS - 1
+                ) {
+                    continue;
+                }
+
+                if (error instanceof ActivityNotFoundError) {
+                    throw error;
+                }
+
+                if (isPrismaRecordNotFound(error)) {
+                    throw new ActivityNotFoundError();
+                }
+
+                throw error;
+            }
         }
 
-        // Update activity with its locations in a transaction
-        const activity = await this.prisma.$transaction(async (tx) => {
-            // Update the activity
-            const activity = await tx.activity.update({
-                where: { id: activityId },
-                data: {
-                    type: dto.type,
-                    startTime: dto.startTime ? new Date(dto.startTime) : undefined,
-                    endTime: dto.endTime ? new Date(dto.endTime) : undefined,
-                    distance: dto.distance,
-                    duration: dto.duration,
-                    avgSpeed: dto.avgSpeed,
-                    maxSpeed: dto.maxSpeed,
-                    calories: dto.calories,
-                    description: dto.description,
-                    isPublic: dto.isPublic,
-                    pausedDuration: dto.pausedDuration,
-                    name: dto.name,
-                    elevationGain: dto.elevationGain,
-                    elevationLoss: dto.elevationLoss,
-                }
-            });
-
-            // If locations are provided, update them
-            if (dto.locations && dto.locations.length > 0) {
-                await tx.location.deleteMany({
-                    where: { activityId }
-                });
-
-                await tx.location.createMany({
-                    data: dto.locations.map(loc => ({
-                        activityId,
-                        latitude: loc.latitude,
-                        longitude: loc.longitude,
-                        altitude: loc.altitude,
-                        timestamp: new Date(loc.timestamp),
-                        accuracy: loc.accuracy,
-                        speed: loc.speed,
-                        heading: loc.heading,
-                    }))
-                });
-            }
-
-            // Replace status changes
-            await tx.statusChange.deleteMany({ where: { activityId } });
-            if (dto.statusChanges && dto.statusChanges.length > 0) {
-                await tx.statusChange.createMany({
-                    data: dto.statusChanges.map(sc => ({
-                        activityId,
-                        status: sc.status,
-                        timestamp: new Date(sc.timestamp),
-                    }))
-                });
-            }
-
-            // Return updated activity with its locations and status changes
-            return await tx.activity.findUnique({
-                where: { id: activityId },
-                include: this.activityInclude
-            });
-        });
-
-        return this.addImageUrls(activity);
+        throw new Error('Activity update transaction could not complete');
     }
 
     async deleteActivity(userId: number, activityId: number) {

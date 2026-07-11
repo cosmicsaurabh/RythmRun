@@ -147,6 +147,182 @@ void main() {
   );
 
   test(
+    'permanent create rejection blocks only that owned row and continues',
+    () async {
+      const userId = 7;
+      final service = await harness.openService();
+      final localDataSource = WorkoutLocalDataSource(service);
+      final remoteDataSource =
+          _BlockingActivityRemoteDataSource()
+            ..createErrorsByClientSyncId['permanent-invalid'] =
+                const HttpStatusException(
+                  422,
+                  'Activity payload is invalid',
+                  code: 'ACTIVITY_DOMAIN_INVALID',
+                  retryable: false,
+                );
+      final repository = WorkoutRepositoryImpl(
+        localDataSource,
+        _FakeAuthRepository(userId),
+        remoteDataSource,
+        _FakeAuthLocalDataSource(),
+      );
+      final blockedId = await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: 'permanent-invalid', userId: userId),
+        userId: userId,
+      );
+      final validId = await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: 'valid-after-block', userId: userId),
+        userId: userId,
+      );
+
+      await repository.syncWorkouts();
+
+      final database = await service.database;
+      final rows = await database.query(
+        'workouts',
+        columns: <String>[
+          'id',
+          'synced',
+          'remote_activity_id',
+          'sync_blocked_reason',
+        ],
+        orderBy: 'id ASC',
+      );
+      expect(rows, hasLength(2));
+      expect(rows.first['id'], blockedId);
+      expect(rows.first['synced'], 0);
+      expect(rows.first['remote_activity_id'], isNull);
+      expect(rows.first['sync_blocked_reason'], 'ACTIVITY_DOMAIN_INVALID');
+      expect(rows.last['id'], validId);
+      expect(rows.last['synced'], 1);
+      expect(rows.last['remote_activity_id'], isNotNull);
+      expect(rows.last['sync_blocked_reason'], isNull);
+      expect(remoteDataSource.createCalls, 2);
+      expect(remoteDataSource.attemptedClientSyncIds, <String>[
+        'permanent-invalid',
+        'valid-after-block',
+      ]);
+
+      await repository.syncWorkouts();
+      expect(remoteDataSource.createCalls, 2);
+    },
+  );
+
+  test('retryable 429 leaves the workout eligible for a later sync', () async {
+    const userId = 7;
+    const clientSyncId = 'retry-after-admission';
+    final service = await harness.openService();
+    final remoteDataSource =
+        _BlockingActivityRemoteDataSource()
+          ..createErrorsByClientSyncId[clientSyncId] =
+              const HttpStatusException(
+                429,
+                'Another activity request is already in progress',
+                code: 'ACTIVITY_REQUEST_BUSY',
+                retryable: true,
+              );
+    final repository = WorkoutRepositoryImpl(
+      WorkoutLocalDataSource(service),
+      _FakeAuthRepository(userId),
+      remoteDataSource,
+      _FakeAuthLocalDataSource(),
+    );
+    final localWorkoutId = await service.saveWorkoutInLocalDatabase(
+      _completedWorkout(clientSyncId: clientSyncId, userId: userId),
+      userId: userId,
+    );
+
+    await repository.syncWorkouts();
+
+    var rows = await (await service.database).query(
+      'workouts',
+      columns: <String>['synced', 'sync_blocked_reason'],
+      where: 'id = ?',
+      whereArgs: <Object?>[localWorkoutId],
+    );
+    expect(rows.single['synced'], 0);
+    expect(rows.single['sync_blocked_reason'], isNull);
+    expect(remoteDataSource.createCalls, 1);
+
+    remoteDataSource.createErrorsByClientSyncId.remove(clientSyncId);
+    await repository.syncWorkouts();
+
+    rows = await (await service.database).query(
+      'workouts',
+      columns: <String>['synced', 'sync_blocked_reason'],
+      where: 'id = ?',
+      whereArgs: <Object?>[localWorkoutId],
+    );
+    expect(rows.single['synced'], 1);
+    expect(rows.single['sync_blocked_reason'], isNull);
+    expect(remoteDataSource.createCalls, 2);
+  });
+
+  test(
+    'owner change during permanent rejection halts before the next owned row',
+    () async {
+      const userA = 7;
+      const userB = 8;
+      const clientSyncId = 'rejection-owner-race';
+      final service = await harness.openService();
+      final remoteDataSource =
+          _BlockingActivityRemoteDataSource()
+            ..createErrorsByClientSyncId[clientSyncId] =
+                const HttpStatusException(
+                  413,
+                  'Activity payload is too large',
+                  code: 'ACTIVITY_PAYLOAD_TOO_LARGE',
+                  retryable: false,
+                );
+      final authRepository = _FakeAuthRepository(userA);
+      final repository = WorkoutRepositoryImpl(
+        WorkoutLocalDataSource(service),
+        authRepository,
+        remoteDataSource,
+        _FakeAuthLocalDataSource(),
+      );
+      final localWorkoutId = await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: clientSyncId, userId: userA),
+        userId: userA,
+      );
+      await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(
+          clientSyncId: 'rejection-owner-race-next',
+          userId: userA,
+        ),
+        userId: userA,
+      );
+      final reachedRemote = Completer<void>();
+      final allowRemote = Completer<void>();
+      remoteDataSource
+        ..reachedRemote = reachedRemote
+        ..allowRemote = allowRemote;
+
+      final sync = repository.syncWorkouts();
+      await reachedRemote.future;
+      authRepository.currentUserId = userB;
+      allowRemote.complete();
+      await sync;
+
+      final rows = await (await service.database).query(
+        'workouts',
+        columns: <String>['synced', 'sync_blocked_reason'],
+        where: 'id = ?',
+        whereArgs: <Object?>[localWorkoutId],
+      );
+      expect(rows.single['synced'], 0);
+      expect(rows.single['sync_blocked_reason'], isNull);
+      expect(remoteDataSource.createCalls, 1);
+      expect(remoteDataSource.attemptedClientSyncIds, <String>[clientSyncId]);
+      expect(
+        await service.getUnsyncedWorkoutsFromLocalDatabase(userA),
+        hasLength(2),
+      );
+    },
+  );
+
+  test(
     'migrated duplicate client identity permits at most one remote create',
     () async {
       const userId = 7;
@@ -191,6 +367,117 @@ void main() {
       expect(rows.last['sync_blocked_reason'], 'duplicate_client_sync_id');
     },
   );
+
+  for (final rejection in <(String, int, String?, String)>[
+    (
+      'known-code-400',
+      400,
+      'ACTIVITY_REQUEST_INVALID',
+      'ACTIVITY_REQUEST_INVALID',
+    ),
+    ('proxy-413', 413, null, 'ACTIVITY_HTTP_413'),
+    (
+      'known-code-422',
+      422,
+      'ACTIVITY_DOMAIN_INVALID',
+      'ACTIVITY_DOMAIN_INVALID',
+    ),
+    (
+      'unknown-code-422',
+      422,
+      'raw-details-that-must-not-be-persisted',
+      'ACTIVITY_HTTP_422',
+    ),
+  ]) {
+    test('${rejection.$1} permanently blocks activity create', () async {
+      const userId = 7;
+      final clientSyncId = 'permanent-${rejection.$1}';
+      final service = await harness.openService();
+      final remoteDataSource =
+          _BlockingActivityRemoteDataSource()
+            ..createErrorsByClientSyncId[clientSyncId] = HttpStatusException(
+              rejection.$2,
+              'Permanent activity rejection',
+              code: rejection.$3,
+              retryable: false,
+            );
+      final repository = WorkoutRepositoryImpl(
+        WorkoutLocalDataSource(service),
+        _FakeAuthRepository(userId),
+        remoteDataSource,
+        _FakeAuthLocalDataSource(),
+      );
+      final localWorkoutId = await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: clientSyncId, userId: userId),
+        userId: userId,
+      );
+
+      await repository.syncWorkouts();
+
+      final rows = await (await service.database).query(
+        'workouts',
+        columns: <String>['synced', 'sync_blocked_reason'],
+        where: 'id = ?',
+        whereArgs: <Object?>[localWorkoutId],
+      );
+      expect(rows.single['synced'], 0);
+      expect(rows.single['sync_blocked_reason'], rejection.$4);
+      expect(
+        await service.getUnsyncedWorkoutsFromLocalDatabase(userId),
+        isEmpty,
+      );
+    });
+  }
+
+  for (final failure in <(String, Object)>[
+    ('401', UnauthorizedException('expired')),
+    ('403', ForbiddenException('forbidden')),
+    (
+      '429',
+      const HttpStatusException(
+        429,
+        'Busy',
+        code: 'ACTIVITY_REQUEST_BUSY',
+        retryable: true,
+      ),
+    ),
+    ('500', ServerException('unavailable')),
+    ('network', NetworkException('offline')),
+  ]) {
+    test('${failure.$1} activity create failure remains retryable', () async {
+      const userId = 7;
+      final clientSyncId = 'retryable-${failure.$1}';
+      final service = await harness.openService();
+      final remoteDataSource =
+          _BlockingActivityRemoteDataSource()
+            ..createErrorsByClientSyncId[clientSyncId] = failure.$2;
+      final repository = WorkoutRepositoryImpl(
+        WorkoutLocalDataSource(service),
+        _FakeAuthRepository(userId),
+        remoteDataSource,
+        _FakeAuthLocalDataSource(),
+      );
+      final localWorkoutId = await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: clientSyncId, userId: userId),
+        userId: userId,
+      );
+
+      await repository.syncWorkouts();
+
+      final rows = await (await service.database).query(
+        'workouts',
+        columns: <String>['synced', 'sync_blocked_reason'],
+        where: 'id = ?',
+        whereArgs: <Object?>[localWorkoutId],
+      );
+      expect(rows.single['synced'], 0);
+      expect(rows.single['sync_blocked_reason'], isNull);
+      expect(
+        await service.getUnsyncedWorkoutsFromLocalDatabase(userId),
+        hasLength(1),
+      );
+    });
+  }
 
   test(
     'claimed remote delete retries once after authentication refresh',
@@ -289,12 +576,16 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
   int createCalls = 0;
   int deleteCalls = 0;
   bool unauthorizedFirstDelete = false;
+  final List<String> attemptedClientSyncIds = <String>[];
+  final Map<String, Object> createErrorsByClientSyncId = <String, Object>{};
 
   @override
   Future<int> createActivity(
     Map<String, dynamic> activityJson,
     Map<String, String> authHeaders,
   ) async {
+    final clientSyncId = activityJson['clientSyncId']! as String;
+    attemptedClientSyncIds.add(clientSyncId);
     createCalls += 1;
     final reached = reachedRemote;
     if (reached != null && !reached.isCompleted) {
@@ -303,6 +594,10 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
     final allow = allowRemote;
     if (allow != null) {
       await allow.future;
+    }
+    final createError = createErrorsByClientSyncId[clientSyncId];
+    if (createError != null) {
+      throw createError;
     }
     return 1000 + createCalls;
   }
