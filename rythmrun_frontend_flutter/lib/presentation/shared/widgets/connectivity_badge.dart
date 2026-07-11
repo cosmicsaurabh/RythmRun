@@ -55,8 +55,8 @@ class ConnectivityBadge extends ConsumerWidget {
     final iconColor = CustomAppColors.statusWarning;
     final backgroundColor =
         isDark
-            ? CustomAppColors.statusWarning.withOpacity(0.15)
-            : CustomAppColors.statusWarning.withOpacity(0.1);
+            ? CustomAppColors.statusWarning.withValues(alpha: 0.15)
+            : CustomAppColors.statusWarning.withValues(alpha: 0.1);
 
     if (showLabel) {
       return Align(
@@ -70,7 +70,7 @@ class ConnectivityBadge extends ConsumerWidget {
             color: backgroundColor,
             borderRadius: BorderRadius.circular(radiusSm),
             border: Border.all(
-              color: CustomAppColors.statusWarning.withOpacity(0.3),
+              color: CustomAppColors.statusWarning.withValues(alpha: 0.3),
               width: 0.5,
             ),
           ),
@@ -146,8 +146,8 @@ class ConnectivityBadge extends ConsumerWidget {
     final iconColor = CustomAppColors.statusError;
     final backgroundColor =
         isDark
-            ? CustomAppColors.statusError.withOpacity(0.15)
-            : CustomAppColors.statusError.withOpacity(0.1);
+            ? CustomAppColors.statusError.withValues(alpha: 0.15)
+            : CustomAppColors.statusError.withValues(alpha: 0.1);
 
     if (showLabel) {
       return Align(
@@ -161,7 +161,7 @@ class ConnectivityBadge extends ConsumerWidget {
             color: backgroundColor,
             borderRadius: BorderRadius.circular(radiusSm),
             border: Border.all(
-              color: CustomAppColors.statusError.withOpacity(0.3),
+              color: CustomAppColors.statusError.withValues(alpha: 0.3),
               width: 0.5,
             ),
           ),
@@ -229,8 +229,8 @@ class ConnectivityBadge extends ConsumerWidget {
     final iconColor = CustomAppColors.statusSuccess;
     final backgroundColor =
         isDark
-            ? CustomAppColors.statusSuccess.withOpacity(0.15)
-            : CustomAppColors.statusSuccess.withOpacity(0.1);
+            ? CustomAppColors.statusSuccess.withValues(alpha: 0.15)
+            : CustomAppColors.statusSuccess.withValues(alpha: 0.1);
 
     if (showLabel) {
       return Align(
@@ -244,7 +244,7 @@ class ConnectivityBadge extends ConsumerWidget {
             color: backgroundColor,
             borderRadius: BorderRadius.circular(radiusSm),
             border: Border.all(
-              color: CustomAppColors.statusSuccess.withOpacity(0.3),
+              color: CustomAppColors.statusSuccess.withValues(alpha: 0.3),
               width: 0.5,
             ),
           ),

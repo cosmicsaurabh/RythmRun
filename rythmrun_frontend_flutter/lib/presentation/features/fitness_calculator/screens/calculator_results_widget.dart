@@ -81,7 +81,7 @@ class CalculatorResultsWidget extends ConsumerWidget {
           _buildEnhancedResultCard(
             context,
             title: 'BMI Score',
-            value: bmi!.toStringAsFixed(1),
+            value: bmi.toStringAsFixed(1),
             subtitle: bmiCategory ?? '',
             color: _getBMIColor(bmi),
             icon: Icons.monitor_weight_outlined,
@@ -97,7 +97,7 @@ class CalculatorResultsWidget extends ConsumerWidget {
                 Expanded(
                   child: ProfileStatCard(
                     title: 'BMR (Calories/day)',
-                    value: bmr!.round().toString(),
+                    value: bmr.round().toString(),
                     icon: Icons.local_fire_department_outlined,
                     color: CustomAppColors.colorA,
                   ),
@@ -107,7 +107,7 @@ class CalculatorResultsWidget extends ConsumerWidget {
                 Expanded(
                   child: ProfileStatCard(
                     title: 'TDEE (Maintenance)',
-                    value: tdee!.round().toString(),
+                    value: tdee.round().toString(),
                     icon: Icons.directions_run,
                     color: CustomAppColors.colorB,
                   ),
@@ -120,7 +120,7 @@ class CalculatorResultsWidget extends ConsumerWidget {
         if (showHealthyWeight) ...[
           ProfileStatCard(
             title: 'Healthy Weight Range',
-            value: healthyWeightRange!,
+            value: healthyWeightRange,
             icon: Icons.accessibility_new,
             color: CustomAppColors.statusSuccess,
           ),
@@ -137,7 +137,7 @@ class CalculatorResultsWidget extends ConsumerWidget {
             icon: Icons.favorite,
             content: Column(
               children:
-                  heartRateZones!.entries.map((entry) {
+                  heartRateZones.entries.map((entry) {
                     return Padding(
                       padding: const EdgeInsets.only(top: 8.0),
                       child: Row(
@@ -185,9 +185,9 @@ class CalculatorResultsWidget extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(spacingLg),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(radiusLg),
-        border: Border.all(color: color.withOpacity(0.2), width: 1.5),
+        border: Border.all(color: color.withValues(alpha: 0.2), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,7 +201,7 @@ class CalculatorResultsWidget extends ConsumerWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [color.withOpacity(0.2), color.withOpacity(0.1)],
+                    colors: [color.withValues(alpha: 0.2), color.withValues(alpha: 0.1)],
                   ),
                   borderRadius: BorderRadius.circular(radiusSm),
                 ),
@@ -215,7 +215,7 @@ class CalculatorResultsWidget extends ConsumerWidget {
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(
                 context,
-              ).textTheme.bodySmall?.color?.withOpacity(0.6),
+              ).textTheme.bodySmall?.color?.withValues(alpha: 0.6),
               fontSize: 11,
               fontWeight: FontWeight.w500,
               letterSpacing: 0.5,

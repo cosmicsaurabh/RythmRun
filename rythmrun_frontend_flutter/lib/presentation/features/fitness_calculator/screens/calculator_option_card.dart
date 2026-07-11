@@ -41,7 +41,7 @@ class CalculatorOptionCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(spacingMd),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(radiusMd),
               ),
               child: Icon(icon, color: color, size: 28),

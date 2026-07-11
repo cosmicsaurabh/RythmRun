@@ -191,7 +191,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           colors: [
             CustomAppColors.colorA,
             CustomAppColors.colorB,
-            CustomAppColors.colorC.withOpacity(0.8),
+            CustomAppColors.colorC.withValues(alpha: 0.8),
           ],
         ),
         borderRadius: BorderRadius.only(
@@ -226,7 +226,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: CustomAppColors.white.withOpacity(0.3),
+                          color: CustomAppColors.white.withValues(alpha: 0.3),
                           blurRadius: 20,
                           spreadRadius: 5,
                         ),
@@ -281,7 +281,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               fontWeight: FontWeight.bold,
               shadows: [
                 Shadow(
-                  color: CustomAppColors.black.withOpacity(0.26),
+                  color: CustomAppColors.black.withValues(alpha: 0.26),
                   offset: Offset(0, 2),
                   blurRadius: 4,
                 ),
@@ -300,7 +300,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               Text(
                 user.email,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: CustomAppColors.white.withOpacity(0.9),
+                  color: CustomAppColors.white.withValues(alpha: 0.9),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -315,10 +315,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               vertical: spacingSm,
             ),
             decoration: BoxDecoration(
-              color: CustomAppColors.white.withOpacity(0.2),
+              color: CustomAppColors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(radiusXl),
               border: Border.all(
-                color: CustomAppColors.white.withOpacity(0.3),
+                color: CustomAppColors.white.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -334,7 +334,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 Text(
                   'Member since ${_formatDate(user.createdAt)}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: CustomAppColors.white.withOpacity(0.9),
+                    color: CustomAppColors.white.withValues(alpha: 0.9),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -564,7 +564,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             borderRadius: BorderRadius.circular(radiusLg),
             boxShadow: [
               BoxShadow(
-                color: CustomAppColors.black.withOpacity(0.05),
+                color: CustomAppColors.black.withValues(alpha: 0.05),
                 blurRadius: 20,
                 offset: const Offset(0, 4),
               ),
@@ -629,13 +629,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           end: Alignment.centerRight,
           colors: [
             CustomAppColors.statusError,
-            CustomAppColors.statusError.withOpacity(0.8),
+            CustomAppColors.statusError.withValues(alpha: 0.8),
           ],
         ),
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: CustomAppColors.statusError.withOpacity(0.3),
+            color: CustomAppColors.statusError.withValues(alpha: 0.3),
             blurRadius: 15,
             offset: const Offset(0, 4),
           ),
@@ -872,7 +872,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     if (cloudFrontUrl != null) {
       return CircleAvatar(
         radius: 58,
-        backgroundColor: CustomAppColors.colorA.withOpacity(0.3),
+        backgroundColor: CustomAppColors.colorA.withValues(alpha: 0.3),
         child: ClipOval(
           child: Image.network(
             cloudFrontUrl,
@@ -889,7 +889,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 width: 116,
                 height: 116,
                 decoration: BoxDecoration(
-                  color: CustomAppColors.colorA.withOpacity(0.1),
+                  color: CustomAppColors.colorA.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Center(
@@ -907,7 +907,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 width: 116,
                 height: 116,
                 decoration: BoxDecoration(
-                  color: CustomAppColors.colorA.withOpacity(0.3),
+                  color: CustomAppColors.colorA.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -925,7 +925,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     // No profile picture - show default placeholder
     return CircleAvatar(
       radius: 58,
-      backgroundColor: CustomAppColors.colorA.withOpacity(0.3),
+      backgroundColor: CustomAppColors.colorA.withValues(alpha: 0.3),
       child: const Icon(Icons.person, size: 60, color: CustomAppColors.white),
     );
   }

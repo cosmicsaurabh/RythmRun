@@ -371,7 +371,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                 Container(
                   padding: const EdgeInsets.all(spacingLg),
                   decoration: BoxDecoration(
-                    color: CustomAppColors.statusSuccess.withOpacity(0.1),
+                    color: CustomAppColors.statusSuccess.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(

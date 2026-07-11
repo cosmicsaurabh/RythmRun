@@ -211,7 +211,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
         color: Theme.of(context).colorScheme.primary,
         borderRadius: BorderRadius.circular(radiusLg),
         border: Border.all(
-          color: CustomAppColors.progressSky.withOpacity(0.3),
+          color: CustomAppColors.progressSky.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -267,7 +267,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
           onSelected: (_) => notifier.setWorkoutTypeFilter(null),
           selectedColor: getWorkoutColor(
             getReverseWorkoutTypeName(state.selectedWorkoutType!),
-          ).withOpacity(0.2),
+          ).withValues(alpha: 0.2),
           selected: true,
         ),
       );
@@ -286,7 +286,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
           label: Text(dateText),
           onDeleted: () => notifier.setDateRangeFilter(),
           onSelected: (_) => notifier.setDateRangeFilter(),
-          selectedColor: CustomAppColors.colorB.withOpacity(0.2),
+          selectedColor: CustomAppColors.colorB.withValues(alpha: 0.2),
           selected: true,
         ),
       );
@@ -368,7 +368,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
           child: Text(
             'Scroll to load more',
             style: TextStyle(
-              color: CustomAppColors.secondaryText.withOpacity(0.7),
+              color: CustomAppColors.secondaryText.withValues(alpha: 0.7),
               fontSize: 12,
             ),
           ),
@@ -422,7 +422,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
                   borderRadius: BorderRadius.circular(radiusLg),
                   boxShadow: [
                     BoxShadow(
-                      color: CustomAppColors.running.withOpacity(0.3),
+                      color: CustomAppColors.running.withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -683,18 +683,18 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
           end: Alignment.bottomRight,
           colors: [
             Theme.of(context).colorScheme.surface,
-            getWorkoutColor(workout.type).withOpacity(0.05),
+            getWorkoutColor(workout.type).withValues(alpha: 0.05),
           ],
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
         border: Border.all(
-          color: getWorkoutColor(workout.type).withOpacity(0.2),
+          color: getWorkoutColor(workout.type).withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -727,7 +727,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
                           BoxShadow(
                             color: getWorkoutColor(
                               workout.type,
-                            ).withOpacity(0.3),
+                            ).withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -818,10 +818,10 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
                   decoration: BoxDecoration(
                     color: Theme.of(
                       context,
-                    ).colorScheme.onPrimary.withOpacity(0.7),
+                    ).colorScheme.onPrimary.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(radiusMd),
                     border: Border.all(
-                      color: getWorkoutColor(workout.type).withOpacity(0.1),
+                      color: getWorkoutColor(workout.type).withValues(alpha: 0.1),
                       width: 1,
                     ),
                   ),
@@ -906,7 +906,7 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
         Container(
           padding: const EdgeInsets.all(spacingSm),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(radiusSm),
           ),
           child: Icon(icon, size: 20, color: color),

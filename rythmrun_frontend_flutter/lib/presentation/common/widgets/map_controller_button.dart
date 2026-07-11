@@ -14,15 +14,15 @@ Widget buildMapControlButton({
       boxShadow: [
         // First shadow layer (e.g. black-100 token)
         BoxShadow(
-          color: Colors.black.withOpacity(0.1),
+          color: Colors.black.withValues(alpha: 0.1),
           offset: const Offset(0, 4),
           blurRadius: 4, // same token for blur
           spreadRadius: -1,
         ),
 
         BoxShadow(
-          color: Colors.black.withOpacity(
-            0.2,
+          color: Colors.black.withValues(
+            alpha: 0.2,
           ), // adjust for --sds-color-black-200
           offset: const Offset(0, 4),
           blurRadius: 4,
