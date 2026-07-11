@@ -52,6 +52,7 @@ model Activity {
   id             Int             @id @default(autoincrement())
   userId         Int
   clientSyncId   String
+  metricsVersion Int             @default(1)
   type           String          @db.VarChar(50)
   startTime      DateTime
   endTime        DateTime

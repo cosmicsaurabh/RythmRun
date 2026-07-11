@@ -4,7 +4,7 @@ published: false
 
 # RythmRun improvement program
 
-> Program status: IP-0 implementation is in progress. Application hardening and local backend CI coverage are committed, while hosted, deployment, incident, infrastructure, and dependency evidence remains tracked in the [manual verification register](./MANUAL-CHECKS.md).
+> Program status: IP-0 remains the release blocker and its operational evidence is still open. The maintainer has explicitly selected repository-only IP-1.1 metric work in parallel; this does not authorize migration execution, deployment, or production enablement.
 
 This directory turns the repository audit dated 2026-07-10 into an implementation-ready hardening program. It is the canonical place to track the current improvement phase, the next five phases, their decisions, and the evidence required to mark work complete.
 
@@ -25,7 +25,8 @@ The first code-remediation slice, commit `e33f314`, is merged into `origin/main`
 - **Human-operated first action:** IP-0.1 — contain the affected production routes and preserve evidence.
 - **Merged code delivery:** IP-0.2 through IP-0.5 profile/avatar/configuration hardening and its local automated suite are in `origin/main` via `e33f314`/`54a5b26`; they are not deployed or production-verified.
 - **Repository-delivered; hosted verification pending:** IP-0.7a Express HTTP security regressions and minimum backend CI are committed in `c52fb87`; MC-0.7 through MC-0.9 remain open.
-- **Current repository package:** IP-0.7 dependency-surface reduction — the AWS SDK v3 migration and removal of locally proven unused production dependencies pass locally on Node.js 22; commit/review is pending, and the dated advisory scan stays open until MC-0.10 has explicit approval and evidence.
+- **Repository-delivered; advisory verification pending:** IP-0.7 dependency-surface reduction is committed in `fc33dca`; MC-0.10 remains open and no current advisory-clean claim is made.
+- **Current repository package:** IP-1.1 canonical metric contracts, provenance markers, non-destructive local/backend migrations, and paused-duration statistics. Production sampling, backup, rollout, and compatibility remain MC-1.1 through MC-1.4.
 - **Manual/hosted gates:** use [MANUAL-CHECKS.md](./MANUAL-CHECKS.md) for hosted CI, intentional-failure, branch-protection, dependency-audit, deployment, incident, infrastructure, staging, and controlled-reopen evidence.
 - **Concurrent owner action:** IP-0.6 — determine exposure and rotate/revoke credentials when it cannot be excluded.
 
@@ -47,7 +48,7 @@ The near-term product is a privacy-first, offline-reliable GPS workout and photo
 | Phase | Status | Priority | Intended outcome | Depends on |
 | --- | --- | --- | --- | --- |
 | [IP-0: Security containment](./IP-0-security-containment.md) | **In progress** | P0 | Contain arbitrary file access, fail closed on secrets, harden the single avatar path, and complete exposure response | Production, log, database, AWS, CDN, and secret-store access |
-| [IP-1: Tracking correctness and local integrity](./IP-1-tracking-correctness.md) | Planned | P1 | Trustworthy metrics, pause/outlier semantics, per-user local access, working cascades, and minimum CI | IP-0 code fix deployed and incident actions underway |
+| [IP-1: Tracking correctness and local integrity](./IP-1-tracking-correctness.md) | **In progress** | P1 | Trustworthy metrics, pause/outlier semantics, per-user local access, working cascades, and minimum CI | Repository work explicitly selected; production still requires IP-0 code deployed and incident actions underway |
 | [IP-2: Authentication, account, and privacy](./IP-2-auth-account-privacy.md) | Planned | P1 | One working refresh contract, secure token storage, revocation, account basics, and safe route visibility | IP-1 user isolation rules and minimum CI |
 | [IP-3: Workout durability](./IP-3-workout-durability.md) | Planned | P1 | Checkpoint/recover active workouts and prove Android screen-off tracking | IP-1 metric state machine; IP-2.1–IP-2.3 identity/offline-session core gate |
 | [IP-4: Sync, data contracts, and restore](./IP-4-sync-data-restore.md) | Planned | P1/P2 | Bounded resumable sync, lightweight API reads, visible status, indexed data, and cross-device restore | IP-2 refresh; IP-3 durable local state |
@@ -69,6 +70,8 @@ Phases are ordered by risk and dependency, not by ease. Work inside a phase may 
 | IP-5 release controls | Can be prepared earlier; formal gate follows IP-0–IP-4 | No P0/P1 waiver for release |
 
 External email or later account features must not delay checkpoint-engine development. Conversely, parallel development is not permission to enable a feature before its production dependency gates pass.
+
+The maintainer explicitly selected IP-1.1 repository development on 2026-07-11 while IP-0 operational work remains manual. This exception permits local code/tests only; the dependency matrix still controls migrations, deployment, and user rollout.
 
 ## What remains unchanged
 

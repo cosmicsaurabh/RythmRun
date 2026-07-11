@@ -6,17 +6,19 @@ published: false
 
 | Field | Value |
 | --- | --- |
-| Status | Planned |
+| Status | **In progress** |
 | Priority | P1 |
-| Target | 3–5 focused work packages after IP-0 |
+| Target | 7 focused work packages after IP-0 |
 | Owner | Unassigned |
-| Last updated | 2026-07-10 |
+| Last updated | 2026-07-11 |
 | Depends on | IP-0 patched deployment; incident containment remains active until IP-0 exits |
 | Exit condition | Metrics, account-switch, cascade, PATCH, long-payload, and CI gates pass |
 
 ## Outcome
 
 After this phase, a user can trust the app's distance, active duration, speed, pace, and calorie inputs; paused or rejected GPS movement cannot corrupt those metrics; completed local data is accessible only by its owner; SQLite cascades are enforced; unrelated backend edits preserve route history; and minimum CI protects the corrected behavior.
+
+Repository-only IP-1.1 work was explicitly selected by the maintainer on 2026-07-11 while IP-0 operational gates remain open. No migration execution, deployment, historic-value rewrite, or production enablement is authorized by this status change; those actions remain in the [manual verification register](./MANUAL-CHECKS.md).
 
 ## Why this phase is next
 
@@ -106,9 +108,11 @@ Any implementation that uses ambiguous names such as `calculateSpeed` must be re
 - `1,000 m / 360 s` has the same 10 km/h display.
 - Zero/negative distance or duration returns safe zero/null values as specified.
 - Calorie estimator receives `10 km/h`, not `36 km/h`.
-- Pace for 5 km in 25 minutes formats as `5:00` min/km.
+- Pace for 5 km in 25 minutes formats as `5:00` min/km; a near-boundary `5.999` formats as `6:00`, and non-finite inputs use the safe placeholder.
 - A version-1 fixture migrates once; a version-2 fixture remains unchanged.
+- Unsupported metric versions are rejected by both the local write boundary and SQLite constraint.
 - A corrupt/zero-duration legacy row is not divided or assigned infinity/NaN.
+- Negative and overlong pause values are normalized consistently for detail, persistence, and sync.
 - Overall and per-type statistics exclude paused time and match the sum of fixture active durations.
 
 **Acceptance**
@@ -401,10 +405,10 @@ Every raw point passes through one pure acceptance policy before it reaches dist
 
 ## Exit gate
 
-- [ ] Canonical units are documented in code and covered by exact-value tests.
+- [x] Canonical units are documented in code and covered by exact-value tests.
 - [ ] Historical speed migration was sampled, backed up, versioned, and exercised safely.
-- [ ] Calories receive km/h exactly once and are labeled as an estimate.
-- [ ] Overall/per-type duration statistics subtract paused time and match detail semantics.
+- [x] Calories receive km/h exactly once and are labeled as an estimate.
+- [x] Overall/per-type duration statistics subtract paused time and match detail semantics.
 - [ ] One GPS policy governs map, metrics, and persistence.
 - [ ] Paused movement and resume bridging add no active distance.
 - [ ] Finish-while-paused active duration is correct.
@@ -424,4 +428,5 @@ Every raw point passes through one pure acceptance policy before it reaches dist
 
 | Date | Work package | Evidence | Result | Notes |
 | --- | --- | --- | --- | --- |
-| — | — | No implementation evidence yet | Not started | Planning document only |
+| 2026-07-11 | IP-1.1 | Flutter metric/state/sync/SQLite suites; Prisma validation/generation; backend build; focused activity suites | Pass locally; full backend and rollout pending | Flutter 39/39 passed, including 18/18 focused metric tests. Backend changed suites 22/22 and all non-HTTP suites 134/134 passed under Node 22; the unchanged 16-test socket suite could not be rerun because external execution approval hit its usage limit. Full backend, PostgreSQL migration exercise, production sampling, backup, compatibility, and rollout remain open. |
+| 2026-07-11 | IP-1.1 | `flutter analyze`; changed-file analysis | Baseline only; no new metric findings | Repository analyzer baseline is now 45 findings (1 warning, 44 info) after the maintainer's preceding Dart-fix commit; metric/local DB files add none. |

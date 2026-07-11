@@ -268,24 +268,15 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
     final totalDuration = endTime.difference(session.startTime!);
     final activeDuration = totalDuration - _totalPausedDuration;
 
-    // Calculate final statistics
-    double averageSpeed = 0;
-    double? averagePace;
-    if (session.totalDistance > 0 && activeDuration.inSeconds > 0) {
-      averageSpeed = calculateSpeed(session.totalDistance, activeDuration);
-      averagePace = calculatePace(session.totalDistance, activeDuration);
-    }
-
     // Calculate elevation gain and loss
     final elevationData = calculateElevationData(session.trackingPoints);
 
     // TODO: Get user weight from profile for calorie calculation
     const userWeight = 70.0; // Default weight, should come from user profile
-    final calories = estimateCalories(
-      distanceInKm: session.totalDistance / 1000,
-      duration: activeDuration,
-      userWeightKg: userWeight,
-      averageSpeedKmh: averageSpeed * 3.6,
+    final completionMetrics = calculateWorkoutCompletionMetrics(
+      distanceInMeters: session.totalDistance,
+      activeDuration: activeDuration,
+      userWeightKilograms: userWeight,
     );
 
     // Add final completed status change event
@@ -303,9 +294,9 @@ class LiveTrackingNotifier extends StateNotifier<LiveTrackingState> {
       status: WorkoutStatus.completed,
       endTime: endTime,
       pausedDuration: _totalPausedDuration,
-      averageSpeed: averageSpeed,
-      averagePace: averagePace,
-      calories: calories,
+      averageSpeed: completionMetrics.averageSpeedMetersPerSecond,
+      averagePace: completionMetrics.averagePaceMinutesPerKilometer,
+      calories: completionMetrics.estimatedCalories,
       elevationGain: elevationData.gain,
       elevationLoss: elevationData.loss,
       statusChanges: updatedStatusChanges,

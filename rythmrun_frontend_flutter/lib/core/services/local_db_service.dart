@@ -9,7 +9,22 @@ import 'package:sqflite/sqflite.dart';
 
 class LocalDbService {
   static const String _databaseName = 'rythmrun_workouts.db';
-  static const int _databaseVersion = 4;
+  static const int _databaseVersion = 5;
+
+  static const String _activeDurationSecondsSql = '''
+    CASE
+      WHEN julianday(start_time) IS NULL OR julianday(end_time) IS NULL THEN 0
+      ELSE MAX(
+        0,
+        CAST(
+          ROUND(
+            (julianday(end_time) - julianday(start_time)) * 86400.0,
+            3
+          ) AS INTEGER
+        ) - MAX(CAST(COALESCE(paused_duration, 0) AS INTEGER), 0)
+      )
+    END
+  ''';
 
   // Table names
   static const String _workoutsTable = 'workouts';
@@ -18,7 +33,14 @@ class LocalDbService {
   static const String _workoutDeleteQueueTable = 'workout_delete_queue';
   static const String _workoutImagesTable = 'workout_images';
 
+  final DatabaseFactory? _databaseFactoryOverride;
+  final String? _databasePathOverride;
+
   Database? _database;
+
+  LocalDbService({DatabaseFactory? databaseFactory, String? databasePath})
+    : _databaseFactoryOverride = databaseFactory,
+      _databasePathOverride = databasePath;
 
   Future<Database> get database async {
     _database ??= await _initDatabase();
@@ -26,17 +48,23 @@ class LocalDbService {
   }
 
   Future<Database> _initDatabase() async {
-    final path = join(await getDatabasesPath(), _databaseName);
-    final db = await openDatabase(
+    final factory = _databaseFactoryOverride ?? databaseFactory;
+    final path =
+        _databasePathOverride ??
+        join(await factory.getDatabasesPath(), _databaseName);
+    final db = await factory.openDatabase(
       path,
-      version: _databaseVersion,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
+      options: OpenDatabaseOptions(
+        version: _databaseVersion,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+      ),
     );
 
     await _ensureSyncColumns(db);
     await _ensureWorkoutDeleteSupport(db);
     await _ensureWorkoutImageSupport(db);
+    await _ensureMetricsVersionColumn(db);
     await _ensureClientSyncIdsOnDatabase(db);
 
     return db;
@@ -69,6 +97,10 @@ class LocalDbService {
       await _ensureWorkoutDeleteSupport(db);
       await _ensureWorkoutImageSupport(db);
     }
+
+    if (oldVersion < 5) {
+      await _ensureMetricsVersionColumn(db);
+    }
   }
 
   Future<void> _createTables(Database db) async {
@@ -81,6 +113,8 @@ class LocalDbService {
         start_time TEXT NOT NULL,
         end_time TEXT,
         paused_duration INTEGER,
+        metrics_version INTEGER NOT NULL DEFAULT 1
+          CHECK(metrics_version IN (1, 2)),
         total_distance REAL DEFAULT 0,
         average_speed REAL DEFAULT 0,
         max_speed REAL DEFAULT 0,
@@ -132,6 +166,16 @@ class LocalDbService {
 
   /// Save a completed workout session
   Future<int> saveWorkoutInLocalDatabase(WorkoutSessionEntity workout) async {
+    if (!WorkoutSessionEntity.isSupportedMetricsVersion(
+      workout.metricsVersion,
+    )) {
+      throw ArgumentError.value(
+        workout.metricsVersion,
+        'workout.metricsVersion',
+        'Only metrics versions 1 and 2 are supported',
+      );
+    }
+
     final db = await database;
 
     return await db.transaction((txn) async {
@@ -149,7 +193,11 @@ class LocalDbService {
         'status': workout.status.name,
         'start_time': workout.startTime?.toIso8601String(),
         'end_time': workout.endTime?.toIso8601String(),
-        'paused_duration': workout.pausedDuration?.inSeconds,
+        'paused_duration':
+            workout.pausedDuration == null
+                ? null
+                : workout.effectivePausedDuration.inSeconds,
+        'metrics_version': workout.metricsVersion,
         'total_distance': workout.totalDistance,
         'average_speed': workout.averageSpeed,
         'max_speed': workout.maxSpeed,
@@ -919,6 +967,7 @@ class LocalDbService {
           remoteActivityIdValue != null
               ? EnsureTypeHelper.ensureInt(remoteActivityIdValue)
               : null,
+      metricsVersion: _normalizeMetricsVersion(workoutMap['metrics_version']),
       type: type,
       status: status,
       startTime: startTime,
@@ -1010,6 +1059,15 @@ class LocalDbService {
     await db.delete(_workoutsTable);
   }
 
+  Future<void> close() async {
+    final db = _database;
+    _database = null;
+
+    if (db != null && db.isOpen) {
+      await db.close();
+    }
+  }
+
   Future<void> _ensureSyncColumns(Database db) async {
     if (!await _hasColumn(db, _workoutsTable, 'remote_activity_id')) {
       await db.execute(
@@ -1036,6 +1094,16 @@ class LocalDbService {
 
   Future<void> _ensureWorkoutImageSupport(Database db) async {
     await _createWorkoutImagesTable(db);
+  }
+
+  Future<void> _ensureMetricsVersionColumn(Database db) async {
+    if (!await _hasColumn(db, _workoutsTable, 'metrics_version')) {
+      await db.execute('''
+        ALTER TABLE $_workoutsTable
+        ADD COLUMN metrics_version INTEGER NOT NULL DEFAULT 1
+          CHECK(metrics_version IN (1, 2))
+      ''');
+    }
   }
 
   Future<void> _createWorkoutDeleteQueueTable(Database db) async {
@@ -1185,6 +1253,13 @@ class LocalDbService {
     return EnsureTypeHelper.ensureInt(value);
   }
 
+  int _normalizeMetricsVersion(dynamic value) {
+    final version = EnsureTypeHelper.ensureInt(value);
+    return WorkoutSessionEntity.isSupportedMetricsVersion(version)
+        ? version
+        : WorkoutSessionEntity.legacyMetricsVersion;
+  }
+
   DateTime? _toNullableDateTime(dynamic value) {
     if (value == null) {
       return null;
@@ -1264,12 +1339,8 @@ class LocalDbService {
         MAX(total_distance) as max_distance,
         MIN(start_time) as first_workout_date,
         MAX(start_time) as last_workout_date,
-        SUM(CASE WHEN end_time IS NOT NULL AND start_time IS NOT NULL 
-            THEN (julianday(end_time) - julianday(start_time)) * 86400 
-            ELSE 0 END) as total_duration_seconds,
-        AVG(CASE WHEN end_time IS NOT NULL AND start_time IS NOT NULL 
-            THEN (julianday(end_time) - julianday(start_time)) * 86400 
-            ELSE 0 END) as avg_duration_seconds
+        SUM($_activeDurationSecondsSql) as total_duration_seconds,
+        AVG($_activeDurationSecondsSql) as avg_duration_seconds
       FROM $_workoutsTable 
       WHERE $whereClause
     ''', whereArgs);
@@ -1327,12 +1398,8 @@ class LocalDbService {
         MAX(total_distance) as max_distance,
         MIN(start_time) as first_workout_date,
         MAX(start_time) as last_workout_date,
-        SUM(CASE WHEN end_time IS NOT NULL AND start_time IS NOT NULL 
-            THEN (julianday(end_time) - julianday(start_time)) * 86400 
-            ELSE 0 END) as total_duration_seconds,
-        AVG(CASE WHEN end_time IS NOT NULL AND start_time IS NOT NULL 
-            THEN (julianday(end_time) - julianday(start_time)) * 86400 
-            ELSE 0 END) as avg_duration_seconds
+        SUM($_activeDurationSecondsSql) as total_duration_seconds,
+        AVG($_activeDurationSecondsSql) as avg_duration_seconds
       FROM $_workoutsTable 
       WHERE user_id = ? AND deleted_locally = 0
       GROUP BY type

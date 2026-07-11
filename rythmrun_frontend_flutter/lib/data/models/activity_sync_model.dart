@@ -7,6 +7,7 @@ class ActivitySyncModel {
   static Map<String, dynamic> toJson(WorkoutSessionEntity workout) {
     return {
       'clientSyncId': workout.clientSyncId,
+      'metricsVersion': workout.metricsVersion,
       'type': workout.type.name,
       'startTime': workout.startTime!.toIso8601String(),
       'endTime': workout.endTime!.toIso8601String(),
@@ -17,7 +18,10 @@ class ActivitySyncModel {
       'calories': workout.calories,
       'description': workout.notes,
       'name': workout.name,
-      'pausedDuration': workout.pausedDuration?.inSeconds,
+      'pausedDuration':
+          workout.pausedDuration == null
+              ? null
+              : workout.effectivePausedDuration.inSeconds,
       'elevationGain': workout.elevationGain,
       'elevationLoss': workout.elevationLoss,
       'isPublic': false,

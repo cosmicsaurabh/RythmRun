@@ -84,6 +84,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Host SQLite tests must retain the package's declared Dart 3.7 SDK floor;
+  # sqlite3 3.x raises that floor and switches to native build hooks.
+  sqflite_common_ffi: 2.3.6
+  sqlite3: 2.9.4
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
