@@ -221,7 +221,7 @@ DELETE /api/activities/:id/comments/:cid  # Delete comment
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22.x (the backend package and CI use this supported runtime line)
 - Flutter SDK 3.7+
 - PostgreSQL 14+
 - Android Studio / Xcode
@@ -230,7 +230,7 @@ DELETE /api/activities/:id/comments/:cid  # Delete comment
 
 ```bash
 cd RythmRun_backend_nodejs
-npm install
+npm install --no-audit
 
 # Configure environment
 cp .env.example .env

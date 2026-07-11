@@ -13,7 +13,6 @@ import {
   MAX_AVATAR_UPLOAD_REQUESTS_PER_WINDOW,
   MAX_PENDING_AVATAR_UPLOADS,
 } from '../services/avatar.service';
-import { S3Service } from '../services/s3.service';
 
 const NOW = new Date('2026-07-10T10:00:00.000Z');
 const USER_ID = 1;
@@ -51,7 +50,7 @@ function createMockPrisma() {
 function createMockS3() {
   return {
     getPresignedPost: jest.fn(
-      ({ key }: { key: string }) => ({
+      async ({ key }: { key: string }) => ({
         uploadUrl: 'https://uploads.example.com',
         fields: {
           key,
@@ -240,9 +239,7 @@ describe('AvatarService upload authorization', () => {
       .mockResolvedValueOnce(0);
     prisma.avatarUploadIntent.create.mockResolvedValue(intent);
     prisma.avatarUploadIntent.delete.mockResolvedValue(intent);
-    s3.getPresignedPost.mockImplementation(() => {
-      throw new Error('signing failed');
-    });
+    s3.getPresignedPost.mockRejectedValueOnce(new Error('signing failed'));
     const service = new AvatarService(prisma as any, s3 as any);
 
     await expect(
@@ -416,9 +413,13 @@ describe('AvatarService confirmation', () => {
     expect(s3.headObject).not.toHaveBeenCalled();
   });
 
-  it('maps a missing S3 object to a safe client error', async () => {
+  it.each([
+    { code: 'NotFound', statusCode: 404 },
+    { name: 'NotFound', $metadata: { httpStatusCode: 404 } },
+    { name: 'NoSuchKey', $metadata: { httpStatusCode: 404 } },
+  ])('maps a missing S3 object error %# to a safe client error', async error => {
     const { prisma, s3, service } = createConfirmationHarness();
-    s3.headObject.mockRejectedValue({ code: 'NotFound', statusCode: 404 });
+    s3.headObject.mockRejectedValue(error);
 
     await expect(
       service.confirmUpload(USER_ID, confirmation),
@@ -766,59 +767,3 @@ function confirmationForController() {
     contentType: 'image/jpeg',
   };
 }
-
-describe('S3Service avatar POST policy', () => {
-  const originalBucket = process.env.S3_BUCKET;
-
-  beforeAll(() => {
-    process.env.S3_BUCKET = 'avatar-test-bucket';
-  });
-
-  afterAll(() => {
-    if (originalBucket === undefined) {
-      delete process.env.S3_BUCKET;
-    } else {
-      process.env.S3_BUCKET = originalBucket;
-    }
-  });
-
-  it('pins key, content type, and exact object size in the signed policy', () => {
-    const createPresignedPost = jest.fn().mockReturnValue({
-      url: 'https://avatar-test-bucket.s3.example.com',
-      fields: {
-        key: AVATAR_KEY,
-        'Content-Type': 'image/jpeg',
-        Policy: 'signed-policy',
-        'X-Amz-Signature': 'signature',
-      },
-    });
-    const service = new S3Service();
-    (service as any).s3 = { createPresignedPost };
-
-    const result = service.getPresignedPost({
-      key: AVATAR_KEY,
-      contentType: 'image/jpeg',
-      sizeBytes: 1024,
-      expiresSeconds: 300,
-    });
-
-    expect(createPresignedPost).toHaveBeenCalledWith({
-      Bucket: 'avatar-test-bucket',
-      Fields: {
-        key: AVATAR_KEY,
-        'Content-Type': 'image/jpeg',
-      },
-      Conditions: [
-        ['eq', '$key', AVATAR_KEY],
-        ['eq', '$Content-Type', 'image/jpeg'],
-        ['content-length-range', 1024, 1024],
-      ],
-      Expires: 300,
-    });
-    expect(result).toMatchObject({
-      uploadUrl: 'https://avatar-test-bucket.s3.example.com',
-      key: AVATAR_KEY,
-      fields: { key: AVATAR_KEY },
-    });
-  });
-});

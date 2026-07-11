@@ -4,14 +4,14 @@ This is the backend API for the RythmRun fitness application, built with Node.js
 
 ## Technology Used
 
-- **Runtime**: Node.js
+- **Runtime**: Node.js 22.x
 - **Framework**: Express.js
 - **Language**: TypeScript
 - **Database**: PostgreSQL
 - **ORM**: Prisma
 - **Authentication**: JWT (JSON Web Tokens)
 - **Password Hashing**: bcrypt
-- **File Uploads**: Multer
+- **File Uploads**: Direct-to-S3 signed uploads with CloudFront reads
 
 ## API Features & Endpoints
 
@@ -59,10 +59,12 @@ src/
 
 ## How to Run
 
+Use Node.js 22.x; `package.json` declares this runtime line because current AWS SDK v3 packages require a supported Node release. Deployment tooling must enforce the declaration.
+
 1.  **Install Dependencies**
 
     ```bash
-    npm install
+    npm install --no-audit
     ```
 
 2.  **Set Up Environment**
