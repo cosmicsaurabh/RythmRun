@@ -33,6 +33,11 @@ frontend.md
 # ALLOWED: This gitignore file
 !.gitignore
 
+# ALLOWED: Backend security workflow
+!.github/
+!.github/workflows/
+!.github/workflows/backend-security.yml
+
 
 legacy/
 node_modules/

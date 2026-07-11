@@ -4,13 +4,13 @@ published: false
 
 # RythmRun improvement program
 
-> Program status: IP-0 implementation is in progress. Local code and automated-test evidence are recorded below, but production remains unverified and must stay contained until the operational exit gates pass.
+> Program status: IP-0 implementation is in progress. The first application-remediation slice is merged, and IP-0.7a is the current local package, but production remains undeployed/unverified and must stay contained until the operational exit gates pass.
 
 This directory turns the repository audit dated 2026-07-10 into an implementation-ready hardening program. It is the canonical place to track the current improvement phase, the next five phases, their decisions, and the evidence required to mark work complete.
 
 These files use `published: false` because `docs/` is also the GitHub Pages policy site. They are engineering source documents, not public policy pages. Do not add secrets or private incident evidence: the repository contents may still be visible even when GitHub Pages does not render them.
 
-If the repository is public, keep this uncommitted plan local (or move the active incident detail to an access-controlled tracker) until IP-0 containment and rotation are complete. `published: false` and the `_engineering` directory prevent normal Pages rendering; they do not make raw repository files confidential.
+This plan is now part of repository history and must be treated as non-confidential. Keep active incident detail and sensitive evidence in an access-controlled tracker. `published: false` and the `_engineering` directory prevent normal Pages rendering; they do not make raw repository files confidential.
 
 The audit used the word "phase" for review categories. This program uses `IP` (Improvement Phase) identifiers to avoid confusing audit sections with implementation work.
 
@@ -18,12 +18,13 @@ The audit used the word "phase" for review categories. This program uses `IP` (I
 
 `IP-0` is the current phase and is a release blocker. The deployed backend must be treated as potentially exposed until the profile-path vulnerability is contained, suspicious access is investigated, and potentially exposed credentials are rotated or exposure is confidently ruled out.
 
-The first code remediation slice is implemented in the current worktree, but it has not been committed, deployed, or exercised against staging/production. Writing the documents and passing local tests did **not** restrict production, inspect production logs, rotate credentials, apply the migration, configure bucket lifecycle, or prove the deployed service safe. Those actions require deployment and secret-management access and must begin before normal feature work.
+The first code-remediation slice, commit `e33f314`, is merged into `origin/main` through merge commit `54a5b26`. It has not been deployed or exercised against staging/production. Merging code and passing local tests did **not** restrict production, inspect production logs, rotate credentials, apply the migration, configure bucket lifecycle, or prove the deployed service safe. Those actions require deployment and secret-management access and must begin before normal feature work.
 
 ## Selected work now
 
 - **Human-operated first action:** IP-0.1 — contain the affected production routes and preserve evidence.
-- **Current code delivery:** the local IP-0.2 through IP-0.5 profile/avatar/configuration slice and its automated negative suite are implemented and under commit review. Production stays contained until the migration, coordinated mobile rollout, staging proof, incident work, and remaining IP-0.7 gates are complete.
+- **Merged code delivery:** IP-0.2 through IP-0.5 profile/avatar/configuration hardening and its local automated suite are in `origin/main` via `e33f314`/`54a5b26`; they are not deployed or production-verified.
+- **Current local package:** IP-0.7a — add Express HTTP security regressions and minimum backend CI. CI is not operational evidence until a successful GitHub Actions run URL is recorded.
 - **Concurrent owner action:** IP-0.6 — determine exposure and rotate/revoke credentials when it cannot be excluded.
 
 For subsequent work, take the lowest-numbered unblocked work package in the current phase. A maintainer may combine tightly coupled packages, but must not mark either complete until both sets of acceptance criteria pass. See [audit finding traceability](./AUDIT-TRACEABILITY.md) for the complete mapping.
