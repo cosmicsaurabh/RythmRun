@@ -10,13 +10,12 @@ const AVATAR_KEY =
   'avatars/1/123e4567-e89b-42d3-a456-426614174000.jpg';
 const ACTIVITY_IMAGE_KEY = 'activity-images/1/2/img_client_123456.jpg';
 const REQUIRED_ENVIRONMENT = [
-  'AWS_REGION',
-  'AWS_ACCESS_KEY_ID',
-  'AWS_SECRET_ACCESS_KEY',
-  'S3_BUCKET',
-  'CLOUDFRONT_DOMAIN',
-  'CLOUDFRONT_KEY_PAIR_ID',
-  'CLOUDFRONT_PRIVATE_KEY',
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET_AVATARS',
+  'R2_BUCKET_ACTIVITY_IMAGES',
+  'R2_PUBLIC_URL',
 ] as const;
 const originalEnvironment = Object.fromEntries(
   REQUIRED_ENVIRONMENT.map(name => [name, process.env[name]]),
@@ -40,13 +39,12 @@ describe('S3Service AWS SDK v3 adapter', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.AWS_REGION = 'us-east-1';
-    process.env.AWS_ACCESS_KEY_ID = 'test-access-key';
-    process.env.AWS_SECRET_ACCESS_KEY = 'test-secret-key';
-    process.env.S3_BUCKET = 'storage-test-bucket';
-    process.env.CLOUDFRONT_DOMAIN = 'assets.example.com';
-    process.env.CLOUDFRONT_KEY_PAIR_ID = 'cloudfront-key-pair';
-    process.env.CLOUDFRONT_PRIVATE_KEY = 'line-one\\nline-two';
+    process.env.R2_ACCOUNT_ID = 'test-account-id';
+    process.env.R2_ACCESS_KEY_ID = 'test-access-key';
+    process.env.R2_SECRET_ACCESS_KEY = 'test-secret-key';
+    process.env.R2_BUCKET_AVATARS = 'test-avatars-bucket';
+    process.env.R2_BUCKET_ACTIVITY_IMAGES = 'storage-test-bucket';
+    process.env.R2_PUBLIC_URL = 'https://assets.example.com';
   });
 
   afterEach(() => {

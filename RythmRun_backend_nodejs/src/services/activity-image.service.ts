@@ -42,8 +42,9 @@ export class ActivityImageService {
     });
 
     if (existing?.status === 'UPLOADED') {
+      const response = await this.toResponse(existing);
       return {
-        ...this.toResponse(existing),
+        ...response,
         imageId: existing.id,
         alreadyUploaded: true,
       };
@@ -143,7 +144,7 @@ export class ActivityImageService {
       },
     });
 
-    return this.toResponse(image);
+    return await this.toResponse(image);
   }
 
   async listImages(userId: number, activityId: number) {
@@ -161,7 +162,7 @@ export class ActivityImageService {
       },
     });
 
-    return images.map((image) => this.toResponse(image));
+    return Promise.all(images.map((image) => this.toResponse(image)));
   }
 
   async deleteImage(userId: number, activityId: number, imageId: number) {
@@ -270,8 +271,8 @@ export class ActivityImageService {
     }
   }
 
-  private toResponse(image: ActivityImage) {
-    const readUrl = s3Service.getActivityImageReadUrl(image.s3Key);
+  private async toResponse(image: ActivityImage) {
+    const readUrl = await s3Service.getActivityImageReadUrl(image.s3Key);
 
     return {
       id: image.id,
