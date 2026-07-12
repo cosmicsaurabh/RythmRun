@@ -19,7 +19,7 @@ RythmRun combines an Android-first Flutter client with a TypeScript modular mono
 | Deleting or replacing media can fail halfway through | Delete tombstones, persisted retry timestamps, stale-operation recovery, idempotent confirmation, and upload-new-before-delete-old semantics preserve intent | Server cleanup currently uses a process-local retry loop rather than a leased job queue |
 | Account changes can race queued user-scoped work | Riverpod-wired operation gates drain synchronization, image, and profile work before credentials and providers are cleared | The current isolation work is unit-tested; device and staging verification remain release gates |
 
-Other high-signal details include versioned metric contracts across SQLite and PostgreSQL, SQL-backed history aggregation, server-issued storage keys, signed CloudFront reads, strict user/avatar DTO allowlists, fail-closed environment validation, and a testable backend bootstrap with no listener side effects.
+Other high-signal details include versioned metric contracts across SQLite and PostgreSQL, SQL-backed history aggregation, server-issued storage keys, signed R2 reads, strict user/avatar DTO allowlists, fail-closed environment validation, and a testable backend bootstrap with no listener side effects.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ flowchart LR
 
     REPOS -->|Presigned PUT / POST| S3[(Amazon S3)]
     STORAGE --> S3
-    S3 --> CF[CloudFront]
+    R2[Cloudflare R2]
     CF -->|Short-lived signed reads| REPOS
 ```
 
@@ -78,14 +78,14 @@ Synchronization is intentionally tied to app-observable events: workout completi
 
 The backend is a strict-TypeScript Express modular monolith with route, middleware, controller, service, DTO, and Prisma boundaries. This keeps transactions and deployment topology simple while the workload does not justify microservices, Kafka, Redis, or Kubernetes.
 
-`createApp` is separate from listener and retry-loop startup, which makes HTTP-boundary tests deterministic. Startup validates database, JWT, AWS, S3, and CloudFront configuration before infrastructure clients are constructed. Core user, activity, image, and avatar services share a TSyringe-managed Prisma client; older social modules have not yet completed that migration and are intentionally not part of the highlighted system.
+`createApp` is separate from listener and retry-loop startup, which makes HTTP-boundary tests deterministic. Startup validates database, JWT, and R2 configuration before infrastructure clients are constructed. Core user, activity, image, and avatar services share a TSyringe-managed Prisma client; older social modules have not yet completed that migration and are intentionally not part of the highlighted system.
 
 ### Data, identity, and storage
 
 - **SQLite** stores workouts, accepted GPS points, status transitions, image state, and remote-deletion tombstones. Schema migrations preserve compatibility through database version 5.
 - **PostgreSQL** stores canonical server records and enforces relational ownership, cascading deletion, image identity, avatar intents, and `(userId, clientSyncId)` uniqueness.
 - **S3** stores binary media. PostgreSQL stores object identity and lifecycle state rather than blobs.
-- **CloudFront** serves activity images through short-lived signed URLs.
+- **Cloudflare R2** serves activity images and avatars through short-lived signed URLs.
 - **JWTs** authenticate API calls. Access and refresh secrets are distinct and validated at startup; the current refresh/session contract still has known gaps documented below.
 
 There is no AI or LLM integration in the repository. Generated summaries are explicitly deferred rather than represented by unused infrastructure.
@@ -205,7 +205,7 @@ The image design explicitly favored S3 metadata over database blobs or API-proxi
 | API | Node.js 22, Express, strict TypeScript | Authenticated HTTP boundary and workflow orchestration |
 | Backend dependency graph | TSyringe | Shared infrastructure and injectable core services |
 | Database | PostgreSQL, Prisma | Canonical relational state, migrations, constraints, transactions |
-| Binary storage and delivery | Amazon S3, CloudFront | Direct uploads and signed image reads |
+| Binary storage and delivery | Cloudflare R2 | Direct uploads and signed image reads |
 | Authentication and validation | JWT, bcrypt, Helmet, class-validator | Identity, password hashing, headers, DTO allowlists |
 | Verification | Flutter Test, Jest, TypeScript, Prisma CLI | Unit, repository, HTTP, type, and schema checks |
 
@@ -229,12 +229,12 @@ Known performance limits include image transforms on the Flutter UI isolate, eag
 
 ### Implemented safeguards
 
-- Backend startup fails closed for missing or placeholder database, JWT, AWS, S3, or CloudFront configuration.
+- Backend startup fails closed for missing or placeholder database, JWT, or R2 configuration.
 - Access and refresh JWT secrets must be distinct, trimmed, and at least 32 characters; passwords are hashed with bcrypt.
 - Helmet is enabled globally; authenticated ownership checks protect mutations, while user and avatar writes add strict DTO allowlists, explicit Prisma mappings, and prototype-pollution-aware validation.
 - The backend generates user-scoped object keys. AWS credentials are never embedded in the mobile client.
 - Avatar presigned policies bind the exact key, MIME type, and byte length; confirmation rechecks object metadata before selection.
-- User-facing activity list and detail responses replace stored S3 keys with short-lived signed CloudFront URLs; upload-protocol responses still return the key needed by the client.
+- User-facing activity list and detail responses replace stored R2 keys with short-lived signed R2 URLs; upload-protocol responses still return the key needed by the client.
 - Avatar cleanup rechecks the currently selected object before deleting an older one.
 - The tracked backend workflow uses read-only GitHub permissions, immutable action SHAs, timeouts, and concurrency cancellation.
 
@@ -272,7 +272,7 @@ The repository contains a backend validation workflow for clean install, Prisma 
 - A PostgreSQL database
 - Flutter with a Dart SDK compatible with `^3.7.0`
 - Android SDK and an emulator or device
-- S3 and CloudFront signing configuration; the backend currently validates these at startup even when media flows are not exercised
+- Cloudflare R2 configuration; the backend currently validates these at startup even when media flows are not exercised
 
 ```bash
 git clone https://github.com/cosmicsaurabh/RythmRun.git
@@ -306,7 +306,7 @@ Use a least-privilege AWS identity and keep escaped newlines in a one-line `CLOU
 
 ### Flutter client
 
-Before running, update the development API and CloudFront values in [`app_config.dart`](rythmrun_frontend_flutter/lib/core/config/app_config.dart) for your environment.
+Before running, update the development API values in [`app_config.dart`](rythmrun_frontend_flutter/lib/core/config/app_config.dart) for your environment.
 
 ```bash
 cd rythmrun_frontend_flutter
@@ -314,7 +314,7 @@ flutter pub get
 flutter run
 ```
 
-The checked-in development URL is a LAN address and will not work on another machine unchanged. The staging API URL is unset and its CloudFront domain is a placeholder. Android is the primary exercised target; iOS contains project scaffolding but is not documented as release-ready.
+The checked-in development URL is a LAN address and will not work on another machine unchanged. The staging API URL is unset and its R2 configuration is a placeholder. Android is the primary exercised target; iOS contains project scaffolding but is not documented as release-ready.
 
 ### Run the verification suite
 

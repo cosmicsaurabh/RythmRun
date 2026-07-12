@@ -1,11 +1,11 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   HeadObjectCommandOutput,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { getSignedUrl as getCloudFrontSignedUrl } from '@aws-sdk/cloudfront-signer';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { getSignedUrl as getS3SignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -43,24 +43,24 @@ type S3ServiceDependencies = {
   s3Client?: S3Client;
   presignS3Request?: typeof getS3SignedUrl;
   createS3PresignedPost?: typeof createPresignedPost;
-  signCloudFrontUrl?: typeof getCloudFrontSignedUrl;
 };
 
 export class S3Service {
   private readonly s3: S3Client;
   private readonly presignS3Request: typeof getS3SignedUrl;
   private readonly createS3PresignedPost: typeof createPresignedPost;
-  private readonly signCloudFrontUrl: typeof getCloudFrontSignedUrl;
+  private readonly r2PublicUrl: string;
 
   constructor(dependencies: S3ServiceDependencies = {}) {
     this.s3 =
       dependencies.s3Client ??
       new S3Client({
-        region: process.env.AWS_REGION,
+        region: 'auto',
         credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+          accessKeyId: this.getRequiredEnv('R2_ACCESS_KEY_ID'),
+          secretAccessKey: this.getRequiredEnv('R2_SECRET_ACCESS_KEY'),
         },
+        endpoint: `https://${this.getRequiredEnv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`,
         // Presigned PUT callers supply the body later. Signing the SDK's
         // optional empty-body CRC32 would make every non-empty upload fail.
         requestChecksumCalculation: 'WHEN_REQUIRED',
@@ -68,15 +68,14 @@ export class S3Service {
     this.presignS3Request = dependencies.presignS3Request ?? getS3SignedUrl;
     this.createS3PresignedPost =
       dependencies.createS3PresignedPost ?? createPresignedPost;
-    this.signCloudFrontUrl =
-      dependencies.signCloudFrontUrl ?? getCloudFrontSignedUrl;
+    this.r2PublicUrl = this.getRequiredEnv('R2_PUBLIC_URL');
   }
 
   public async getPresignedPutUrl(
     input: PresignedPutUrlInput,
   ): Promise<PresignedPutUrlResult> {
     const command = new PutObjectCommand({
-      Bucket: this.getRequiredEnv('S3_BUCKET'),
+      Bucket: this.getRequiredEnv('R2_BUCKET_ACTIVITY_IMAGES'),
       Key: input.key,
       ContentType: input.contentType,
     });
@@ -97,7 +96,7 @@ export class S3Service {
     input: PresignedPostInput,
   ): Promise<PresignedPostResult> {
     const post = await this.createS3PresignedPost(this.s3, {
-      Bucket: this.getRequiredEnv('S3_BUCKET'),
+      Bucket: this.getRequiredEnv('R2_BUCKET_AVATARS'),
       Key: input.key,
       Fields: {
         key: input.key,
@@ -119,46 +118,47 @@ export class S3Service {
   }
 
   public getPublicUrl(key: string): string {
-    return `https://${this.getRequiredEnv('CLOUDFRONT_DOMAIN')}/${key}`;
+    return `${this.r2PublicUrl}/${key}`;
   }
 
-  public getActivityImageReadUrl(
+  public async getActivityImageReadUrl(
     key: string,
     expiresSeconds = 900,
-  ): ActivityImageReadUrlResult {
-    const expiresAt = new Date(Date.now() + expiresSeconds * 1000);
-    const signingExpiresAt = new Date(
-      Math.floor(expiresAt.getTime() / 1000) * 1000,
-    );
-    const url = this.signCloudFrontUrl({
-      url: this.getPublicUrl(key),
-      keyPairId: this.getRequiredEnv('CLOUDFRONT_KEY_PAIR_ID'),
-      privateKey: this.getRequiredEnv('CLOUDFRONT_PRIVATE_KEY').replace(
-        /\\n/g,
-        '\n',
-      ),
-      dateLessThan: signingExpiresAt,
+  ): Promise<ActivityImageReadUrlResult> {
+    const command = new GetObjectCommand({
+      Bucket: this.getRequiredEnv('R2_BUCKET_ACTIVITY_IMAGES'),
+      Key: key,
+    });
+
+    const url = await this.presignS3Request(this.s3, command, {
+      expiresIn: expiresSeconds,
     });
 
     return {
       url,
-      urlExpiresAt: expiresAt.toISOString(),
+      urlExpiresAt: new Date(Date.now() + expiresSeconds * 1000).toISOString(),
     };
   }
 
-  public async headObject(key: string): Promise<HeadObjectCommandOutput> {
+  public async headObject(
+    key: string,
+    bucket: string = 'R2_BUCKET_ACTIVITY_IMAGES',
+  ): Promise<HeadObjectCommandOutput> {
     return this.s3.send(
       new HeadObjectCommand({
-        Bucket: this.getRequiredEnv('S3_BUCKET'),
+        Bucket: this.getRequiredEnv(bucket),
         Key: key,
       }),
     );
   }
 
-  public async deleteObject(key: string): Promise<void> {
+  public async deleteObject(
+    key: string,
+    bucket: string = 'R2_BUCKET_ACTIVITY_IMAGES',
+  ): Promise<void> {
     await this.s3.send(
       new DeleteObjectCommand({
-        Bucket: this.getRequiredEnv('S3_BUCKET'),
+        Bucket: this.getRequiredEnv(bucket),
         Key: key,
       }),
     );
