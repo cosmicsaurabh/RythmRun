@@ -17,11 +17,12 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0",
     "@prisma/client": "^6.10.1",
     "@types/express": "^4.17.23",
     "@types/multer": "^1.4.13",
     "@types/node": "^24.0.4",
-    "aws-sdk": "^2.1692.0",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",

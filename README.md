@@ -21,7 +21,7 @@ A comprehensive fitness tracking application that combines the power of rhythm a
 - **Live GPS Tracking**: Real-time location tracking during workouts with map visualization
 - **Activity Tracking**: Log runs, walks, cycling with detailed metrics (distance, duration, pace, calories)
 - **Social Features**: Friend system, activity feeds, likes, and comments
-- **Profile Management**: Avatar uploads with AWS S3 cloud storage and CloudFront CDN
+- **Profile Management**: Avatar uploads with Cloudflare R2 cloud storage
 - **Offline Support**: Local SQLite database for offline tracking and data persistence
 
 ### Monetization
@@ -69,8 +69,7 @@ RythmRun_backend_nodejs/
 - PostgreSQL with Prisma ORM
 - TSyringe for Dependency Injection
 - JWT + bcrypt for authentication
-- AWS S3 for file storage
-- CloudFront CDN for image delivery
+- Cloudflare R2 for file storage and CDN
 - Winston for logging
 - Joi + class-validator for validation
 
@@ -127,9 +126,8 @@ rythmrun_frontend_flutter/
 ### Backend
 
 - **Hosting**: Render (https://rythmrun.onrender.com)
-- **Database**: Railway PostgreSQL
-- **CDN**: AWS CloudFront (d2ixgo5od14vvq.cloudfront.net)
-- **File Storage**: AWS S3
+- **Database**: Supabase PostgreSQL
+- **File Storage & CDN**: Cloudflare R2
 
 ### Frontend
 
@@ -263,12 +261,13 @@ JWT_SECRET="your-jwt-secret"
 JWT_REFRESH_SECRET="your-refresh-secret"
 PORT=8080
 
-# AWS S3
-AWS_REGION="your-region"
-AWS_ACCESS_KEY_ID="your-key"
-AWS_SECRET_ACCESS_KEY="your-secret"
-S3_BUCKET_NAME="your-bucket"
-CLOUDFRONT_DOMAIN="your-cloudfront.cloudfront.net"
+# Cloudflare R2 (get from your R2 dashboard)
+R2_ACCOUNT_ID="your-account-id"
+R2_ACCESS_KEY_ID="your-access-key"
+R2_SECRET_ACCESS_KEY="your-secret-key"
+R2_BUCKET_AVATARS="rythmrun-avatars"
+R2_BUCKET_ACTIVITY_IMAGES="rythmrun-activity-images"
+R2_PUBLIC_URL="https://your-account-id.r2.cloudflarestorage.com"
 ```
 
 ## 📱 App Screens
