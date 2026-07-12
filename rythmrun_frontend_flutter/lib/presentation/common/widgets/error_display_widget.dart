@@ -21,7 +21,7 @@ class ErrorDisplayWidget extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(spacingMd),
       decoration: BoxDecoration(
-        color: CustomAppColors.statusDanger.withOpacity(0.1),
+        color: CustomAppColors.statusDanger.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(radiusSm),
         border: Border.all(color: CustomAppColors.statusDanger),
       ),

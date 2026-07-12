@@ -80,7 +80,7 @@ class _ProfileMenuItemState extends State<ProfileMenuItem>
                     _isPressed
                         ? Theme.of(
                           context,
-                        ).colorScheme.primary.withOpacity(0.05)
+                        ).colorScheme.primary.withValues(alpha: 0.05)
                         : Colors.transparent,
                 borderRadius: BorderRadius.circular(radiusLg),
               ),
@@ -98,10 +98,10 @@ class _ProfileMenuItemState extends State<ProfileMenuItem>
                           colors: [
                             Theme.of(
                               context,
-                            ).colorScheme.primary.withOpacity(0.15),
+                            ).colorScheme.primary.withValues(alpha: 0.15),
                             Theme.of(
                               context,
-                            ).colorScheme.primary.withOpacity(0.05),
+                            ).colorScheme.primary.withValues(alpha: 0.05),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(radiusSm + 2),
@@ -145,7 +145,7 @@ class _ProfileMenuItemState extends State<ProfileMenuItem>
                             ).textTheme.bodySmall?.copyWith(
                               color: Theme.of(
                                 context,
-                              ).textTheme.bodySmall?.color?.withOpacity(0.6),
+                              ).textTheme.bodySmall?.color?.withValues(alpha: 0.6),
                               fontSize: 12,
                               letterSpacing: 0.2,
                             ),
@@ -163,7 +163,7 @@ class _ProfileMenuItemState extends State<ProfileMenuItem>
                             _isPressed
                                 ? Theme.of(
                                   context,
-                                ).colorScheme.primary.withOpacity(0.1)
+                                ).colorScheme.primary.withValues(alpha: 0.1)
                                 : Colors.transparent,
                         borderRadius: BorderRadius.circular(radiusSm),
                       ),
@@ -174,7 +174,7 @@ class _ProfileMenuItemState extends State<ProfileMenuItem>
                             size: 14,
                             color: Theme.of(
                               context,
-                            ).textTheme.bodySmall?.color?.withOpacity(0.4),
+                            ).textTheme.bodySmall?.color?.withValues(alpha: 0.4),
                           ),
                     ),
                   ],
