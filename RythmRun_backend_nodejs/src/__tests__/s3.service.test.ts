@@ -1,5 +1,6 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -43,7 +44,7 @@ describe('S3Service AWS SDK v3 adapter', () => {
     process.env.R2_ACCESS_KEY_ID = 'test-access-key';
     process.env.R2_SECRET_ACCESS_KEY = 'test-secret-key';
     process.env.R2_BUCKET_AVATARS = 'test-avatars-bucket';
-    process.env.R2_BUCKET_ACTIVITY_IMAGES = 'storage-test-bucket';
+    process.env.R2_BUCKET_ACTIVITY_IMAGES = 'test-activity-images-bucket';
     process.env.R2_PUBLIC_URL = 'https://assets.example.com';
   });
 
@@ -79,7 +80,7 @@ describe('S3Service AWS SDK v3 adapter', () => {
     expect(client).toBe(s3Client);
     expect(command).toBeInstanceOf(PutObjectCommand);
     expect(command.input).toEqual({
-      Bucket: 'storage-test-bucket',
+      Bucket: 'test-activity-images-bucket',
       Key: ACTIVITY_IMAGE_KEY,
       ContentType: 'image/jpeg',
     });
@@ -131,7 +132,7 @@ describe('S3Service AWS SDK v3 adapter', () => {
     });
 
     expect(createS3PresignedPost).toHaveBeenCalledWith(s3Client, {
-      Bucket: 'storage-test-bucket',
+      Bucket: 'test-avatars-bucket',
       Key: AVATAR_KEY,
       Fields: {
         key: AVATAR_KEY,
@@ -171,7 +172,7 @@ describe('S3Service AWS SDK v3 adapter', () => {
     const command = send.mock.calls[0][0];
     expect(command).toBeInstanceOf(HeadObjectCommand);
     expect(command.input).toEqual({
-      Bucket: 'storage-test-bucket',
+      Bucket: 'test-activity-images-bucket',
       Key: AVATAR_KEY,
     });
   });
@@ -186,30 +187,31 @@ describe('S3Service AWS SDK v3 adapter', () => {
     const command = send.mock.calls[0][0];
     expect(command).toBeInstanceOf(DeleteObjectCommand);
     expect(command.input).toEqual({
-      Bucket: 'storage-test-bucket',
+      Bucket: 'test-activity-images-bucket',
       Key: AVATAR_KEY,
     });
   });
 
-  it('maps CloudFront signing inputs without changing the read URL contract', () => {
+  it('generates R2 presigned GET URLs with expiry for activity images', async () => {
     jest
       .spyOn(Date, 'now')
       .mockReturnValue(new Date('2026-07-10T10:00:00.123Z').getTime());
-    signCloudFrontUrl.mockReturnValue(
-      `https://assets.example.com/${ACTIVITY_IMAGE_KEY}?Signature=signed`,
+    presignS3Request.mockResolvedValue(
+      `https://test-account-id.r2.cloudflarestorage.com/${ACTIVITY_IMAGE_KEY}?X-Amz-Signature=signed`,
     );
     const service = createService();
 
-    const result = service.getActivityImageReadUrl(ACTIVITY_IMAGE_KEY, 900);
+    const result = await service.getActivityImageReadUrl(ACTIVITY_IMAGE_KEY, 900);
 
-    expect(signCloudFrontUrl).toHaveBeenCalledWith({
-      url: `https://assets.example.com/${ACTIVITY_IMAGE_KEY}`,
-      keyPairId: 'cloudfront-key-pair',
-      privateKey: 'line-one\nline-two',
-      dateLessThan: new Date('2026-07-10T10:15:00.000Z'),
-    });
+    expect(presignS3Request).toHaveBeenCalledTimes(1);
+    const [client, command, options] = presignS3Request.mock.calls[0];
+    expect(client).toBe(s3Client);
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    expect(command.input.Bucket).toBe('test-activity-images-bucket');
+    expect(command.input.Key).toBe(ACTIVITY_IMAGE_KEY);
+    expect(options).toEqual({ expiresIn: 900 });
     expect(result).toEqual({
-      url: `https://assets.example.com/${ACTIVITY_IMAGE_KEY}?Signature=signed`,
+      url: `https://test-account-id.r2.cloudflarestorage.com/${ACTIVITY_IMAGE_KEY}?X-Amz-Signature=signed`,
       urlExpiresAt: '2026-07-10T10:15:00.123Z',
     });
   });
