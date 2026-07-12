@@ -13,13 +13,12 @@ const validServerEnvironment = {
   DATABASE_URL: 'postgresql://user:password@localhost:5432/rythmrun',
   JWT_SECRET: ACCESS_SECRET,
   REFRESH_TOKEN_SECRET: REFRESH_SECRET,
-  AWS_REGION: 'us-east-1',
-  AWS_ACCESS_KEY_ID: 'test-access-key',
-  AWS_SECRET_ACCESS_KEY: 'test-secret-access-key',
-  S3_BUCKET: 'test-bucket',
-  CLOUDFRONT_DOMAIN: 'assets.example.test',
-  CLOUDFRONT_KEY_PAIR_ID: 'test-key-pair',
-  CLOUDFRONT_PRIVATE_KEY: 'test-private-key',
+  R2_ACCOUNT_ID: 'test-account-id',
+  R2_ACCESS_KEY_ID: 'test-access-key',
+  R2_SECRET_ACCESS_KEY: 'test-secret-access-key',
+  R2_BUCKET_AVATARS: 'test-avatars-bucket',
+  R2_BUCKET_ACTIVITY_IMAGES: 'test-activity-images-bucket',
+  R2_PUBLIC_URL: 'https://test-account-id.r2.cloudflarestorage.com',
 };
 
 describe('JWT environment validation', () => {
@@ -114,13 +113,12 @@ describe('server environment validation', () => {
 
   it.each([
     'DATABASE_URL',
-    'AWS_REGION',
-    'AWS_ACCESS_KEY_ID',
-    'AWS_SECRET_ACCESS_KEY',
-    'S3_BUCKET',
-    'CLOUDFRONT_DOMAIN',
-    'CLOUDFRONT_KEY_PAIR_ID',
-    'CLOUDFRONT_PRIVATE_KEY',
+    'R2_ACCOUNT_ID',
+    'R2_ACCESS_KEY_ID',
+    'R2_SECRET_ACCESS_KEY',
+    'R2_BUCKET_AVATARS',
+    'R2_BUCKET_ACTIVITY_IMAGES',
+    'R2_PUBLIC_URL',
   ] as const)('rejects a missing %s', (name) => {
     const source: Record<string, string | undefined> = {
       ...validServerEnvironment,
@@ -134,12 +132,10 @@ describe('server environment validation', () => {
 
   it.each([
     ['DATABASE_URL', 'REPLACE_WITH_DATABASE_URL'],
-    ['AWS_ACCESS_KEY_ID', 'REPLACE_WITH_ACCESS_KEY_ID'],
-    ['AWS_SECRET_ACCESS_KEY', 'REPLACE_WITH_SECRET_ACCESS_KEY'],
-    ['S3_BUCKET', 'REPLACE_WITH_BUCKET_NAME'],
-    ['CLOUDFRONT_DOMAIN', 'REPLACE_WITH_CLOUDFRONT_DOMAIN'],
-    ['CLOUDFRONT_KEY_PAIR_ID', 'REPLACE_WITH_KEY_PAIR_ID'],
-    ['CLOUDFRONT_PRIVATE_KEY', 'REPLACE_WITH_PRIVATE_KEY'],
+    ['R2_ACCOUNT_ID', 'REPLACE_WITH_ACCOUNT_ID'],
+    ['R2_ACCESS_KEY_ID', 'REPLACE_WITH_ACCESS_KEY_ID'],
+    ['R2_SECRET_ACCESS_KEY', 'REPLACE_WITH_SECRET_ACCESS_KEY'],
+    ['R2_BUCKET_AVATARS', 'REPLACE_WITH_BUCKET_NAME'],
   ] as const)('rejects a documented %s placeholder', (name, value) => {
     expect(() =>
       validateServerEnvironment({

@@ -11,13 +11,12 @@ export interface ServerEnvironment {
   DATABASE_URL: string;
   JWT_SECRET: string;
   REFRESH_TOKEN_SECRET: string;
-  AWS_REGION: string;
-  AWS_ACCESS_KEY_ID: string;
-  AWS_SECRET_ACCESS_KEY: string;
-  S3_BUCKET: string;
-  CLOUDFRONT_DOMAIN: string;
-  CLOUDFRONT_KEY_PAIR_ID: string;
-  CLOUDFRONT_PRIVATE_KEY: string;
+  R2_ACCOUNT_ID: string;
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
+  R2_BUCKET_AVATARS: string;
+  R2_BUCKET_ACTIVITY_IMAGES: string;
+  R2_PUBLIC_URL: string;
 }
 
 export const MINIMUM_JWT_SECRET_LENGTH = 32;
@@ -26,13 +25,12 @@ export const REQUIRED_SERVER_ENVIRONMENT_VARIABLES = [
   'DATABASE_URL',
   'JWT_SECRET',
   'REFRESH_TOKEN_SECRET',
-  'AWS_REGION',
-  'AWS_ACCESS_KEY_ID',
-  'AWS_SECRET_ACCESS_KEY',
-  'S3_BUCKET',
-  'CLOUDFRONT_DOMAIN',
-  'CLOUDFRONT_KEY_PAIR_ID',
-  'CLOUDFRONT_PRIVATE_KEY',
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET_AVATARS',
+  'R2_BUCKET_ACTIVITY_IMAGES',
+  'R2_PUBLIC_URL',
 ] as const satisfies ReadonlyArray<keyof ServerEnvironment>;
 
 export class EnvironmentValidationError extends Error {
@@ -111,7 +109,7 @@ function requireJwtSecret(
 
 /**
  * Validates only JWT configuration. This is intentionally pure so token unit
- * tests do not need to provide database, AWS, or CloudFront configuration.
+ * tests do not need to provide database or R2 configuration.
  */
 export function validateJwtSecrets(source: EnvironmentSource): JwtSecrets {
   const accessSecret = requireJwtSecret(source, 'JWT_SECRET');
@@ -145,27 +143,29 @@ export function validateServerEnvironment(
     DATABASE_URL: requireConfiguredEnvironmentVariable(source, 'DATABASE_URL'),
     JWT_SECRET: jwtSecrets.accessSecret,
     REFRESH_TOKEN_SECRET: jwtSecrets.refreshSecret,
-    AWS_REGION: requireConfiguredEnvironmentVariable(source, 'AWS_REGION'),
-    AWS_ACCESS_KEY_ID: requireConfiguredEnvironmentVariable(
+    R2_ACCOUNT_ID: requireConfiguredEnvironmentVariable(
       source,
-      'AWS_ACCESS_KEY_ID',
+      'R2_ACCOUNT_ID',
     ),
-    AWS_SECRET_ACCESS_KEY: requireConfiguredEnvironmentVariable(
+    R2_ACCESS_KEY_ID: requireConfiguredEnvironmentVariable(
       source,
-      'AWS_SECRET_ACCESS_KEY',
+      'R2_ACCESS_KEY_ID',
     ),
-    S3_BUCKET: requireConfiguredEnvironmentVariable(source, 'S3_BUCKET'),
-    CLOUDFRONT_DOMAIN: requireConfiguredEnvironmentVariable(
+    R2_SECRET_ACCESS_KEY: requireConfiguredEnvironmentVariable(
       source,
-      'CLOUDFRONT_DOMAIN',
+      'R2_SECRET_ACCESS_KEY',
     ),
-    CLOUDFRONT_KEY_PAIR_ID: requireConfiguredEnvironmentVariable(
+    R2_BUCKET_AVATARS: requireConfiguredEnvironmentVariable(
       source,
-      'CLOUDFRONT_KEY_PAIR_ID',
+      'R2_BUCKET_AVATARS',
     ),
-    CLOUDFRONT_PRIVATE_KEY: requireConfiguredEnvironmentVariable(
+    R2_BUCKET_ACTIVITY_IMAGES: requireConfiguredEnvironmentVariable(
       source,
-      'CLOUDFRONT_PRIVATE_KEY',
+      'R2_BUCKET_ACTIVITY_IMAGES',
+    ),
+    R2_PUBLIC_URL: requireConfiguredEnvironmentVariable(
+      source,
+      'R2_PUBLIC_URL',
     ),
   };
 }
