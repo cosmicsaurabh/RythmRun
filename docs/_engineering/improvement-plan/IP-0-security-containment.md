@@ -350,20 +350,20 @@ This is operational work. Store sensitive evidence in the approved incident syst
 1. Replace end-of-support `aws-sdk` v2 with the minimum modular v3 packages required for S3 commands, S3 PUT/POST signing, and CloudFront read signing.
 2. Preserve the existing storage contract: explicit credentials/region, exact key/type/length POST policy, bounded expiry, object metadata verification, deletes, and signed CloudFront reads.
 3. Standardize backend development, CI, and deployment on Node.js 22.x because current AWS SDK v3 releases require Node 20+ and the CI package already uses Node 22. Do not deploy until MC-0.6 confirms the hosted runtime.
-4. Remove direct production dependencies only when repository-wide import/config and dependency-path checks prove they are unused. For this package those candidates are `joi`, `pg`, and `winston`.
-5. Add a dependency-surface regression that prevents reintroducing the monolithic SDK or the proven-unused direct packages.
-6. Keep build-tool placement unchanged in this slice. Moving Prisma, TypeScript, type packages, or `ts-node` between dependency classes requires a declared deployment install/build contract first.
+4. Remove direct production dependencies only when repository-wide import/config and dependency-path checks prove they are unused. At this 2026-07-11 package boundary those candidates were `joi`, direct `pg`, and `winston`. IP-1.6 later supersedes only the `pg` decision: Prisma 7.8 intentionally requires the PostgreSQL driver through `@prisma/adapter-pg`, so its reviewed return is adapter infrastructure rather than restoration of an unused application dependency.
+5. Add a dependency-surface regression that prevents reintroducing the monolithic SDK or proven-unused packages while explicitly allowing the exact Prisma adapter/driver relationship introduced by IP-1.6.
+6. Build-tool placement was deliberately unchanged in this historical slice. IP-1.6 later moves Prisma/TypeScript build tooling under a native-ESM build contract; MC-1.13 must prove the host installs those tools before generate/build/migrate and prunes only afterward.
 
 **How to verify**
 
 - Run a clean `npm ci --no-audit`, Prisma validation/generation, `npx tsc --noEmit`, `npm run build`, and the full backend suite on Node.js 22.x. Keep the separately approved, dated audit in MC-0.10 rather than relying on npm's implicit install-time submission.
 - Prove tests cover v3 PUT/POST signing inputs, S3 `HeadObject`/`DeleteObject` command dispatch, CloudFront expiry/signing inputs, and the existing avatar lifecycle behavior.
-- Confirm `npm ls aws-sdk joi pg winston` has no installed production path and source contains no `aws-sdk` v2 import.
+- Confirm `npm ls aws-sdk joi winston` has no installed production path and source contains no `aws-sdk` v2 import. Separately confirm `npm ls @prisma/adapter-pg pg` resolves only the reviewed Prisma 7.8 adapter/driver surface and that application source does not create independent pools outside the database factory.
 - Run MC-0.10 only after explicit outbound-scan approval; retain the full dated report and one decision per result.
 
 **Acceptance**
 
-- Repository checks pass with equivalent storage behavior and without AWS SDK v2 or the three proven-unused packages.
+- Repository checks pass with equivalent storage behavior and without AWS SDK v2, `joi`, or `winston`. The dated removal of unused direct `pg` remains valid historical evidence; its later adapter-backed reintroduction has the superseding IP-1.6 rationale and MC-1.12 pool proof.
 - Node.js 22.x is explicit in package metadata, CI, and developer documentation.
 - Advisory closure, staging compatibility, deployed runtime, and production safety remain manual gates and are not inferred from this change.
 
@@ -460,3 +460,4 @@ This is operational work. Store sensitive evidence in the approved incident syst
 | 2026-07-10 | IP-0.2–IP-0.5 | `e33f314`, merged through `54a5b26` into `origin/main` | Merged; not deployed | Repository delivery is confirmed. Migration, staging, production, incident-response, credential-rotation, mobile-rollout, and infrastructure evidence remain open. |
 | 2026-07-10 | IP-0.7a | `http-security-boundary.test.ts` (16 tests); full backend suite (129 tests); `backend-security.yml` local structure review | Pass locally; hosted CI pending | Express-boundary regressions, typecheck, and local suite pass. No operational CI pass is claimed until a successful GitHub Actions run URL and intentional-failure probe are added. |
 | 2026-07-11 | IP-0.7 dependency surface | Node.js 22.22.3 clean install; Prisma validate/generate; TypeScript/build; focused dependency/storage suites (50 tests); full backend suite (141 tests); package/source scans | Pass locally; advisory/staging pending | Replaced AWS SDK v2 with modular v3, retained storage-contract coverage including real PUT presigning without an empty-body checksum and with signed content type, removed `joi`/`pg`/`winston`, and found no remaining v2 source/import or installed direct path. MC-0.6 and MC-0.10 remain open; no hosted, staging, deployment, or current-advisory claim is made. |
+| 2026-07-13 | IP-1.6 superseding dependency decision | Prisma 7.8 config/generator/adapter, centralized database lifecycle, clean install, schema/type/build/test/smoke gates | Pass locally; hosted/staging pending | Preserves the 2026-07-11 fact that unused direct `pg` was removed, but deliberately restores the PostgreSQL driver as the exact runtime behind `@prisma/adapter-pg`. Node 22.22.3 restored the reviewed graph; Prisma validation/generation, production typecheck/build, 15 suites/244 tests, and the built no-database smoke passed. One database factory owns the client/pool; MC-1.12 must still prove real TLS, migration, transaction, pool, and disconnect behavior. |

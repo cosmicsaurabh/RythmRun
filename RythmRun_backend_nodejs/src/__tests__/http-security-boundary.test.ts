@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { jest } from '@jest/globals';
 
 const mockProductionController = {
   register: jest.fn(),
@@ -11,7 +12,7 @@ const mockProductionController = {
   confirmUpload: jest.fn(),
 };
 
-jest.mock('../config/container', () => ({
+jest.unstable_mockModule('../config/container.js', () => ({
   container: {
     resolve: jest.fn(() => mockProductionController),
   },
@@ -20,19 +21,20 @@ jest.mock('../config/container', () => ({
 // AvatarController's typed error dependency imports AvatarService. Replace the
 // unrelated S3 module before evaluation so this HTTP test constructs no AWS
 // client while still using the real controller and AvatarServiceError class.
-jest.mock('../services/s3.service', () => ({
+jest.unstable_mockModule('../services/s3.service.js', () => ({
   S3Service: class S3Service {},
 }));
 
-import http, { Server } from 'http';
-import { AddressInfo } from 'net';
-import { NextFunction, Request, Response, Router } from 'express';
-import { createApp } from '../app';
-import { AvatarController } from '../controllers/avatar.controller';
-import { UserController } from '../controllers/user.controller';
-import { createAvatarRouter } from '../routes/avatar.routes';
-import { createUserRouter } from '../routes/user.routes';
-import { AvatarServiceError } from '../services/avatar.service';
+import http, { type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { Router } from 'express';
+import type { NextFunction, Request, Response } from 'express';
+const { createApp } = await import('../app.js');
+const { AvatarController } = await import('../controllers/avatar.controller.js');
+const { UserController } = await import('../controllers/user.controller.js');
+const { createAvatarRouter } = await import('../routes/avatar.routes.js');
+const { createUserRouter } = await import('../routes/user.routes.js');
+const { AvatarServiceError } = await import('../services/avatar.service.js');
 
 const USER_ID = 17;
 const AUTHORIZATION = 'Bearer boundary-test-token';
@@ -153,7 +155,13 @@ describe('HTTP security boundaries', () => {
 
   beforeAll(async () => {
     server = await new Promise<Server>((resolve, reject) => {
-      const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+      const listener = app.listen(0, '127.0.0.1', error => {
+        if (error !== undefined) {
+          reject(error);
+          return;
+        }
+        resolve(listener);
+      });
       listener.on('error', reject);
     });
   });

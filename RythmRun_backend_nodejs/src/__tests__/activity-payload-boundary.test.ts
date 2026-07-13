@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import { jest } from '@jest/globals';
+import type { ActivityRouteController } from '../routes/activity.routes.js';
 
 const mockProductionController = {
   listActivities: jest.fn(),
@@ -8,33 +10,33 @@ const mockProductionController = {
   deleteActivity: jest.fn(),
 };
 
-jest.mock('../config/container', () => ({
+jest.unstable_mockModule('../config/container.js', () => ({
   container: {
     resolve: jest.fn(() => mockProductionController),
   },
 }));
 
-import http, { IncomingHttpHeaders, Server } from 'http';
-import { EventEmitter } from 'events';
-import { AddressInfo } from 'net';
+import http, { type Server } from 'node:http';
+import type { IncomingHttpHeaders } from 'node:http';
+import { EventEmitter } from 'node:events';
+import type { AddressInfo } from 'node:net';
 import {
-  NextFunction,
-  Request,
-  RequestHandler,
-  Response,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
   Router,
 } from 'express';
-import { createApp, DEFAULT_JSON_LIMIT_BYTES } from '../app';
-import { validateDto } from '../middleware/validation.middleware';
-import { validateActivityCreate } from '../models/activity-domain-validation';
-import { CreateActivityDto } from '../models/dto/activity.dto';
-import {
+import { createApp, DEFAULT_JSON_LIMIT_BYTES } from '../app.js';
+import { validateDto } from '../middleware/validation.middleware.js';
+import { validateActivityCreate } from '../models/activity-domain-validation.js';
+import { CreateActivityDto } from '../models/dto/activity.dto.js';
+const {
   ACTIVITY_BOUNDARY_ERROR_CODES,
   ACTIVITY_JSON_LIMIT_BYTES,
-  ActivityRouteController,
   createActivityMutationBoundary,
   createActivityRouter,
-} from '../routes/activity.routes';
+} = await import('../routes/activity.routes.js');
 
 const AUTHORIZATION_PREFIX = 'Bearer user-';
 
@@ -261,7 +263,13 @@ describe('activity payload HTTP boundary', () => {
     });
 
     server = await new Promise<Server>((resolve, reject) => {
-      const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+      const listener = app.listen(0, '127.0.0.1', error => {
+        if (error !== undefined) {
+          reject(error);
+          return;
+        }
+        resolve(listener);
+      });
       listener.on('error', reject);
     });
   });

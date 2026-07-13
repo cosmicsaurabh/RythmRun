@@ -4,7 +4,7 @@ import {
   getJwtSecrets,
   validateJwtSecrets,
   validateServerEnvironment,
-} from '../config/env';
+} from '../config/env.js';
 
 const ACCESS_SECRET = 'a'.repeat(MINIMUM_JWT_SECRET_LENGTH);
 const REFRESH_SECRET = 'b'.repeat(MINIMUM_JWT_SECRET_LENGTH);

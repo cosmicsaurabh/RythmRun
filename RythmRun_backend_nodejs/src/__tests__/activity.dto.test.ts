@@ -10,9 +10,9 @@ import {
     MAX_ACTIVITY_LOCATIONS,
     MAX_ACTIVITY_STATUS_CHANGES,
     UpdateActivityDto,
-} from '../models/dto/activity.dto';
-import { validateDto } from '../middleware/validation.middleware';
-import { validateCreateActivityDto } from '../middleware/activity-validation.middleware';
+} from '../models/dto/activity.dto.js';
+import { validateDto } from '../middleware/validation.middleware.js';
+import { validateCreateActivityDto } from '../middleware/activity-validation.middleware.js';
 
 const validCreatePayload = {
   clientSyncId: 'rr-00000001-0001-0001-abcd-1234567890ab',

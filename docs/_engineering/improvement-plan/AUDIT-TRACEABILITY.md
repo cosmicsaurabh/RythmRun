@@ -19,9 +19,10 @@ Hosted and human-operated evidence is tracked in the [manual verification regist
 - Repository-delivered; rollout pending: IP-1.1 canonical metrics and provenance are committed in `ba7b288`; production migration and rollout remain gated.
 - Repository-delivered; device verification pending: IP-1.2 one GPS acceptance policy, deterministic pause timing, provider-owned route state, and shared map/elevation segmentation is committed in `c41d3dc`; MC-1.5 remains open.
 - Repository-delivered; device/staging verification pending: IP-1.3 explicit nullable-state clearing, coordinated user-scope teardown, live/sync/profile/auth operation draining, durable credential-cleanup recovery, and A→B cache isolation is committed in `06369b7`; MC-1.6 remains open.
-- Repository-delivered; device/hosted verification pending: IP-1.4 owner-bound local workout/image/queue access and SQLite v6 foreign-key, migration, cascade, duplicate-quarantine, and index enforcement is committed in `a976f4c`; hosted Flutter CI and MC-1.7 Android migration proof remain open.
-- Current repository package: IP-1.5 presence-aware serializable PATCH collection replacement, bounded pre-transform activity validation/error output, and a measured route-specific 3 MiB activity parser behind authentication and interim admission. The mobile client emits UTC activity timestamps and records permanent `400`/`413`/`422` sync rejections in the existing SQLite v6 block marker while leaving auth, admission, server, and network failures retryable. This is repository work only; deployed proxy/resource/PostgreSQL rollback/concurrency and timestamp-compatibility proof remain open under MC-1.8.
-- Manual/hosted gates: [MC-0.1 through MC-0.12 and MC-1.1 through MC-1.8](./MANUAL-CHECKS.md), including hosted CI, dependency review, security operations, metric sampling/backups, compatibility, GPS/account-exit/database-migration device proof, bounded-ingest staging, and controlled rollout.
+- Repository-delivered; device/hosted verification pending: IP-1.4 owner-bound local workout/image/queue access and SQLite v6 foreign-key, migration, cascade, duplicate-quarantine, and index enforcement is committed in `a976f4c`; MC-1.7 Android migration proof and hosted FFI execution remain open.
+- Repository-delivered; staging verification pending: IP-1.5 presence-aware serializable PATCH collection replacement, bounded pre-transform activity validation/error output, and a measured route-specific 3 MiB activity parser behind authentication and interim admission are committed in `d2c1b95`. The mobile client emits UTC timestamps and records permanent `400`/`413`/`422` sync rejections while leaving auth, admission, server, and network failures retryable. Deployed proxy/resource/PostgreSQL rollback/concurrency and timestamp-compatibility proof remain open under MC-1.8.
+- Current repository package: IP-1.6 retains the stable backend check and completes the Prisma 7.8 migration with Prisma Config, generated TypeScript under `src`, the PostgreSQL adapter, one DI-owned client/pool, native NodeNext ESM, explicit server/main cleanup, production build validation, and a built no-database runtime smoke. It also adds pinned Flutter CI with locked restore, merge-base-changed formatting, fatal warning/error analysis, a counted 20-finding informational baseline, and the full Flutter suite. Node 22.22.3 clean install, Prisma validation/generation, production typecheck/build, all 15 native ESM suites and 244 tests, and the built smoke passed locally; hosted success, independent failure probes, protected CI review, required checks, and real PostgreSQL/deployment proof remain open.
+- Manual/hosted gates: [MC-0.1 through MC-0.12 and MC-1.1 through MC-1.13](./MANUAL-CHECKS.md), including hosted CI, independent failure probes, required checks, dependency review, security operations, metric sampling/backups, compatibility, GPS/account-exit/database-migration device proof, bounded-ingest staging, real PostgreSQL/TLS/pool/migration proof, artifact/deploy ordering, SIGTERM cleanup, and controlled rollout.
 - Concurrent owner action: IP-0.6 exposure review and credential rotation decision.
 
 ## P0/P1 findings
@@ -30,7 +31,7 @@ Hosted and human-operated evidence is tracked in the [manual verification regist
 | --- | --- | --- | --- |
 | Mass assignment can set `profilePicturePath` | P0 | IP-0.2 | Unknown fields rejected; explicit Prisma data test |
 | Stored profile path reaches unauthenticated read and later unlink | P0 | IP-0.1, IP-0.3 | Production containment; no local route/sink; malicious seeded-row test |
-| Avatar confirmation accepts arbitrary S3 key | P0 | IP-0.4 | Foreign/unissued/mismatched object tests |
+| Avatar confirmation accepts an arbitrary object-storage key (historically S3; current adapter targets R2) | P0 | IP-0.4 | Foreign/unissued/mismatched object tests |
 | Possible deployed secret exposure | P0 | IP-0.1, IP-0.6 | Restricted incident disposition and credential revocation evidence |
 | JWT configuration falls back to public placeholders | P0 | IP-0.5 | Startup-failure tests; deployed smoke check |
 | Vulnerable production dependencies, including Multer/validator and the remaining dated advisories | P0/P1 | IP-0.3, IP-0.7/IP-0.7a, IP-1.6; recheck IP-5.3 | Remove/upgrade exposed paths, triage every advisory, then enforce dated CI/release gates |
@@ -63,7 +64,7 @@ Hosted and human-operated evidence is tracked in the [manual verification regist
 | Sync status/retry is not actionable to the user | P1/P2 | IP-4.1 | State migration and UI/manual-retry tests |
 | Activity lists eagerly return every GPS point | P1/P2 | IP-4.3 | Response schema/byte/query-count assertion |
 | PostgreSQL route/history indexes are missing | P1/P2 | IP-4.4 | Representative `EXPLAIN ANALYZE` evidence |
-| Activity/S3 deletion is cross-system fragile | P1/P2 | IP-4.6 | DB-first outbox and worker failure tests |
+| Activity/object-storage deletion is cross-system fragile | P1/P2 | IP-4.6 | DB-first outbox and worker failure tests |
 | Image cleanup timer is not durable/replica-safe | P1/P2 | IP-4.6 | Lease concurrency/process-death test |
 | Local full-workout loading performs 2N+1 child queries | P2 | IP-4.3 | Bounded local list/detail query-count tests |
 
@@ -71,17 +72,17 @@ Hosted and human-operated evidence is tracked in the [manual verification regist
 
 | Audit finding | Disposition | Planned proof or reason |
 | --- | --- | --- |
-| Multiple Prisma clients/pools | Avatar controller fix is merged in IP-0.4 but not deployed; remaining clients complete across IP-2.1/IP-4.6/IP-5.1 | Pool/client lifecycle tests and connection measurement |
+| Multiple Prisma clients/pools | IP-1.6 repository code centralizes all request/service access on one adapter-backed Prisma client and removes the unused per-request constructor; deployment remains unverified | Factory/lifecycle tests plus real connection measurement across deployed replicas in MC-1.12/MC-1.13 |
 | Generic/string-matched backend errors | IP-2.6 and IP-4 contract work | Typed error/status-code tests |
-| `app.ts` listens and starts jobs on import | Minimal app/server seam is merged in IP-0.5 but not deployed; lifecycle maturity remains IP-5.1 | Import-without-socket test and graceful shutdown test |
-| Environment loads after imported S3 dependencies | Fix is merged in IP-0.5 but not deployed; deployed smoke proof remains | Startup-order/config tests |
+| `app.ts` listens and starts jobs on import | IP-0.5 introduced the seam and IP-1.6 adds native-ESM `main`/`server` ownership plus shared cleanup; deployed bounded shutdown/readiness maturity remains IP-5.1 | Built import/runtime smoke, deployed SIGTERM gate MC-1.13, and later readiness/grace-deadline tests |
+| Environment loads after imported S3-compatible R2 dependencies | Fix is merged in IP-0.5 but not deployed; deployed smoke proof remains | Startup-order/config tests |
 | Health ignores dependencies and cold start is slow | IP-5.1 | Liveness/readiness failure and startup timing evidence |
 | No proven operational CI and narrow HTTP-level security coverage | Current IP-0.7a; expanded IP-1.6/IP-5.3 | Successful GitHub Actions run URL, Express regressions, required checks, and intentional-failure probes |
-| 159 Flutter analyzer findings | Baseline protection IP-1.6; release gate IP-5.3 | No increase, then zero errors/warnings and bounded info/deprecation plan |
+| Historical 159 Flutter analyzer findings; current tree has 20 information findings and no warning/error, but no hosted gate yet | Baseline protection IP-1.6; release gate IP-5.3 | Counted fingerprint baseline does not increase; hosted warning/new-info probes fail; remaining information backlog is then reduced |
 | Large mixed-responsibility DB/UI files | Extract only phase-required seams; broader cleanup deferred | Focused tests first; no risk-unrelated rewrite |
 | Duplicate map/formatting logic | IP-1.1/IP-1.2/IP-3.5 | One unit formatter and one accepted-point route |
 | Named `/home` route has no route-level auth guard | IP-2.2 | Unauthenticated direct-navigation/provider-instantiation test |
-| Duplicate local/S3 avatar implementations | Local pipeline removal is merged in IP-0.3/IP-0.4; deployment remains | Deployed route inventory proves only the hardened S3 route/lifecycle remains |
+| Duplicate local/object-storage avatar implementations | Local pipeline removal is merged in IP-0.3/IP-0.4; deployment remains | Deployed route inventory proves only the hardened R2 route/lifecycle remains |
 | Conflicting Android Gradle files | Fix in IP-3.4; verify in IP-5.5 | One authoritative clean foreground-service/release build configuration |
 | Connectivity may never emit initial connected state and polls public DNS | IP-4.1 | Immediate-state/provider tests; probe removed |
 | iOS configuration/readiness incomplete | IP-5.5 | Fully proven device gate or explicit Android-only scope |
@@ -99,7 +100,7 @@ Hosted and human-operated evidence is tracked in the [manual verification regist
 | Domain interfaces depend on models inside the monolithic local DB service; feature layout is mixed | Extract only phase-required domain/DAO seams in IP-1/IP-3; broader structure deferred | Dependency-boundary tests and no unrelated rewrite |
 | Activity/status/friend states are free-form strings | Activity/status allowlists in IP-1/IP-4; social states deferred while routes disabled | DTO/DB constraint tests for active product paths |
 | Friend uniqueness is directional and comments/friend requests are unbounded | Social endpoints disabled in IP-2.5; schema/pagination redesign deferred | No exposed journey until privacy/moderation and an explicit social plan |
-| IAM/S3 public access, encryption/lifecycle, CloudFront origin control, DB TLS/backups were unverifiable | IP-0.6 verification; IP-5.4 ongoing drills | Restricted configuration evidence and isolated backup restore, never secrets in Git |
+| R2 credential scope, bucket access/delivery, encryption/lifecycle, and DB TLS/backups were unverifiable | IP-0.6 verification; IP-5.4 ongoing drills | Restricted configuration evidence and isolated backup restore, never secrets in Git |
 | Data export/profile sharing/notifications/help | Deferred | Re-prioritize after IP-5 based on user evidence |
 | Larger IDs/partitioning/cursor pagination at high scale | Measure in IP-4; implement only where evidence supports it | Avoid premature infrastructure |
 
@@ -113,4 +114,4 @@ The audit also identified strengths. Every phase must preserve them:
 - durable activity-image upload/retry/replace/delete states;
 - local durable photo originals/thumbnails;
 - lightweight local history list with detail-only route loading;
-- direct-to-S3 upload and signed activity-image reads after hardening.
+- direct-to-R2 upload and signed activity-image reads after hardening.

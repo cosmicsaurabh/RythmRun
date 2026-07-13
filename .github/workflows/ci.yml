@@ -1,0 +1,171 @@
+name: Flutter CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      base_sha:
+        description: Commit to use as the merge-base candidate for formatting
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: rythmrun_frontend_flutter
+
+jobs:
+  flutter-ci:
+    name: Flutter CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.44.1
+
+      - name: Verify pinned Flutter toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_version="$(tr -d '[:space:]' < .flutter-version)"
+          actual_version="$(flutter --version --machine | jq -r '.frameworkVersion')"
+          if [[ "$actual_version" != "$expected_version" ]]; then
+            echo "Expected Flutter $expected_version but found $actual_version" >&2
+            exit 1
+          fi
+          flutter --version
+
+      - name: Restore locked Flutter dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Check formatting of changed Dart files
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
+          DISPATCH_BASE_SHA: ${{ inputs.base_sha || '' }}
+        run: |
+          set -euo pipefail
+
+          repository_root="$(git rev-parse --show-toplevel)"
+          frontend_root="$repository_root/rythmrun_frontend_flutter"
+          cd "$repository_root"
+
+          compare_to=""
+          check_all=false
+          case "$EVENT_NAME" in
+            pull_request)
+              compare_to="$PR_BASE_SHA"
+              ;;
+            push)
+              if [[ -z "$PUSH_BEFORE_SHA" || "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+                check_all=true
+              else
+                compare_to="$PUSH_BEFORE_SHA"
+              fi
+              ;;
+            workflow_dispatch)
+              compare_to="$DISPATCH_BASE_SHA"
+              ;;
+            *)
+              echo "Unsupported event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          changed_files=()
+          add_dart_file() {
+            local relative_file="$1"
+            local full_path="$frontend_root/$relative_file"
+            if [[ -L "$full_path" ]]; then
+              echo "Refusing to format a symbolic link: $relative_file" >&2
+              exit 1
+            fi
+            if [[ -f "$full_path" ]]; then
+              changed_files+=("$relative_file")
+            fi
+          }
+
+          if [[ "$check_all" == true ]]; then
+            while IFS= read -r -d '' file; do
+              add_dart_file "${file#rythmrun_frontend_flutter/}"
+            done < <(git ls-files -z -- 'rythmrun_frontend_flutter/*.dart')
+          else
+            if [[ ! "$compare_to" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "Comparison value must be a full commit SHA." >&2
+              exit 1
+            fi
+            if ! git cat-file -e "$compare_to^{commit}"; then
+              echo "Comparison commit is unavailable: $compare_to" >&2
+              exit 1
+            fi
+            merge_base="$(git merge-base HEAD "$compare_to")"
+            while IFS= read -r -d '' file; do
+              case "$file" in
+                rythmrun_frontend_flutter/*.dart)
+                  relative_file="${file#rythmrun_frontend_flutter/}"
+                  add_dart_file "$relative_file"
+                  ;;
+              esac
+            done < <(
+              git diff --name-only --diff-filter=ACMR -z \
+                "$merge_base" HEAD -- rythmrun_frontend_flutter
+            )
+          fi
+
+          if (( ${#changed_files[@]} == 0 )); then
+            echo "No changed Dart files require formatting."
+            exit 0
+          fi
+
+          printf 'Checking %d changed Dart file(s).\n' "${#changed_files[@]}"
+          cd "$frontend_root"
+          dart format --output=none --set-exit-if-changed -- "${changed_files[@]}"
+
+      - name: Reject analyzer errors and warnings
+        run: flutter analyze --no-pub --no-fatal-infos
+
+      - name: Compare informational analyzer baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          analyzer_output="$RUNNER_TEMP/dart-analyzer.machine"
+
+          set +e
+          dart analyze --format machine | tee "$analyzer_output"
+          analyzer_status=${PIPESTATUS[0]}
+          set -e
+
+          dart run tool/ci/analyzer_baseline.dart check \
+            --input "$analyzer_output" \
+            --baseline tool/ci/analyzer_baseline.json \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --package-root "$GITHUB_WORKSPACE/rythmrun_frontend_flutter"
+
+          if (( analyzer_status != 0 )); then
+            echo "dart analyze exited with status $analyzer_status" >&2
+            exit "$analyzer_status"
+          fi
+
+      - name: Run Flutter tests
+        run: flutter test --no-pub

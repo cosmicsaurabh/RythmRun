@@ -1,7 +1,8 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 type BackendPackage = {
+  type?: string;
   engines?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -12,21 +13,37 @@ type BackendPackageLock = {
 };
 
 const packageJson = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8'),
+  fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'),
 ) as BackendPackage;
 const packageLock = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, '../../package-lock.json'), 'utf8'),
+  fs.readFileSync(path.resolve(process.cwd(), 'package-lock.json'), 'utf8'),
 ) as BackendPackageLock;
 
 const dependencies = packageJson.dependencies ?? {};
+const devDependencies = packageJson.devDependencies ?? {};
 const allDeclaredDependencies = {
   ...dependencies,
-  ...(packageJson.devDependencies ?? {}),
+  ...devDependencies,
 };
 
 describe('backend production dependency surface', () => {
   it('uses the supported Node runtime required by the current AWS SDK', () => {
     expect(packageJson.engines?.node).toBe('22.x');
+  });
+
+  it('runs the backend and generated Prisma client as native ESM', () => {
+    expect(packageJson.type).toBe('module');
+  });
+
+  it('keeps the Prisma 7 PostgreSQL adapter stack aligned and explicit', () => {
+    expect(dependencies).toEqual(
+      expect.objectContaining({
+        '@prisma/adapter-pg': '7.8.0',
+        '@prisma/client': '7.8.0',
+        pg: '8.22.0',
+      }),
+    );
+    expect(devDependencies.prisma).toBe('7.8.0');
   });
 
   it('keeps the end-of-support monolithic AWS SDK out of the dependency graph', () => {
@@ -47,7 +64,7 @@ describe('backend production dependency surface', () => {
     );
   });
 
-  it.each(['joi', 'pg', 'winston'])(
+  it.each(['joi', 'winston'])(
     'does not restore the unused %s runtime dependency',
     dependency => {
       expect(dependencies).not.toHaveProperty(dependency);

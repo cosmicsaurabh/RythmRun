@@ -1,12 +1,12 @@
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
 import { injectable, inject } from 'tsyringe';
-import { ActivityImageService } from '../services/activity-image.service';
+import { ActivityImageService } from '../services/activity-image.service.js';
 import {
   ConfirmActivityImageUploadDto,
   RequestActivityImageUploadUrlDto,
-} from '../models/dto/activity-image.dto';
+} from '../models/dto/activity-image.dto.js';
 
 @injectable()
 export class ActivityImageController {

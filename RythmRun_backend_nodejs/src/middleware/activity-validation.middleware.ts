@@ -9,12 +9,12 @@ import {
   MAX_ACTIVITY_STATUS_CHANGES,
   MIN_ACTIVITY_ALTITUDE_METERS,
   UpdateActivityDto,
-} from '../models/dto/activity.dto';
+} from '../models/dto/activity.dto.js';
 import {
   DtoValidationError,
-  DtoValidationIssue,
+  type DtoValidationIssue,
   validateDto,
-} from './validation.middleware';
+} from './validation.middleware.js';
 
 const LOCATION_PROPERTIES = new Set([
   'latitude',

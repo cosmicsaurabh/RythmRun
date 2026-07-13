@@ -1,23 +1,23 @@
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import {
     ActivityDomainValidationError,
     ActivityNotFoundError,
     ActivityService,
-} from '../services/activity.service';
-import { GetActivitiesQueryDto } from '../models/dto/activity.dto';
+} from '../services/activity.service.js';
+import { GetActivitiesQueryDto } from '../models/dto/activity.dto.js';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
 import { injectable, inject } from "tsyringe";
 import {
     DtoValidationError,
-    DtoValidationIssue,
+    type DtoValidationIssue,
     MAX_DTO_ISSUE_MESSAGE_LENGTH,
     MAX_DTO_ISSUE_PATH_LENGTH,
-} from '../middleware/validation.middleware';
+} from '../middleware/validation.middleware.js';
 import {
     validateCreateActivityDto,
     validateUpdateActivityDto,
-} from '../middleware/activity-validation.middleware';
+} from '../middleware/activity-validation.middleware.js';
 
 function activityRequestIssueCode(issue: DtoValidationIssue): string {
     if (issue.constraintCodes.includes('arrayMaxSize')) {

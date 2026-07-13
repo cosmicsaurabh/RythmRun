@@ -1,12 +1,10 @@
-import { PrismaClient } from '../../generated/prisma';
-import { SendFriendRequestDto } from '../models/dto/friend.dto';
+import { inject, injectable } from 'tsyringe';
+import type { PrismaClient } from '../generated/prisma/client.js';
+import { SendFriendRequestDto } from '../models/dto/friend.dto.js';
 
+@injectable()
 export class FriendService {
-    private prisma: PrismaClient;
-
-    constructor() {
-        this.prisma = new PrismaClient();
-    }
+    constructor(@inject('PrismaClient') private prisma: PrismaClient) {}
 
     private readonly userSelect = {
         id: true,
@@ -240,4 +238,4 @@ export class FriendService {
             request: friendRequest
         };
     }
-} 
+}

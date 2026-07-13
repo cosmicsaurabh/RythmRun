@@ -1,7 +1,15 @@
-import { PrismaClient } from '../../generated/prisma';
 import * as bcrypt from 'bcrypt';
+import dotenv from 'dotenv';
+import { createDatabase } from '../config/database.js';
 
-const prisma = new PrismaClient();
+dotenv.config({ quiet: true });
+
+const databaseUrl = process.env.DATABASE_URL;
+if (databaseUrl === undefined) {
+  throw new Error('DATABASE_URL is required to seed data');
+}
+const database = createDatabase(databaseUrl);
+const prisma = database.client;
 
 async function main() {
   // Clean up existing data
@@ -102,11 +110,12 @@ async function main() {
   console.log('Comment and like added by:', user2.username);
 }
 
-main()
-  .catch((e) => {
-    console.error('Error seeding data:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  }); 
+try {
+  await main();
+} catch (error: unknown) {
+  const category = error instanceof Error ? error.name : 'UnknownError';
+  console.error(`Data seed failed (${category})`);
+  process.exitCode = 1;
+} finally {
+  await database.disconnect();
+}

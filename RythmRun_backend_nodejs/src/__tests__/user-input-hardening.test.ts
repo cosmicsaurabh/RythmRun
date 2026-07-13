@@ -1,14 +1,15 @@
 import 'reflect-metadata';
+import { jest } from '@jest/globals';
 
-jest.mock('bcrypt', () => ({
+jest.unstable_mockModule('bcrypt', () => ({
     hash: jest.fn().mockResolvedValue('hashed-password'),
     compare: jest.fn()
 }));
 
-import * as bcrypt from 'bcrypt';
-import { DtoValidationError, validateDto } from '../middleware/validation.middleware';
-import { RegisterUserDto, UpdateProfileDto } from '../models/dto/user.dto';
-import { UserService } from '../services/user.service';
+import { DtoValidationError, validateDto } from '../middleware/validation.middleware.js';
+import { RegisterUserDto, UpdateProfileDto } from '../models/dto/user.dto.js';
+const bcrypt = await import('bcrypt');
+const { UserService } = await import('../services/user.service.js');
 
 function createMockPrisma() {
     return {

@@ -26,7 +26,7 @@ Repository commits and local test results cannot change a manual check to `Verif
 | MC-0.2 | Evidence preservation and exposure disposition | Security owner | Pending | Restricted incident-ticket reference covering log window, snapshot, and disposition | — | — | — |
 | MC-0.3 | Credential/session rotation | Secret-store and database owners | Pending | Restricted rotation record plus proof that old credentials/sessions fail | — | — | — |
 | MC-0.4 | Database migration and unsafe avatar-value quarantine | Database owner | Pending | Backup reference, migration run, classified counts, and rollback record | — | — | — |
-| MC-0.5 | S3, CloudFront, database TLS, lifecycle, and backup posture | Infrastructure owner | Pending | Restricted configuration review and isolated restore reference | — | — | — |
+| MC-0.5 | R2 access/delivery, database TLS, lifecycle, and backup posture | Infrastructure owner | Pending | Restricted configuration review and isolated restore reference | — | — | — |
 | MC-0.6 | Isolated security staging | Deployment owner | Pending | Environment/run reference proving isolation and non-production credentials/data | — | — | — |
 | MC-0.7 | Hosted `Backend security` success | Repository maintainer | Pending | Successful GitHub Actions run URL for the committed workflow | — | — | — |
 | MC-0.8 | Intentional CI failure probe | Repository maintainer | Pending | Failed run URL from a temporary non-merge revision and cleanup reference | — | — | — |
@@ -42,6 +42,11 @@ Repository commits and local test results cannot change a manual check to `Verif
 | MC-1.6 | User-scope exit and account-switch isolation | Mobile, backend, and QA owners | Pending | Staging build/run covering idle and active logout, forced auth loss, save recovery, sync drain, and A→B isolation | — | — | Use synthetic accounts and safe run references; never attach tokens, routes, profile objects, or local database contents to Git. |
 | MC-1.7 | Android SQLite v5→v6 ownership migration | Mobile, database, and QA owners | Pending | Release-build in-place upgrade/reopen record covering FK diagnostics, retained valid rows, A/B known-ID denial, cascades, and forward-fix recovery | — | — | Use synthetic fixtures and restricted backup references. Do not attach database files, route rows, image paths, or account data to Git. |
 | MC-1.8 | Bounded activity ingest and PATCH history in staging | Backend, mobile, deployment, and QA owners | Pending | Staging run covering edge/application size limits, UTC/legacy compatibility, mobile permanent/retry classification, long-workout sync, admission pressure, PATCH preservation/clear, PostgreSQL rollback/concurrency, and sanitized telemetry | — | — | Use synthetic activities only. Do not attach route payloads, coordinates, tokens, database rows, or raw logs to Git. |
+| MC-1.9 | Hosted `Flutter CI` success | Repository maintainer | Pending | Successful GitHub Actions run URL for the reviewed commit and stable `Flutter CI` check | — | — | A local Flutter run or workflow file is not hosted evidence. |
+| MC-1.10 | Independent CI regression probes | Repository maintainer and reviewer | Pending | Separate failed run URLs for backend type, Flutter test/format/analyzer-warning/new-information probes plus cleanup and final-green references | — | — | Run one fault per temporary non-merge revision so fail-fast cannot mask a later gate. MC-0.8 separately owns the backend-test probe. |
+| MC-1.11 | Required backend/Flutter checks and protected CI controls | Repository administrator | Pending | Ruleset/review-policy reference proving both stable checks are required and workflow/comparator/baseline changes require independent review | — | — | Do not let a pull request weaken the gate that evaluates itself without protected review. |
+| MC-1.12 | Prisma 7.8 on real PostgreSQL | Database, infrastructure, backend, and QA owners | Pending | Restricted staging run covering full migrations, adapter query/transaction behavior, TLS, schema selection, pool limits/timeouts, and connection counts | — | — | The repository built smoke deliberately does not connect to a database. Use synthetic data and never commit URLs, certificates, snapshots, rows, or raw logs. |
+| MC-1.13 | Backend artifact order and deployed shutdown | Deployment, database, backend, and on-call owners | Pending | Artifact provenance plus install/build/migrate/prune/start and bounded SIGTERM run records | — | — | Prove one migration owner, the promoted artifact, listener drain, timer stop, Prisma pool closure, and deadline behavior on the actual host. |
 
 ## Hosted CI procedure
 
@@ -49,7 +54,7 @@ Repository commits and local test results cannot change a manual check to `Verif
 
 1. Push the reviewed branch and open a pull request through the normal protected path.
 2. Confirm the workflow resolves the expected commit SHA and uses the `Backend security` job.
-3. Verify the hosted job completes `npm ci --no-audit`, Prisma schema validation, Prisma generation, TypeScript typecheck, and all backend tests. The separately approved advisory submission belongs only to MC-0.10.
+3. Verify the hosted job completes `npm ci --no-audit`, Prisma schema validation, Prisma generation, the production TypeScript typecheck, the complete native ESM Jest suite, the production build, and `npm run smoke:runtime`. Do not substitute a source-only transform for the emitted build. The separately approved advisory submission belongs only to MC-0.10.
 4. Record the run URL and commit SHA in this register and the IP-0 evidence log.
 5. If hosted behavior differs from local behavior, keep the check pending, fix the workflow in a separate reviewed commit, and rerun it.
 
@@ -75,6 +80,60 @@ Pass condition: the intentional regression produces a failed required check and 
 
 Pass condition: an unpassed `Backend security` check prevents a normal merge to `main`.
 
+### MC-1.9 — Successful Flutter workflow
+
+1. Push the reviewed branch and open a pull request through the normal protected path. Use `pull_request`, never `pull_request_target`.
+2. Confirm the run resolves the reviewed commit SHA and the stable job name is `Flutter CI` on Ubuntu 24.04 with Flutter 3.44.1/Dart 3.12.1. Confirm checkout and Flutter setup resolve the immutable action commits recorded in the workflow.
+3. Confirm the job restores `pubspec.lock` with enforcement, checks only merge-base-changed/new Dart formatting, rejects analyzer warnings/errors, accepts only a sub-multiset of the committed 20-finding informational allowance with no new keys/count increases, and runs the complete Flutter suite including SQLite FFI tests.
+4. Inspect the run configuration: permissions remain `contents: read`; checkout credentials are not persisted; no database, R2, JWT, signing, or environment secrets are exposed; no workspace, `.dart_tool`, generated config, or secret file is cached or uploaded.
+5. Record the successful run URL and commit SHA here and in the IP-1 evidence log. If Linux SQLite/Flutter behavior differs from local behavior, keep this check pending, fix it in a reviewed commit, and rerun.
+
+Pass condition: one successful unskipped `Flutter CI` run for the reviewed SHA. Source inspection, a local suite, or a run for a different commit is insufficient.
+
+### MC-1.10 — Independent regression probes
+
+1. Start each probe from the same reviewed green commit on a temporary non-merge branch. Use a separate commit/run for each fault; restore the branch to green or delete it before starting the next probe.
+2. Add a deterministic TypeScript type error and confirm only the relevant `Backend security` type-check path is red. MC-0.8 separately proves a backend Jest assertion failure.
+3. In separate Flutter revisions, introduce: one failing test assertion; one unformatted changed Dart file; one analyzer warning; and one additional informational lint (or an extra occurrence of an existing key). Confirm `Flutter CI` fails respectively at test, format, fatal warning analysis, and baseline comparison.
+4. For the informational probe, do not edit the baseline or comparator. Confirm deleting one existing informational occurrence is accepted in a separate safe rehearsal or comparator fixture; do not merge unrelated lint cleanup through the probe branch.
+5. Record every failed run URL, temporary commit SHA, expected failing step, cleanup/closed-PR reference, and the final green run for the unchanged reviewed commit. Do not publish exploit details, secrets, raw logs, or production data.
+
+Pass condition: all faults fail at their intended independent gate, none of the probe revisions is merged, and the reviewed commit finishes green afterward. One fail-fast run containing several faults does not satisfy this check.
+
+### MC-1.11 — Required checks and protected CI controls
+
+1. After MC-0.7 through MC-0.9 and MC-1.9 through MC-1.10 pass, require both stable job names, `Backend security` and `Flutter CI`, in the `main` ruleset without path filters that leave a required check unreported.
+2. Require pull requests and current-branch checks according to repository policy; do not permit ordinary merge bypass when either job is missing, pending, cancelled, or failed.
+3. Configure independent review ownership for `.github/workflows/backend-security.yml`, `.github/workflows/ci.yml`, `rythmrun_frontend_flutter/tool/ci/analyzer_baseline.dart`, and `rythmrun_frontend_flutter/tool/ci/analyzer_baseline.json`. The reviewer must inspect baseline count additions and immutable action/toolchain changes rather than approving them mechanically.
+4. Use a harmless test pull request or ruleset inspection to prove each missing/failed job blocks a normal merge and a CI-control change cannot self-approve. Record only safe ruleset/run references.
+
+Pass condition: both checks block normal merges until green, and weakening a workflow/comparator/baseline requires an independent authorized review. Emergency administration, if allowed, is narrowly documented and audited.
+
+## Prisma 7 and backend deployment procedure
+
+### MC-1.12 — Exercise Prisma 7.8 against real PostgreSQL
+
+1. Create an isolated PostgreSQL environment with synthetic data, a restricted evidence location, and a restorable pre-run backup. Record the PostgreSQL version and safe environment/run identifier, never its connection URL or certificate material.
+2. Verify certificate validation and the exact TLS mode used by both the migration connection and runtime connection. Reject expired, untrusted, hostname-mismatched, or silently downgraded connections; do not add insecure certificate acceptance as a workaround.
+3. From a clean checkout and locked install, run Prisma schema validation/generation, then apply the complete migration chain to a fresh database. Separately exercise the supported upgrade path on a representative previous schema and run `prisma migrate status`; no drift, failed migration, or unowned concurrent migration may remain.
+4. Start the built native-ESM artifact with the Prisma PostgreSQL adapter and execute a bounded health/query fixture plus the representative serializable activity/avatar transactions. Prove commit and rollback behavior, uniqueness/cascade expectations, timestamp/float round trips, and retry classification without copying row data into Git.
+5. If a non-`public` schema is supported, prove the configured schema is selected by both Prisma CLI and the runtime adapter. If only `public` is supported, document and enforce that deployment contract rather than relying on an ignored URL parameter.
+6. Measure runtime pool behavior with the committed maximum, 5-second connection timeout, 300-second idle timeout, and the real number of application replicas. Record peak/idle/waiting connections, database capacity headroom, connection-failure latency, and recovery after database restart. Approve different values only through a reviewed configuration change and repeat the measurement.
+7. Stop the application through its cleanup API and verify all Prisma/`pg` connections close. Then repeat under a database-down/slow-connection condition and confirm error output contains categories only—no credentials, URLs, SQL parameters, or private row data.
+
+Pass condition: fresh and upgrade migrations, TLS verification, adapter queries/transactions, schema selection, pool bounds/timeouts, failure recovery, and disconnect all have dated owner/reviewer evidence. `prisma validate`, mocked transactions, or the no-database built smoke alone do not satisfy this gate.
+
+### MC-1.13 — Prove artifact ordering and bounded deployed SIGTERM
+
+1. Document and execute the host's exact sequence: locked install including build tools; Prisma generation/schema validation; production typecheck; native ESM Jest; production build; built runtime smoke; one-owner migration; optional development-dependency pruning; and start from the same emitted artifact. If the host installs with `--omit=dev` before build/migration, treat that as a failed deployment contract.
+2. Record the reviewed commit, Node 22 runtime, lockfile digest, artifact identifier, migration set, and safe deployment reference. Promote the same artifact from isolated staging; do not rebuild production from a different dependency resolution.
+3. Confirm `npm run smoke:runtime` imports the emitted Prisma/client/container/route graph, serves process liveness, rejects an unauthenticated protected request before persistence, and releases its local listener/timer/client wrapper. Record explicitly that this smoke uses an unreachable database and does not prove PostgreSQL, TLS, migrations, R2, pool capacity, or deployed signal behavior.
+4. On the real host with synthetic traffic, send `SIGTERM` while one bounded safe request is active. Confirm the instance stops receiving new traffic, the listener drains within the approved grace period, retry/background timers stop, the active request finishes or is terminated according to policy, and the Prisma pool closes.
+5. Repeat with an intentionally stuck request. Confirm the documented deadline triggers the approved force-close behavior, produces a failure exit/status visible to orchestration, and does not leave a migration, worker lease, or database session owned by the terminated instance.
+6. Restart the promoted artifact and prove readiness/traffic recovery without duplicate migration execution. Full dependency-aware readiness remains IP-5.1; this check proves only the current artifact and shutdown contract.
+
+Pass condition: the actual host demonstrates deterministic build/migrate/start ordering, one migration owner, identical artifact promotion, and bounded graceful/forced shutdown with closed database resources. A local signal unit test or source inspection is insufficient.
+
 ## Dependency advisory procedure
 
 ### MC-0.10 — Dated production scan and triage
@@ -84,7 +143,7 @@ Pass condition: an unpassed `Backend security` check prevents a normal merge to 
 3. For every advisory, record package, installed path, severity, affected range, runtime reachability, chosen fix, owner, and due date.
 4. Upgrade or remove reachable vulnerable packages. A suppressed or accepted advisory needs owner approval, reachability evidence, an expiry date, and a tracking reference.
 5. Do not reopen affected routes while a reachable critical/high production advisory remains.
-6. After remediation, rerun a clean install, Prisma validation/generation, TypeScript typecheck, backend build/tests, and the dated production audit.
+6. After remediation, rerun a clean install, Prisma validation/generation, the production TypeScript typecheck, native ESM Jest suite, production build, built runtime smoke, and the dated production audit.
 
 Pass condition: no reachable critical/high production advisory remains, and every other result has a reviewed, time-bounded disposition. The 2026-07-10 count of 11 is discovery evidence, not a current result.
 
@@ -96,7 +155,7 @@ Pass condition: no reachable critical/high production advisory remains, and ever
 2. Preserve the relevant log window and database snapshot before cleanup; never copy raw evidence into Git.
 3. Classify unsafe legacy avatar values using a reversible migration after a backup is verified.
 4. If exposure cannot be excluded, rotate JWT, refresh/session, database, AWS, and CDN material in an order that keeps replacement credentials working before old credentials are revoked.
-5. Verify S3 public-access block, object ownership, encryption, origin controls, abandoned-object lifecycle, database TLS, backup retention, and an isolated restore.
+5. Verify R2 credential scope, bucket access/public-delivery policy, encryption, abandoned-object lifecycle, database TLS, backup retention, and an isolated restore.
 6. Confirm the deployment host uses Node.js 22.x, then deploy only to isolated staging with non-production credentials and sanitized or synthetic data before any production reopen.
 
 Pass condition: each row has a restricted evidence reference, dated owner sign-off, independent reviewer, and a tested containment/rollback response.
@@ -106,7 +165,7 @@ Pass condition: each row has a restricted evidence reference, dated owner sign-o
 1. Exercise the supported Flutter build through avatar request, multipart upload, confirmation, display, replacement, and logout in isolated staging.
 2. Verify safe request IDs/error categories and confirm logs contain no secrets, signed URLs, raw object keys beyond operational need, filesystem paths, response bodies, or exact routes.
 3. Reopen registration/profile text paths first and avatar request/confirm only after storage policy, quota, intent, and cleanup checks pass.
-4. Define rollback thresholds for `4xx`, `5xx`, avatar-confirm, storage rejection, and S3 errors before reopening.
+4. Define rollback thresholds for `4xx`, `5xx`, avatar-confirm, storage rejection, and R2 errors before reopening.
 5. Observe continuously for 24 hours with a named on-call owner. Reapply containment before rollback if a threshold or security invariant fails.
 
 Pass condition: the valid lifecycle passes, negative probes remain contained, monitoring stays within approved thresholds, and the 24-hour result is recorded.

@@ -1,10 +1,10 @@
 import { injectable, inject } from 'tsyringe';
-import { ActivityImage, PrismaClient } from '../../generated/prisma';
+import type { ActivityImage, PrismaClient } from '../generated/prisma/client.js';
 import {
   ConfirmActivityImageUploadDto,
   RequestActivityImageUploadUrlDto,
-} from '../models/dto/activity-image.dto';
-import s3Service from './s3.service';
+} from '../models/dto/activity-image.dto.js';
+import s3Service from './s3.service.js';
 
 const ALLOWED_CONTENT_TYPES = new Set([
   'image/jpeg',

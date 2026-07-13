@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { container } from '../config/container';
-import { CommentController } from '../controllers/comment.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { container } from '../config/container.js';
+import { CommentController } from '../controllers/comment.controller.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
 
 // Simple router without mergeParams
 const router = Router();

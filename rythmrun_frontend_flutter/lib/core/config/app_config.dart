@@ -13,8 +13,10 @@ class AppConfig {
   };
 
   static const Map<String, String> _r2Domains = {
-    'dev': 'https://dev-account-id.r2.cloudflarestorage.com', // R2 dev (update with your dev R2 account)
-    'staging': 'https://staging-account-id.r2.cloudflarestorage.com', // R2 staging
+    'dev':
+        'https://dev-account-id.r2.cloudflarestorage.com', // R2 dev (update with your dev R2 account)
+    'staging':
+        'https://staging-account-id.r2.cloudflarestorage.com', // R2 staging
     'prod': 'https://your-account-id.r2.cloudflarestorage.com', // R2 prod
   };
 

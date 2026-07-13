@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { jest } from '@jest/globals';
 
 const mockUserController = {
   register: jest.fn(),
@@ -9,13 +10,13 @@ const mockUserController = {
   changePassword: jest.fn(),
 };
 
-jest.mock('../config/container', () => ({
+jest.unstable_mockModule('../config/container.js', () => ({
   container: {
     resolve: jest.fn(() => mockUserController),
   },
 }));
 
-import userRoutes from '../routes/user.routes';
+const { default: userRoutes } = await import('../routes/user.routes.js');
 
 interface RouterLayer {
   route?: {

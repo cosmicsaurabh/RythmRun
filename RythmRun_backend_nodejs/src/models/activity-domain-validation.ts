@@ -2,7 +2,7 @@ import {
   CreateActivityDto,
   CURRENT_METRICS_VERSION,
   UpdateActivityDto,
-} from './dto/activity.dto';
+} from './dto/activity.dto.js';
 
 export const ACTIVE_DURATION_TRUNCATION_TOLERANCE_SECONDS = 1;
 export const MAX_ACTIVITY_WALL_SECONDS = 7 * 24 * 60 * 60;

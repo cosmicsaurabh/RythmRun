@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -5,7 +6,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { S3Service } from '../services/s3.service';
+import { S3Service } from '../services/s3.service.js';
 
 const AVATAR_KEY =
   'avatars/1/123e4567-e89b-42d3-a456-426614174000.jpg';

@@ -1,46 +1,38 @@
-import "reflect-metadata";
-import { container } from "tsyringe";
-import { PrismaClient } from '../../generated/prisma';
-import { UserService } from '../services/user.service';
-import { ActivityService } from '../services/activity.service';
-import { ActivityImageService } from '../services/activity-image.service';
-import { CommentService } from '../services/comment.service';
-import { LikeService } from '../services/like.service';
-import { FriendService } from '../services/friend.service';
-import { AvatarService } from '../services/avatar.service';
-import s3Service from '../services/s3.service';
+import 'reflect-metadata';
+import { container as rootContainer } from 'tsyringe';
+import { createDatabase } from './database.js';
+import type { DatabaseRuntime } from './database.js';
+import { UserService } from '../services/user.service.js';
+import { ActivityService } from '../services/activity.service.js';
+import { ActivityImageService } from '../services/activity-image.service.js';
+import { CommentService } from '../services/comment.service.js';
+import { LikeService } from '../services/like.service.js';
+import { FriendService } from '../services/friend.service.js';
+import { AvatarService } from '../services/avatar.service.js';
+import s3Service from '../services/s3.service.js';
 
-// Register Prisma as a singleton
-container.registerInstance("PrismaClient", new PrismaClient());
-container.registerInstance("S3Service", s3Service);
+export const container = rootContainer.createChildContainer();
+let configured = false;
 
-// Register all services
-container.register("UserService", {
-    useClass: UserService
-});
+export function configureContainer(databaseUrl: string): DatabaseRuntime {
+  if (configured) {
+    throw new Error('Dependency container is already configured');
+  }
 
-container.register("ActivityService", {
-    useClass: ActivityService
-});
+  const database = createDatabase(databaseUrl);
+  container.registerInstance('PrismaClient', database.client);
+  container.registerInstance('S3Service', s3Service);
 
-container.register("ActivityImageService", {
-    useClass: ActivityImageService
-});
+  container.register('UserService', { useClass: UserService });
+  container.register('ActivityService', { useClass: ActivityService });
+  container.register('ActivityImageService', {
+    useClass: ActivityImageService,
+  });
+  container.register('CommentService', { useClass: CommentService });
+  container.register('LikeService', { useClass: LikeService });
+  container.register('FriendService', { useClass: FriendService });
+  container.register('AvatarService', { useClass: AvatarService });
 
-container.register("CommentService", {
-    useClass: CommentService
-});
-
-container.register("LikeService", {
-    useClass: LikeService
-});
-
-container.register("FriendService", {
-    useClass: FriendService
-});
-
-container.register("AvatarService", {
-    useClass: AvatarService
-});
-
-export { container };
+  configured = true;
+  return database;
+}
