@@ -1,313 +1,505 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../data/models/auth_response_model.dart';
 import '../../domain/entities/user_entity.dart';
+import 'auth_token_store.dart';
 
+/// Narrow preference seam. Authentication credentials must never be written
+/// through this interface; it exists only for non-secret account metadata and
+/// safe migration from the two historical preference keys.
+abstract interface class AuthPreferences {
+  String? getString(String key);
+
+  bool? getBool(String key);
+
+  bool containsKey(String key);
+
+  Future<bool> setString(String key, String value);
+
+  Future<bool> setBool(String key, bool value);
+
+  Future<bool> remove(String key);
+}
+
+final class SharedPreferencesAuthPreferences implements AuthPreferences {
+  SharedPreferencesAuthPreferences(this._preferences);
+
+  final SharedPreferences _preferences;
+
+  @override
+  String? getString(String key) => _preferences.getString(key);
+
+  @override
+  bool? getBool(String key) => _preferences.getBool(key);
+
+  @override
+  bool containsKey(String key) => _preferences.containsKey(key);
+
+  @override
+  Future<bool> setString(String key, String value) {
+    return _preferences.setString(key, value);
+  }
+
+  @override
+  Future<bool> setBool(String key, bool value) {
+    return _preferences.setBool(key, value);
+  }
+
+  @override
+  Future<bool> remove(String key) => _preferences.remove(key);
+}
+
+typedef AuthPreferencesFactory = Future<AuthPreferences> Function();
+
+/// Persists account metadata and delegates credentials to [AuthTokenStore].
+///
+/// The service is injectable so migration and interrupted-write behavior can
+/// be tested without a device keychain. The default constructor is suitable
+/// for application dependency injection.
 class AuthPersistenceService {
-  // Storage keys
-  static const String _accessTokenKey = 'access_token';
-  static const String _refreshTokenKey = 'refresh_token';
-  static const String _userDataKey = 'user_data';
-  static const String _lastBackendSyncKey = 'last_backend_sync';
-  static const String _authCleanupPendingKey = 'auth_cleanup_pending';
+  AuthPersistenceService({
+    AuthTokenStore? tokenStore,
+    AuthPreferencesFactory? preferencesFactory,
+    DateTime Function()? now,
+  }) : _tokenStore = tokenStore ?? SecureAuthTokenStore(),
+       _preferencesFactory =
+           preferencesFactory ??
+           (() async => SharedPreferencesAuthPreferences(
+             await SharedPreferences.getInstance(),
+           )),
+       _now = now ?? DateTime.now;
 
-  /// Write data to SharedPreferences
-  static Future<void> _write(String key, String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    final didWrite = await prefs.setString(key, value);
-    if (!didWrite) {
-      throw StateError('Failed to persist authentication data locally.');
-    }
+  static const String legacyAccessTokenKey = 'access_token';
+  static const String legacyRefreshTokenKey = 'refresh_token';
+  static const String userDataKey = 'user_data';
+  static const String lastBackendSyncKey = 'last_backend_sync';
+  static const String authCleanupPendingKey = 'auth_cleanup_pending';
+
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  );
+
+  final AuthTokenStore _tokenStore;
+  final AuthPreferencesFactory _preferencesFactory;
+  final DateTime Function() _now;
+
+  Future<AuthCredentialSnapshot?>? _migrationInFlight;
+  Future<void> _credentialLifecycleTail = Future<void>.value();
+  bool _migrationSettled = false;
+
+  Future<AuthCredentialSnapshot?> readCredentialSnapshot() async {
+    if (!_migrationSettled) return _ensureLegacyMigration();
+    return _tokenStore.read();
   }
 
-  /// Read data from SharedPreferences
-  static Future<String?> _read(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(key);
+  Future<AuthCredentialSnapshot> replaceCredentials(
+    AuthTokenPair replacement, {
+    bool requiresServerVerification = false,
+  }) async {
+    await _ensureLegacyMigration();
+    return _tokenStore.write(
+      replacement,
+      requiresServerVerification: requiresServerVerification,
+    );
   }
 
-  /// Delete data from SharedPreferences
-  static Future<void> _delete(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    final didRemove = await prefs.remove(key);
-    if (!didRemove) {
-      throw StateError(
-        'Failed to clear locally persisted authentication data.',
+  Future<AuthCredentialSnapshot?> compareAndSetCredentials({
+    required int expectedRevision,
+    required AuthTokenPair replacement,
+    bool requiresServerVerification = false,
+  }) async {
+    await _ensureLegacyMigration();
+    return _tokenStore.compareAndSet(
+      expectedRevision: expectedRevision,
+      replacement: replacement,
+      requiresServerVerification: requiresServerVerification,
+    );
+  }
+
+  Future<AuthCredentialSnapshot?> markCredentialsServerVerified({
+    required int expectedRevision,
+  }) async {
+    await _ensureLegacyMigration();
+    return _tokenStore.markServerVerified(expectedRevision: expectedRevision);
+  }
+
+  Future<void> saveAuthData(AuthResponseModel authResponse) async {
+    await replaceCredentials(
+      AuthTokenPair(
+        accessToken: authResponse.accessToken,
+        refreshToken: authResponse.refreshToken,
+      ),
+    );
+
+    final preferences = await _preferencesFactory();
+    await _writeString(
+      preferences,
+      userDataKey,
+      jsonEncode(authResponse.user.toJson()),
+    );
+    await _writeString(
+      preferences,
+      lastBackendSyncKey,
+      _now().toIso8601String(),
+    );
+  }
+
+  Future<UserEntity?> getUserData() async {
+    final preferences = await _preferencesFactory();
+    final encoded = preferences.getString(userDataKey);
+    if (encoded == null) return null;
+
+    try {
+      final decoded = jsonDecode(encoded);
+      if (decoded is! Map<String, dynamic>) throw const FormatException();
+      return UserEntity(
+        id: decoded['id'] as String,
+        firstName: decoded['firstName'] as String,
+        lastName: decoded['lastName'] as String,
+        email: decoded['email'] as String,
+        profilePicturePath: decoded['profilePicturePath'] as String?,
+        profilePictureType: decoded['profilePictureType'] as String?,
+        createdAt:
+            decoded['createdAt'] is String
+                ? DateTime.parse(decoded['createdAt'] as String)
+                : null,
       );
+    } catch (_) {
+      await _removePreference(preferences, userDataKey);
+      return null;
     }
   }
 
-  /// Marks an account exit as incomplete before credentials are removed.
-  static Future<void> markAuthCleanupPending() async {
-    final prefs = await SharedPreferences.getInstance();
-    final didWrite = await prefs.setBool(_authCleanupPendingKey, true);
-    if (!didWrite) {
+  Future<bool> hasValidSession() async {
+    final snapshot = await readCredentialSnapshot();
+    if (snapshot == null) return false;
+    try {
+      return !JwtDecoder.isExpired(snapshot.pair.accessToken);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> needsTokenRefresh() async {
+    final snapshot = await readCredentialSnapshot();
+    if (snapshot == null) return false;
+    try {
+      return JwtDecoder.isExpired(snapshot.pair.accessToken) &&
+          !JwtDecoder.isExpired(snapshot.pair.refreshToken);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> markAuthCleanupPending() async {
+    final preferences = await _preferencesFactory();
+    final didWrite = await preferences.setBool(authCleanupPendingKey, true);
+    if (!didWrite || preferences.getBool(authCleanupPendingKey) != true) {
       throw StateError('Failed to persist pending authentication cleanup.');
     }
   }
 
-  static Future<bool> hasPendingAuthCleanup() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_authCleanupPendingKey) ?? false;
+  Future<bool> hasPendingAuthCleanup() async {
+    final preferences = await _preferencesFactory();
+    return preferences.getBool(authCleanupPendingKey) ?? false;
   }
 
-  /// Save authentication data after successful login
-  static Future<void> saveAuthData(AuthResponseModel authResponse) async {
-    final now = DateTime.now().toIso8601String();
+  Future<void> clearCredentials() async {
+    // Prevent a new legacy migration from starting. The shared FIFO guarantees
+    // that an already-started migration finishes before this final delete, or
+    // that a clear which started first removes legacy values before any later
+    // read can consider migrating them.
+    _migrationSettled = true;
+    await _serializeCredentialLifecycle(_clearCredentialsUnsafe);
+  }
 
-    if (kDebugMode) {
-      print(
-        '🔐 AuthPersistenceService: Saving auth data for user: ${authResponse.user.email}',
-      );
-    }
-
-    await Future.wait([
-      _write(_accessTokenKey, authResponse.accessToken),
-      _write(_refreshTokenKey, authResponse.refreshToken),
-      _write(_userDataKey, json.encode(authResponse.user.toJson())),
-      _write(_lastBackendSyncKey, now),
-    ]);
-
-    if (kDebugMode) {
-      print('✅ AuthPersistenceService: Auth data saved successfully');
+  Future<void> _clearCredentialsUnsafe() async {
+    await _tokenStore.delete();
+    final preferences = await _preferencesFactory();
+    await _removeLegacyCredentials(preferences);
+    if (await _tokenStore.read() != null) {
+      throw StateError('Secure authentication credentials remain.');
     }
   }
 
-  /// Get stored access token
-  static Future<String?> getAccessToken() async {
-    return await _read(_accessTokenKey);
+  Future<bool> clearCredentialsIfRevision(int expectedRevision) async {
+    await _ensureLegacyMigration();
+    final deleted = await _tokenStore.deleteIfRevision(expectedRevision);
+    if (!deleted) return false;
+
+    final preferences = await _preferencesFactory();
+    await _removeLegacyCredentials(preferences);
+    _migrationSettled = true;
+    return true;
   }
 
-  /// Get stored refresh token
-  static Future<String?> getRefreshToken() async {
-    return await _read(_refreshTokenKey);
-  }
+  Future<void> clearAuthData() async {
+    // The caller sets the cleanup marker before entering this operation. It is
+    // intentionally removed only after every account value is confirmed gone.
+    await clearCredentials();
+    final preferences = await _preferencesFactory();
+    await _removePreference(preferences, userDataKey);
+    await _removePreference(preferences, lastBackendSyncKey);
 
-  /// Get stored user data
-  static Future<UserEntity?> getUserData() async {
-    final userDataJson = await _read(_userDataKey);
-    if (userDataJson == null) return null;
+    if (preferences.containsKey(userDataKey) ||
+        preferences.containsKey(lastBackendSyncKey) ||
+        preferences.containsKey(legacyAccessTokenKey) ||
+        preferences.containsKey(legacyRefreshTokenKey) ||
+        await _tokenStore.read() != null) {
+      throw StateError('Locally persisted authentication data remains.');
+    }
 
-    try {
-      final userData = json.decode(userDataJson) as Map<String, dynamic>;
-      return UserEntity(
-        id: userData['id'] as String,
-        firstName: userData['firstName'] as String,
-        lastName: userData['lastName'] as String,
-        email: userData['email'] as String,
-        profilePicturePath: userData['profilePicturePath'] as String?,
-        profilePictureType: userData['profilePictureType'] as String?,
-        createdAt:
-            userData['createdAt'] != null
-                ? DateTime.parse(userData['createdAt'] as String)
-                : null,
-      );
-    } catch (e) {
-      // If user data is corrupted, clear it
-      await clearUserData();
-      return null;
+    if (preferences.getBool(authCleanupPendingKey) == true) {
+      await _removePreference(preferences, authCleanupPendingKey);
     }
   }
 
-  /// Check if user has a valid session
-  static Future<bool> hasValidSession() async {
-    final accessToken = await getAccessToken();
-
-    if (kDebugMode) {
-      print('🔍 AuthPersistenceService: Checking valid session');
-      print(
-        '   Access token exists: ${accessToken != null && accessToken.isNotEmpty}',
-      );
-    }
-
-    if (accessToken == null || accessToken.isEmpty) {
-      if (kDebugMode) {
-        print('❌ AuthPersistenceService: No access token found');
-      }
-      return false;
-    }
-
-    try {
-      // Check if token is not expired
-      final isValid = !JwtDecoder.isExpired(accessToken);
-      if (kDebugMode) {
-        print('🔍 AuthPersistenceService: Token valid: $isValid');
-      }
-      return isValid;
-    } catch (e) {
-      // If token is malformed, consider session invalid
-      if (kDebugMode) {
-        print('❌ AuthPersistenceService: Token malformed: $e');
-      }
-      return false;
-    }
+  Future<void> updateUserData(UserEntity user) async {
+    final preferences = await _preferencesFactory();
+    await _writeString(
+      preferences,
+      userDataKey,
+      jsonEncode(<String, Object?>{
+        'id': user.id,
+        'firstName': user.firstName,
+        'lastName': user.lastName,
+        'email': user.email,
+        'profilePicturePath': user.profilePicturePath,
+        'profilePictureType': user.profilePictureType,
+        'createdAt': user.createdAt?.toIso8601String(),
+      }),
+    );
   }
 
-  /// Check if access token is expired but refresh token might be valid
-  static Future<bool> needsTokenRefresh() async {
-    final accessToken = await getAccessToken();
-    final refreshToken = await getRefreshToken();
-
-    if (accessToken == null || refreshToken == null) {
-      return false;
-    }
-
-    try {
-      // Access token expired but refresh token still valid
-      return JwtDecoder.isExpired(accessToken) &&
-          !JwtDecoder.isExpired(refreshToken);
-    } catch (e) {
-      return false;
-    }
+  Future<void> clearUserData() async {
+    final preferences = await _preferencesFactory();
+    await _removePreference(preferences, userDataKey);
   }
 
-  /// Update tokens after refresh
-  static Future<void> updateTokens(
-    String newAccessToken,
-    String newRefreshToken,
-  ) async {
-    await Future.wait([
-      _write(_accessTokenKey, newAccessToken),
-      _write(_refreshTokenKey, newRefreshToken),
-      _write(_lastBackendSyncKey, DateTime.now().toIso8601String()),
-    ]);
+  Future<DateTime?> getLastBackendSync() async {
+    final preferences = await _preferencesFactory();
+    final encoded = preferences.getString(lastBackendSyncKey);
+    if (encoded == null) return null;
+    return DateTime.tryParse(encoded);
   }
 
-  /// Get the last backend sync timestamp
-  static Future<DateTime?> getLastBackendSync() async {
-    final timestampStr = await _read(_lastBackendSyncKey);
-    if (timestampStr == null) return null;
-
-    try {
-      return DateTime.parse(timestampStr);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /// Check if backend sync is required (7 days since last sync)
-  static Future<bool> needsBackendSync({
+  Future<bool> needsBackendSync({
     Duration syncInterval = const Duration(days: 7),
   }) async {
     final lastSync = await getLastBackendSync();
     if (lastSync == null) return true;
-
-    final timeSinceLastSync = DateTime.now().difference(lastSync);
-    return timeSinceLastSync > syncInterval;
+    return _now().difference(lastSync) > syncInterval;
   }
 
-  /// Update the last backend sync timestamp
-  static Future<void> updateLastBackendSync() async {
-    await _write(_lastBackendSyncKey, DateTime.now().toIso8601String());
+  Future<void> updateLastBackendSync() async {
+    final preferences = await _preferencesFactory();
+    await _writeString(
+      preferences,
+      lastBackendSyncKey,
+      _now().toIso8601String(),
+    );
   }
 
-  /// Check if user can stay logged in offline (has valid session and within sync window)
-  static Future<bool> canStayLoggedInOffline() async {
-    // Check if we have valid tokens
-    if (!await hasValidSession()) {
+  Future<bool> canStayLoggedInOffline() async {
+    final snapshot = await readCredentialSnapshot();
+    if (snapshot == null || snapshot.requiresServerVerification) return false;
+    if (await getUserData() == null) return false;
+    try {
+      if (JwtDecoder.isExpired(snapshot.pair.refreshToken)) return false;
+    } catch (_) {
       return false;
     }
+    return !await needsBackendSync();
+  }
 
-    // Check if we're within the sync window (7 days)
-    if (await needsBackendSync()) {
-      return false;
+  Future<AuthCredentialSnapshot?> _ensureLegacyMigration() {
+    final existing = _migrationInFlight;
+    if (existing != null) return existing;
+    if (_migrationSettled) return _tokenStore.read();
+
+    late final Future<AuthCredentialSnapshot?> operation;
+    operation = _serializeCredentialLifecycle(
+      _migrateLegacyCredentials,
+    ).whenComplete(() {
+      if (identical(_migrationInFlight, operation)) {
+        _migrationInFlight = null;
+      }
+    });
+    _migrationInFlight = operation;
+    return operation;
+  }
+
+  Future<T> _serializeCredentialLifecycle<T>(Future<T> Function() operation) {
+    final completer = Completer<T>();
+    _credentialLifecycleTail = _credentialLifecycleTail.then((_) async {
+      try {
+        completer.complete(await operation());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    });
+    return completer.future;
+  }
+
+  Future<AuthCredentialSnapshot?> _migrateLegacyCredentials() async {
+    final preferences = await _preferencesFactory();
+    final secureSnapshot = await _tokenStore.read();
+
+    if (secureSnapshot != null) {
+      // A verified secure write always wins. This is also the retry path for a
+      // process interrupted after secure write but before preference cleanup.
+      await _removeLegacyCredentials(preferences);
+      _migrationSettled = true;
+      return secureSnapshot;
     }
 
+    final accessToken = preferences.getString(legacyAccessTokenKey);
+    final refreshToken = preferences.getString(legacyRefreshTokenKey);
+    if (accessToken == null && refreshToken == null) {
+      _migrationSettled = true;
+      return null;
+    }
+
+    final userId = _storedUserId(preferences.getString(userDataKey));
+    if (accessToken == null ||
+        refreshToken == null ||
+        !_isCoherentIp21Pair(accessToken, refreshToken, userId: userId)) {
+      // An incomplete, malformed, expired, or pre-IP-2.1 pair cannot be used.
+      // Remove it from plaintext preferences and fail closed.
+      await _removeLegacyCredentials(preferences);
+      _migrationSettled = true;
+      return null;
+    }
+
+    final migrated = await _tokenStore.write(
+      AuthTokenPair(accessToken: accessToken, refreshToken: refreshToken),
+      requiresServerVerification: true,
+    );
+    final readBack = await _tokenStore.read();
+    if (readBack == null ||
+        readBack.revision != migrated.revision ||
+        readBack.pair != migrated.pair ||
+        !readBack.requiresServerVerification) {
+      throw StateError('Secure credential migration could not be verified.');
+    }
+
+    // Plaintext is removed only after the complete secure envelope is read
+    // back. Any failure here leaves the remaining key for a safe retry.
+    await _removeLegacyCredentials(preferences);
+    _migrationSettled = true;
+    return readBack;
+  }
+
+  String? _storedUserId(String? encodedUser) {
+    if (encodedUser == null) return null;
+    try {
+      final decoded = jsonDecode(encodedUser);
+      if (decoded is! Map<String, dynamic>) return null;
+      final id = decoded['id'];
+      return id is String ? id : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isCoherentIp21Pair(
+    String accessToken,
+    String refreshToken, {
+    String? userId,
+  }) {
+    final access = _decodeJwt(accessToken);
+    final refresh = _decodeJwt(refreshToken);
+    if (access == null || refresh == null) return false;
+
+    final accessSubject = access['sub'];
+    final refreshSubject = refresh['sub'];
+    final accessSession = access['sid'];
+    final refreshSession = refresh['sid'];
+    final accessJti = access['jti'];
+    final refreshJti = refresh['jti'];
+    final accessIssuedAt = access['iat'];
+    final refreshIssuedAt = refresh['iat'];
+    final accessExpiresAt = access['exp'];
+    final refreshExpiresAt = refresh['exp'];
+
+    if (accessSubject is! String ||
+        int.tryParse(accessSubject)?.toString() != accessSubject ||
+        int.parse(accessSubject) <= 0 ||
+        refreshSubject != accessSubject ||
+        (userId != null && userId != accessSubject) ||
+        access['typ'] != 'access' ||
+        refresh['typ'] != 'refresh' ||
+        accessSession is! String ||
+        !_uuidPattern.hasMatch(accessSession) ||
+        refreshSession != accessSession ||
+        accessJti is! String ||
+        !_uuidPattern.hasMatch(accessJti) ||
+        refreshJti is! String ||
+        !_uuidPattern.hasMatch(refreshJti) ||
+        refreshJti == accessJti ||
+        accessIssuedAt is! int ||
+        refreshIssuedAt != accessIssuedAt ||
+        accessExpiresAt is! int ||
+        refreshExpiresAt is! int ||
+        accessExpiresAt <= accessIssuedAt ||
+        refreshExpiresAt <= refreshIssuedAt ||
+        accessExpiresAt > refreshExpiresAt ||
+        refreshExpiresAt <= _now().millisecondsSinceEpoch ~/ 1000) {
+      return false;
+    }
     return true;
   }
 
-  /// Clear all stored authentication data
-  static Future<void> clearAuthData() async {
-    await Future.wait([
-      _delete(_accessTokenKey),
-      _delete(_refreshTokenKey),
-      _delete(_userDataKey),
-      _delete(_lastBackendSyncKey),
-    ]);
-
-    final remaining = await getAllStoredData();
-    if (remaining.values.any((value) => value != null)) {
-      throw StateError('Locally persisted authentication data remains.');
-    }
-
-    if (await hasPendingAuthCleanup()) {
-      // Remove the recovery marker only after every credential/user value is
-      // confirmed absent. A failed delete therefore stays fail-closed across
-      // process restart.
-      await _delete(_authCleanupPendingKey);
-    }
-  }
-
-  /// Update user data in local storage
-  static Future<void> updateUserData(UserEntity user) async {
-    final userJson = {
-      'id': user.id,
-      'firstName': user.firstName,
-      'lastName': user.lastName,
-      'email': user.email,
-      'profilePicturePath': user.profilePicturePath,
-      'profilePictureType': user.profilePictureType,
-    };
-
-    await _write(_userDataKey, json.encode(userJson));
-
-    if (kDebugMode) {
-      print('✅ AuthPersistenceService: User data updated in local storage');
-      print('   Avatar configured: ${user.profilePicturePath != null}');
-    }
-  }
-
-  /// Clear only user data (keep tokens for logout API call)
-  static Future<void> clearUserData() async {
-    await _delete(_userDataKey);
-  }
-
-  /// Get authorization header for API calls
-  static Future<Map<String, String>?> getAuthHeaders() async {
-    final token = await getAccessToken();
-    if (token == null) return null;
-
-    return {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
-  }
-
-  /// Debug method to check what's stored (only for development)
-  static Future<Map<String, String?>> getAllStoredData() async {
-    return {
-      'accessToken': await _read(_accessTokenKey),
-      'refreshToken': await _read(_refreshTokenKey),
-      'userData': await _read(_userDataKey),
-      'lastBackendSync': await _read(_lastBackendSyncKey),
-    };
-  }
-
-  /// Debug method to print all stored data (only for development)
-  static Future<void> printStoredData() async {
-    if (!kDebugMode) return;
-
-    print('🔍 AuthPersistenceService: Checking stored data...');
-    final data = await getAllStoredData();
-
-    print(
-      '   Access Token: ${data['accessToken'] != null ? 'EXISTS' : 'NULL'}',
-    );
-    print(
-      '   Refresh Token: ${data['refreshToken'] != null ? 'EXISTS' : 'NULL'}',
-    );
-    print('   User Data: ${data['userData'] != null ? 'EXISTS' : 'NULL'}');
-    print('   Last Backend Sync: ${data['lastBackendSync'] ?? 'NULL'}');
-
-    if (data['accessToken'] != null) {
-      try {
-        final isExpired = JwtDecoder.isExpired(data['accessToken']!);
-        print('   Access Token Expired: $isExpired');
-      } catch (e) {
-        print('   Access Token Error: $e');
+  Map<String, dynamic>? _decodeJwt(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3 || parts.any((part) => part.isEmpty)) return null;
+      final header = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[0]))),
+      );
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      if (header is! Map<String, dynamic> ||
+          header['alg'] != 'HS256' ||
+          payload is! Map<String, dynamic>) {
+        return null;
       }
+      return payload;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _removeLegacyCredentials(AuthPreferences preferences) async {
+    await _removePreference(preferences, legacyAccessTokenKey);
+    await _removePreference(preferences, legacyRefreshTokenKey);
+  }
+
+  Future<void> _writeString(
+    AuthPreferences preferences,
+    String key,
+    String value,
+  ) async {
+    final didWrite = await preferences.setString(key, value);
+    if (!didWrite || preferences.getString(key) != value) {
+      throw StateError('Failed to persist local authentication metadata.');
+    }
+  }
+
+  Future<void> _removePreference(
+    AuthPreferences preferences,
+    String key,
+  ) async {
+    if (!preferences.containsKey(key)) return;
+    final didRemove = await preferences.remove(key);
+    if (!didRemove || preferences.containsKey(key)) {
+      throw StateError('Failed to clear local authentication metadata.');
     }
   }
 }

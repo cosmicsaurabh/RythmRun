@@ -20,14 +20,6 @@ class AuthResponseModel {
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      ...user.toJson(),
-      'accessToken': accessToken,
-      'refreshToken': refreshToken,
-    };
-  }
-
   UserEntity toUserEntity() {
     return user.toEntity();
   }

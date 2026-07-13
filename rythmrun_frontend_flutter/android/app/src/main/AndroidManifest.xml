@@ -20,6 +20,8 @@
         tools:node="remove" />
     
     <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:label="RythmRun"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

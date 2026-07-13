@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
+import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/user_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/auth_repository.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
@@ -112,7 +114,10 @@ void main() {
       'a teardown preflight failure becomes a recoverable account action',
       () async {
         final events = <String>[];
-        final repository = _FakeAuthRepository(events: events);
+        final repository = _FakeAuthRepository(
+          events: events,
+          currentUser: userA,
+        );
         final teardown = _FakeUserScopeTeardown(
           events: events,
           throwRequirement: true,
@@ -175,7 +180,54 @@ void main() {
           UserScopeExitRequirement.unsavedWorkout,
         );
         expect(repository.clearCalls, 0);
-        expect(events, <String>['activate:7', 'teardown', 'activate:7']);
+        expect(repository.authCleanupPending, isTrue);
+        expect(events, <String>[
+          'activate:7',
+          'mark-cleanup',
+          'teardown',
+          'activate:7',
+        ]);
+      },
+    );
+
+    test(
+      'blocked forced loss cannot regain offline admission after restart',
+      () async {
+        final events = <String>[];
+        final repository = _FakeAuthRepository(
+          events: events,
+          currentUser: userA,
+          validationStatus: SessionValidationStatus.unavailable,
+        );
+        final firstNotifier = SessionNotifier(
+          repository,
+          _FakeUserScopeTeardown(
+            events: events,
+            teardownResult: const UserScopeTeardownResult.blocked(
+              requirement: UserScopeExitRequirement.unsavedWorkout,
+              message: 'save failed',
+            ),
+          ),
+          autoInitialize: false,
+        );
+        firstNotifier.onLoginSuccess(userA);
+
+        final blocked = await firstNotifier.handleForcedAuthenticationLoss();
+        expect(blocked.status, UserScopeTeardownStatus.blocked);
+        expect(repository.authCleanupPending, isTrue);
+        firstNotifier.dispose();
+
+        final restartedNotifier = SessionNotifier(
+          repository,
+          _FakeUserScopeTeardown(events: events),
+        );
+        addTearDown(restartedNotifier.dispose);
+        await _flushAsyncWork();
+
+        expect(restartedNotifier.state.state, SessionState.unauthenticated);
+        expect(restartedNotifier.state.user, isNull);
+        expect(repository.authCleanupPending, isFalse);
+        expect(repository.clearCalls, 1);
       },
     );
 
@@ -226,12 +278,37 @@ void main() {
 
         expect(events, <String>[
           'activate:7',
-          'teardown',
           'mark-cleanup',
+          'teardown',
           'clear',
         ]);
         expect(notifier.state.state, SessionState.unauthenticated);
         expect(notifier.state.user, isNull);
+      },
+    );
+
+    test(
+      'unverified credentials and network failure remain fail-closed',
+      () async {
+        final events = <String>[];
+        final repository = _FakeAuthRepository(
+          events: events,
+          currentUser: userA,
+          canStayOffline: false,
+          validationStatus: SessionValidationStatus.unavailable,
+        );
+        final notifier = SessionNotifier(
+          repository,
+          _FakeUserScopeTeardown(events: events),
+        );
+        addTearDown(notifier.dispose);
+
+        await _flushAsyncWork();
+
+        expect(notifier.state.state, SessionState.checking);
+        expect(notifier.state.user, isNull);
+        expect(notifier.isAuthenticated, isFalse);
+        expect(repository.clearCalls, 0);
       },
     );
 
@@ -458,6 +535,119 @@ void main() {
         ]);
       },
     );
+
+    test(
+      'refresh network failure preserves an eligible verified user offline',
+      () async {
+        final events = <String>[];
+        final repository = _FakeAuthRepository(
+          events: events,
+          currentUser: userA,
+          shouldRefresh: true,
+          refreshError: const AuthSessionUnavailable(
+            AuthSessionUnavailableReason.network,
+          ),
+        );
+        final notifier = SessionNotifier(
+          repository,
+          _FakeUserScopeTeardown(events: events),
+        );
+        addTearDown(notifier.dispose);
+
+        await _flushAsyncWork();
+
+        expect(notifier.state.state, SessionState.authenticatedOffline);
+        expect(notifier.state.user, userA);
+        expect(repository.clearCalls, 0);
+        expect(events, <String>['activate:7']);
+      },
+    );
+
+    test('rejected refresh performs forced teardown and clears auth', () async {
+      final events = <String>[];
+      final repository = _FakeAuthRepository(
+        events: events,
+        currentUser: userA,
+        shouldRefresh: true,
+        refreshError: const AuthSessionInvalid(
+          AuthSessionInvalidReason.refreshRejected,
+        ),
+      );
+      final notifier = SessionNotifier(
+        repository,
+        _FakeUserScopeTeardown(events: events),
+      );
+      addTearDown(notifier.dispose);
+
+      await _flushAsyncWork();
+
+      expect(notifier.state.state, SessionState.unauthenticated);
+      expect(notifier.state.user, isNull);
+      expect(events, <String>['mark-cleanup', 'teardown', 'clear']);
+    });
+
+    test(
+      'background invalidation signal enters the same forced teardown',
+      () async {
+        final events = <String>[];
+        final signal = SessionInvalidationSignal();
+        addTearDown(signal.dispose);
+        final repository = _FakeAuthRepository(
+          events: events,
+          currentUser: userA,
+        );
+        final notifier = SessionNotifier(
+          repository,
+          _FakeUserScopeTeardown(events: events),
+          sessionInvalidationSignal: signal,
+          autoInitialize: false,
+        );
+        addTearDown(notifier.dispose);
+        notifier.onLoginSuccess(userA);
+
+        signal.emitRefreshRejected(credentialRevision: 7);
+        await _flushAsyncWork();
+
+        expect(notifier.state.state, SessionState.unauthenticated);
+        expect(notifier.state.user, isNull);
+        expect(events, <String>[
+          'activate:7',
+          'mark-cleanup',
+          'teardown',
+          'clear',
+        ]);
+      },
+    );
+
+    test('password-change invalidation enters forced teardown', () async {
+      final events = <String>[];
+      final signal = SessionInvalidationSignal();
+      addTearDown(signal.dispose);
+      final repository = _FakeAuthRepository(
+        events: events,
+        currentUser: userA,
+      );
+      final notifier = SessionNotifier(
+        repository,
+        _FakeUserScopeTeardown(events: events),
+        sessionInvalidationSignal: signal,
+        autoInitialize: false,
+      );
+      addTearDown(notifier.dispose);
+      notifier.onLoginSuccess(userA);
+
+      signal.emitPasswordChanged(credentialRevision: 9);
+      await _flushAsyncWork();
+
+      expect(notifier.state.state, SessionState.unauthenticated);
+      expect(notifier.state.user, isNull);
+      expect(events, <String>[
+        'activate:7',
+        'mark-cleanup',
+        'teardown',
+        'clear',
+      ]);
+    });
   });
 }
 
@@ -473,9 +663,11 @@ class _FakeAuthRepository implements AuthRepository {
   bool failLocalClear;
   final Completer<SessionValidationStatus>? validationCompleter;
   final Completer<UserEntity>? refreshCompleter;
+  final Object? refreshError;
   final AuthenticationAttemptGate? mutationGate;
   UserEntity? currentUser;
   bool shouldRefresh;
+  final bool canStayOffline;
   bool authCleanupPending;
   SessionValidationStatus validationStatus;
   int clearCalls = 0;
@@ -486,9 +678,11 @@ class _FakeAuthRepository implements AuthRepository {
     this.failLocalClear = false,
     this.validationCompleter,
     this.refreshCompleter,
+    this.refreshError,
     this.mutationGate,
     this.currentUser,
     this.shouldRefresh = false,
+    this.canStayOffline = true,
     this.authCleanupPending = false,
     this.validationStatus = SessionValidationStatus.valid,
   });
@@ -524,10 +718,12 @@ class _FakeAuthRepository implements AuthRepository {
   Future<bool> needsTokenRefresh() async => shouldRefresh;
 
   @override
-  Future<bool> canStayLoggedInOffline() async => true;
+  Future<bool> canStayLoggedInOffline() async => canStayOffline;
 
   @override
-  Future<void> printStoredData() async {}
+  Future<void> updateCurrentUser(UserEntity user) async {
+    currentUser = user;
+  }
 
   @override
   Future<UserEntity> refreshToken() async {
@@ -536,7 +732,12 @@ class _FakeAuthRepository implements AuthRepository {
       throw StateError('authentication mutation unavailable');
     }
     try {
-      final user = await refreshCompleter!.future;
+      final error = refreshError;
+      if (error != null) throw error;
+      final user =
+          refreshCompleter == null
+              ? currentUser!
+              : await refreshCompleter!.future;
       currentUser = user;
       events.add('refresh-save:${user.id}');
       return user;

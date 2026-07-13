@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_remote_datasource.dart';
-import 'package:rythmrun_frontend_flutter/data/datasources/auth_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/workout_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/models/change_password_response_model.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/workout_repository_impl.dart';
@@ -41,7 +40,6 @@ void main() {
         localDataSource,
         _FakeAuthRepository(userId),
         remoteDataSource,
-        _FakeAuthLocalDataSource(),
         operationGate: gate,
       );
       await service.saveWorkoutInLocalDatabase(
@@ -108,7 +106,6 @@ void main() {
         localDataSource,
         authRepository,
         remoteDataSource,
-        _FakeAuthLocalDataSource(),
       );
       final localWorkoutId = await service.saveWorkoutInLocalDatabase(
         _completedWorkout(clientSyncId: 'owner-race', userId: userA),
@@ -165,7 +162,6 @@ void main() {
         localDataSource,
         _FakeAuthRepository(userId),
         remoteDataSource,
-        _FakeAuthLocalDataSource(),
       );
       final blockedId = await service.saveWorkoutInLocalDatabase(
         _completedWorkout(clientSyncId: 'permanent-invalid', userId: userId),
@@ -226,7 +222,6 @@ void main() {
       WorkoutLocalDataSource(service),
       _FakeAuthRepository(userId),
       remoteDataSource,
-      _FakeAuthLocalDataSource(),
     );
     final localWorkoutId = await service.saveWorkoutInLocalDatabase(
       _completedWorkout(clientSyncId: clientSyncId, userId: userId),
@@ -280,7 +275,6 @@ void main() {
         WorkoutLocalDataSource(service),
         authRepository,
         remoteDataSource,
-        _FakeAuthLocalDataSource(),
       );
       final localWorkoutId = await service.saveWorkoutInLocalDatabase(
         _completedWorkout(clientSyncId: clientSyncId, userId: userA),
@@ -345,7 +339,6 @@ void main() {
         WorkoutLocalDataSource(service),
         _FakeAuthRepository(userId),
         remoteDataSource,
-        _FakeAuthLocalDataSource(),
       );
 
       await repository.syncWorkouts();
@@ -405,7 +398,6 @@ void main() {
         WorkoutLocalDataSource(service),
         _FakeAuthRepository(userId),
         remoteDataSource,
-        _FakeAuthLocalDataSource(),
       );
       final localWorkoutId = await service.saveWorkoutInLocalDatabase(
         _completedWorkout(clientSyncId: clientSyncId, userId: userId),
@@ -455,7 +447,6 @@ void main() {
         WorkoutLocalDataSource(service),
         _FakeAuthRepository(userId),
         remoteDataSource,
-        _FakeAuthLocalDataSource(),
       );
       final localWorkoutId = await service.saveWorkoutInLocalDatabase(
         _completedWorkout(clientSyncId: clientSyncId, userId: userId),
@@ -480,7 +471,7 @@ void main() {
   }
 
   test(
-    'claimed remote delete retries once after authentication refresh',
+    'unhandled remote auth failure leaves a claimed delete retryable',
     () async {
       const userId = 7;
       final service = await harness.openService();
@@ -490,7 +481,6 @@ void main() {
         WorkoutLocalDataSource(service),
         _FakeAuthRepository(userId),
         remoteDataSource,
-        _FakeAuthLocalDataSource(),
       );
       final localWorkoutId = await service.saveWorkoutInLocalDatabase(
         _completedWorkout(
@@ -507,7 +497,7 @@ void main() {
 
       await repository.syncWorkouts();
 
-      expect(remoteDataSource.deleteCalls, 2);
+      expect(remoteDataSource.deleteCalls, 1);
       final database = await service.database;
       expect(
         await database.query(
@@ -515,9 +505,12 @@ void main() {
           where: 'id = ?',
           whereArgs: <Object?>[localWorkoutId],
         ),
-        isEmpty,
+        hasLength(1),
       );
-      expect(await database.query('workout_delete_queue'), isEmpty);
+      final queue = await database.query('workout_delete_queue');
+      expect(queue, hasLength(1));
+      expect(queue.single['status'], 'retrying');
+      expect(queue.single['retry_count'], 1);
     },
   );
 }
@@ -580,10 +573,7 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
   final Map<String, Object> createErrorsByClientSyncId = <String, Object>{};
 
   @override
-  Future<int> createActivity(
-    Map<String, dynamic> activityJson,
-    Map<String, String> authHeaders,
-  ) async {
+  Future<int> createActivity(Map<String, dynamic> activityJson) async {
     final clientSyncId = activityJson['clientSyncId']! as String;
     attemptedClientSyncIds.add(clientSyncId);
     createCalls += 1;
@@ -603,21 +593,11 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
   }
 
   @override
-  Future<void> deleteActivity(
-    int activityId,
-    Map<String, String> authHeaders,
-  ) async {
+  Future<void> deleteActivity(int activityId) async {
     deleteCalls += 1;
     if (unauthorizedFirstDelete && deleteCalls == 1) {
       throw UnauthorizedException('expired');
     }
-  }
-}
-
-class _FakeAuthLocalDataSource extends AuthLocalDataSource {
-  @override
-  Future<Map<String, String>?> getAuthHeaders() async {
-    return const <String, String>{'Authorization': 'Bearer test'};
   }
 }
 
@@ -640,6 +620,11 @@ class _FakeAuthRepository implements AuthRepository {
 
   @override
   Future<UserEntity?> getCurrentUser() async => _user;
+
+  @override
+  Future<void> updateCurrentUser(UserEntity user) async {
+    currentUserId = int.parse(user.id);
+  }
 
   @override
   Future<UserEntity> refreshToken() async => _user!;
@@ -709,11 +694,6 @@ class _FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> updateLastBackendSync() {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<void> printStoredData() {
     throw UnimplementedError();
   }
 }

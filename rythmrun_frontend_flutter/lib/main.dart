@@ -128,7 +128,9 @@ class _RythmRunAppState extends ConsumerState<RythmRunApp>
         sessionState,
       );
       if (!hasSyncAccess) {
-        if (sessionState == SessionState.authenticatedOffline) {
+        if (sessionState == SessionState.authenticatedOffline ||
+            (sessionState == SessionState.checking &&
+                session.errorMessage != null)) {
           ref.read(sessionProvider.notifier).refreshSession();
         }
         return;
@@ -140,20 +142,18 @@ class _RythmRunAppState extends ConsumerState<RythmRunApp>
     final settings = ref.watch(settingsProvider);
     ref.watch(connectivityStatusProvider);
 
-    return MaterialApp(
+    return SessionStackNormalizer(
       navigatorKey: _navigatorKey,
-      title: 'RythmRun',
-      debugShowCheckedModeBanner: false,
-      theme: lightTheme,
-      darkTheme: darkTheme,
-      themeMode: settings.flutterThemeMode,
-      home: const AuthWrapper(),
-      routes: {
-        '/registration': (context) => const RegistrationScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/landing': (context) => const LandingScreen(),
-      },
+      child: MaterialApp(
+        navigatorKey: _navigatorKey,
+        title: 'RythmRun',
+        debugShowCheckedModeBanner: false,
+        theme: lightTheme,
+        darkTheme: darkTheme,
+        themeMode: settings.flutterThemeMode,
+        home: const AuthWrapper(),
+        routes: buildAppRoutes(),
+      ),
     );
   }
 
@@ -281,27 +281,186 @@ class _RythmRunAppState extends ConsumerState<RythmRunApp>
   }
 }
 
-/// Wrapper widget that handles authentication state
-class AuthWrapper extends ConsumerWidget {
-  const AuthWrapper({super.key});
+Widget _buildHomeScreen(BuildContext context) => const HomeScreen();
+
+Widget _buildLandingScreen(BuildContext context) => const LandingScreen();
+
+Widget _buildLoginScreen(BuildContext context) => const LoginScreen();
+
+Widget _buildRegistrationScreen(BuildContext context) =>
+    const RegistrationScreen();
+
+Widget _buildSplashScreen(BuildContext context) => const SplashScreen();
+
+/// The production named-route table. Exposing the table as a pure builder keeps
+/// the direct-navigation authentication boundary covered by widget tests.
+Map<String, WidgetBuilder> buildAppRoutes() {
+  return <String, WidgetBuilder>{
+    '/registration':
+        (context) => SessionRouteGate(
+          authenticatedBuilder: _buildHomeScreen,
+          unauthenticatedBuilder: _buildRegistrationScreen,
+          loadingBuilder: _buildSplashScreen,
+        ),
+    '/login':
+        (context) => SessionRouteGate(
+          authenticatedBuilder: _buildHomeScreen,
+          unauthenticatedBuilder: _buildLoginScreen,
+          loadingBuilder: _buildSplashScreen,
+        ),
+    '/home':
+        (context) => SessionRouteGate(
+          authenticatedBuilder: _buildHomeScreen,
+          unauthenticatedBuilder: _buildLandingScreen,
+          loadingBuilder: _buildSplashScreen,
+        ),
+    '/landing':
+        (context) => SessionRouteGate(
+          authenticatedBuilder: _buildHomeScreen,
+          unauthenticatedBuilder: _buildLandingScreen,
+          loadingBuilder: _buildSplashScreen,
+        ),
+  };
+}
+
+enum _SessionRoot { authenticated, unauthenticated }
+
+_SessionRoot? _stableRootFor(SessionState state) {
+  switch (state) {
+    case SessionState.authenticated:
+    case SessionState.authenticatedOffline:
+      return _SessionRoot.authenticated;
+    case SessionState.unauthenticated:
+      return _SessionRoot.unauthenticated;
+    case SessionState.initial:
+    case SessionState.checking:
+    case SessionState.refreshing:
+      return null;
+  }
+}
+
+/// Keeps route-owned screens from surviving an account-root transition.
+///
+/// Loading and refresh states are deliberately ignored. This means a token
+/// refresh does not unexpectedly close an in-progress screen, while a genuine
+/// signed-out -> signed-in (or signed-in -> signed-out) transition always
+/// returns to the first route where [AuthWrapper] selects the new root.
+class SessionStackNormalizer extends ConsumerStatefulWidget {
+  const SessionStackNormalizer({
+    required this.navigatorKey,
+    required this.child,
+    this.sessionListenable,
+    super.key,
+  });
+
+  final GlobalKey<NavigatorState> navigatorKey;
+  final Widget child;
+  final ProviderListenable<SessionData>? sessionListenable;
+
+  @override
+  ConsumerState<SessionStackNormalizer> createState() =>
+      _SessionStackNormalizerState();
+}
+
+class _SessionStackNormalizerState
+    extends ConsumerState<SessionStackNormalizer> {
+  _SessionRoot? _lastStableRoot;
+
+  ProviderListenable<SessionData> get _sessionListenable =>
+      widget.sessionListenable ?? sessionProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastStableRoot = _stableRootFor(ref.read(_sessionListenable).state);
+  }
+
+  @override
+  void didUpdateWidget(SessionStackNormalizer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sessionListenable != widget.sessionListenable) {
+      _lastStableRoot = _stableRootFor(ref.read(_sessionListenable).state);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen<SessionData>(_sessionListenable, (previous, next) {
+      final nextRoot = _stableRootFor(next.state);
+      if (nextRoot == null) return;
+
+      final previousRoot = _lastStableRoot;
+      _lastStableRoot = nextRoot;
+      if (previousRoot == null || previousRoot == nextRoot) return;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      });
+    });
+    return widget.child;
+  }
+}
+
+/// Lazily builds exactly one subtree for the current session state.
+///
+/// Keeping protected builders behind this gate prevents direct named-route
+/// navigation from constructing authenticated UI before admission is known.
+class SessionRouteGate extends ConsumerWidget {
+  const SessionRouteGate({
+    required this.authenticatedBuilder,
+    required this.unauthenticatedBuilder,
+    required this.loadingBuilder,
+    this.sessionListenable,
+    super.key,
+  });
+
+  final WidgetBuilder authenticatedBuilder;
+  final WidgetBuilder unauthenticatedBuilder;
+  final WidgetBuilder loadingBuilder;
+  final ProviderListenable<SessionData>? sessionListenable;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sessionData = ref.watch(sessionProvider);
+    final sessionData = ref.watch(sessionListenable ?? sessionProvider);
 
     switch (sessionData.state) {
+      case SessionState.authenticated:
+      case SessionState.authenticatedOffline:
+        return authenticatedBuilder(context);
+      case SessionState.unauthenticated:
+        return unauthenticatedBuilder(context);
       case SessionState.initial:
       case SessionState.checking:
       case SessionState.refreshing:
-        return const SplashScreen();
-
-      case SessionState.authenticated:
-      case SessionState.authenticatedOffline:
-        return const HomeScreen();
-
-      case SessionState.unauthenticated:
-        return const LandingScreen();
+        return loadingBuilder(context);
     }
+  }
+}
+
+/// Wrapper widget that handles authentication state
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({
+    this.authenticatedBuilder = _buildHomeScreen,
+    this.unauthenticatedBuilder = _buildLandingScreen,
+    this.loadingBuilder = _buildSplashScreen,
+    this.sessionListenable,
+    super.key,
+  });
+
+  final WidgetBuilder authenticatedBuilder;
+  final WidgetBuilder unauthenticatedBuilder;
+  final WidgetBuilder loadingBuilder;
+  final ProviderListenable<SessionData>? sessionListenable;
+
+  @override
+  Widget build(BuildContext context) {
+    return SessionRouteGate(
+      authenticatedBuilder: authenticatedBuilder,
+      unauthenticatedBuilder: unauthenticatedBuilder,
+      loadingBuilder: loadingBuilder,
+      sessionListenable: sessionListenable,
+    );
   }
 }
 

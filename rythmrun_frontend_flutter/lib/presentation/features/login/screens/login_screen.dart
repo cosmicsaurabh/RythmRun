@@ -41,7 +41,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final loginState = ref.watch(loginProvider);
     final loginNotifier = ref.read(loginProvider.notifier);
 
-    // Listen for success and navigate
+    // The app-level session listener owns stack normalization after sign-in.
     ref.listen<bool>(loginProvider.select((state) => state.isSuccess), (
       previous,
       next,
@@ -49,9 +49,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (next) {
         _showSuccessMessage();
         loginNotifier.resetForm();
-        Navigator.of(
-          context,
-        ).pop(); //needed to remove the login screen from the stack so that the authwrapper can handle the navigation
       }
     });
 

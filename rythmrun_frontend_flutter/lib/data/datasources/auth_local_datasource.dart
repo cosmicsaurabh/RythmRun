@@ -1,80 +1,100 @@
+import '../../core/services/auth_persistence_service.dart';
+import '../../core/services/auth_token_store.dart';
 import '../../domain/entities/user_entity.dart';
 import '../models/auth_response_model.dart';
-import '../../core/services/auth_persistence_service.dart';
 
-/// Local data source for authentication data
-/// Handles all local storage operations
-class AuthLocalDataSource {
-  /// Save authentication data to secure storage
-  Future<void> saveAuthData(AuthResponseModel authResponse) async {
-    await AuthPersistenceService.saveAuthData(authResponse);
+/// Local account data source.
+///
+/// It is intentionally subclass-friendly for repository tests, while the
+/// production implementation delegates to one injected persistence service.
+/// Raw individual credential/header getters are not part of this API.
+class AuthLocalDataSource
+    implements AuthCredentialVault, RejectedCredentialQuarantine {
+  AuthLocalDataSource({AuthPersistenceService? persistenceService})
+    : _persistenceService = persistenceService ?? AuthPersistenceService();
+
+  final AuthPersistenceService _persistenceService;
+
+  Future<void> saveAuthData(AuthResponseModel authResponse) {
+    return _persistenceService.saveAuthData(authResponse);
   }
 
-  /// Get user data from local storage
-  Future<UserEntity?> getUserData() async {
-    return await AuthPersistenceService.getUserData();
+  @override
+  Future<AuthCredentialSnapshot?> readCredentialSnapshot() {
+    return _persistenceService.readCredentialSnapshot();
   }
 
-  /// Get access token from local storage
-  Future<String?> getAccessToken() async {
-    return await AuthPersistenceService.getAccessToken();
+  Future<AuthCredentialSnapshot> replaceCredentials(
+    AuthTokenPair replacement, {
+    bool requiresServerVerification = false,
+  }) {
+    return _persistenceService.replaceCredentials(
+      replacement,
+      requiresServerVerification: requiresServerVerification,
+    );
   }
 
-  /// Get refresh token from local storage
-  Future<String?> getRefreshToken() async {
-    return await AuthPersistenceService.getRefreshToken();
+  @override
+  Future<AuthCredentialSnapshot?> compareAndSetCredentials({
+    required int expectedRevision,
+    required AuthTokenPair replacement,
+    bool requiresServerVerification = false,
+  }) {
+    return _persistenceService.compareAndSetCredentials(
+      expectedRevision: expectedRevision,
+      replacement: replacement,
+      requiresServerVerification: requiresServerVerification,
+    );
   }
 
-  /// Get authentication headers for API calls
-  Future<Map<String, String>?> getAuthHeaders() async {
-    return await AuthPersistenceService.getAuthHeaders();
+  @override
+  Future<AuthCredentialSnapshot?> markCredentialsServerVerified({
+    required int expectedRevision,
+  }) {
+    return _persistenceService.markCredentialsServerVerified(
+      expectedRevision: expectedRevision,
+    );
   }
 
-  /// Check if user has a valid session
-  Future<bool> hasValidSession() async {
-    return await AuthPersistenceService.hasValidSession();
+  Future<UserEntity?> getUserData() => _persistenceService.getUserData();
+
+  Future<void> updateUserData(UserEntity user) {
+    return _persistenceService.updateUserData(user);
   }
 
-  /// Check if token refresh is needed
-  Future<bool> needsTokenRefresh() async {
-    return await AuthPersistenceService.needsTokenRefresh();
+  Future<bool> hasValidSession() => _persistenceService.hasValidSession();
+
+  Future<bool> needsTokenRefresh() => _persistenceService.needsTokenRefresh();
+
+  Future<void> clearCredentials() => _persistenceService.clearCredentials();
+
+  @override
+  Future<bool> clearCredentialsIfRevision(int expectedRevision) {
+    return _persistenceService.clearCredentialsIfRevision(expectedRevision);
   }
 
-  /// Clear all authentication data
-  Future<void> clearAuthData() async {
-    await AuthPersistenceService.clearAuthData();
+  Future<void> clearAuthData() => _persistenceService.clearAuthData();
+
+  @override
+  Future<void> markAuthCleanupPending() {
+    return _persistenceService.markAuthCleanupPending();
   }
 
-  Future<void> markAuthCleanupPending() async {
-    await AuthPersistenceService.markAuthCleanupPending();
+  Future<bool> hasPendingAuthCleanup() {
+    return _persistenceService.hasPendingAuthCleanup();
   }
 
-  Future<bool> hasPendingAuthCleanup() async {
-    return AuthPersistenceService.hasPendingAuthCleanup();
+  Future<bool> needsBackendSync() => _persistenceService.needsBackendSync();
+
+  Future<void> updateLastBackendSync() {
+    return _persistenceService.updateLastBackendSync();
   }
 
-  /// Check if backend sync is required (7 days since last sync)
-  Future<bool> needsBackendSync() async {
-    return await AuthPersistenceService.needsBackendSync();
+  Future<bool> canStayLoggedInOffline() {
+    return _persistenceService.canStayLoggedInOffline();
   }
 
-  /// Update the last backend sync timestamp
-  Future<void> updateLastBackendSync() async {
-    await AuthPersistenceService.updateLastBackendSync();
-  }
-
-  /// Check if user can stay logged in offline (has valid session and within sync window)
-  Future<bool> canStayLoggedInOffline() async {
-    return await AuthPersistenceService.canStayLoggedInOffline();
-  }
-
-  /// Get the last backend sync timestamp
-  Future<DateTime?> getLastBackendSync() async {
-    return await AuthPersistenceService.getLastBackendSync();
-  }
-
-  /// Debug method to print stored data (only for development)
-  Future<void> printStoredData() async {
-    await AuthPersistenceService.printStoredData();
+  Future<DateTime?> getLastBackendSync() {
+    return _persistenceService.getLastBackendSync();
   }
 }

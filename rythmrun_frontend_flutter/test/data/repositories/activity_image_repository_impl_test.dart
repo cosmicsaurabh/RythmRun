@@ -3,13 +3,13 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/activity_image_file_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_remote_datasource.dart';
-import 'package:rythmrun_frontend_flutter/data/datasources/auth_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/workout_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/models/change_password_response_model.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/activity_image_repository_impl.dart';
@@ -27,7 +27,6 @@ void main() {
     late FakeActivityImageRemoteDataSource remoteDataSource;
     late FakeActivityImageFileService fileService;
     late FakeAuthRepository authRepository;
-    late FakeAuthLocalDataSource authLocalDataSource;
     late FakeWorkoutLocalDataSource workoutLocalDataSource;
     late ActivityImageRepositoryImpl repository;
 
@@ -68,7 +67,6 @@ void main() {
           email: 'test@example.com',
         ),
       );
-      authLocalDataSource = FakeAuthLocalDataSource();
       workoutLocalDataSource =
           FakeWorkoutLocalDataSource()
             ..workouts[localWorkoutId] = _workout(
@@ -81,7 +79,6 @@ void main() {
         remoteDataSource: remoteDataSource,
         fileService: fileService,
         authRepository: authRepository,
-        authLocalDataSource: authLocalDataSource,
         workoutLocalDataSource: workoutLocalDataSource,
         random: Random(0),
       );
@@ -154,7 +151,6 @@ void main() {
           remoteDataSource: remoteDataSource,
           fileService: fileService,
           authRepository: authRepository,
-          authLocalDataSource: authLocalDataSource,
           workoutLocalDataSource: workoutLocalDataSource,
           random: Random(0),
           operationGate: gate,
@@ -320,11 +316,9 @@ void main() {
       },
     );
 
-    test('claimed upload retries after authentication refresh', () async {
+    test('claimed upload keeps an escaped auth failure retryable', () async {
       remoteDataSource.requestUploadUrlError = UnauthorizedException('expired');
-      authRepository.onRefresh = () {
-        remoteDataSource.requestUploadUrlError = null;
-      };
+      authRepository.onRefresh = () => fail('repository must not refresh');
       localDataSource.addImage(
         _image(
           localId: 1,
@@ -338,20 +332,19 @@ void main() {
 
       await repository.syncPendingImages();
 
-      expect(remoteDataSource.requestUploadUrlCount, 2);
+      expect(remoteDataSource.requestUploadUrlCount, 1);
       expect(
         localDataSource.images[1]!.status,
-        ActivityImageSyncStatus.uploaded,
+        ActivityImageSyncStatus.retrying,
       );
+      expect(localDataSource.images[1]!.retryCount, 1);
     });
 
-    test('claimed delete retries after authentication refresh', () async {
+    test('claimed delete keeps an escaped auth failure retryable', () async {
       remoteDataSource.deleteRemoteImageError = UnauthorizedException(
         'expired',
       );
-      authRepository.onRefresh = () {
-        remoteDataSource.deleteRemoteImageError = null;
-      };
+      authRepository.onRefresh = () => fail('repository must not refresh');
       localDataSource.addImage(
         _image(
           localId: 1,
@@ -367,19 +360,19 @@ void main() {
 
       await repository.syncPendingImages();
 
-      expect(remoteDataSource.deleteRemoteImageCount, 2);
+      expect(remoteDataSource.deleteRemoteImageCount, 1);
       expect(
         localDataSource.images[1]!.status,
-        ActivityImageSyncStatus.deleted,
+        ActivityImageSyncStatus.deleteQueued,
       );
-      expect(fileService.deletedPaths, contains(appPrivatePath));
+      expect(localDataSource.images[1]!.retryCount, 1);
+      expect(fileService.deletedPaths, isEmpty);
     });
 
-    test('failed auth refresh keeps remote delete retryable', () async {
-      remoteDataSource.deleteRemoteImageError = UnauthorizedException(
-        'expired',
+    test('typed coordinator outage keeps remote delete retryable', () async {
+      remoteDataSource.deleteRemoteImageError = const AuthSessionUnavailable(
+        AuthSessionUnavailableReason.network,
       );
-      authRepository.refreshError = Exception('refresh unavailable');
       localDataSource.addImage(
         _image(
           localId: 1,
@@ -403,7 +396,7 @@ void main() {
       expect(localDataSource.images[1]!.retryCount, 1);
       expect(
         localDataSource.images[1]!.lastError,
-        contains('Auth refresh failed'),
+        contains('AUTH_NETWORK_UNAVAILABLE'),
       );
     });
 
@@ -463,9 +456,8 @@ void main() {
     });
 
     test(
-      'stale uploading images reset to queued before sync selection',
+      'stale uploading images reset and resume through the sync queue',
       () async {
-        authLocalDataSource.authHeaders = null;
         localDataSource.addImage(
           _image(
             localId: 1,
@@ -483,7 +475,7 @@ void main() {
         expect(localDataSource.resetStaleUploadingCalled, isTrue);
         expect(
           localDataSource.images[1]!.status,
-          ActivityImageSyncStatus.queued,
+          ActivityImageSyncStatus.uploaded,
         );
       },
     );
@@ -541,31 +533,33 @@ void main() {
       );
     });
 
-    test('delete uploaded image marks deleteQueued for remote sync', () async {
-      authLocalDataSource.authHeaders = null;
-      localDataSource.addImage(
-        _image(
-          localId: 1,
-          localWorkoutId: localWorkoutId,
-          remoteActivityId: remoteActivityId,
-          remoteImageId: remoteImageId,
-          clientImageId: clientImageId,
-          localPath: appPrivatePath,
-          thumbnailPath: thumbnailPath,
-          status: ActivityImageSyncStatus.uploaded,
-        ),
-      );
+    test(
+      'delete uploaded image queues and completes remote deletion',
+      () async {
+        localDataSource.addImage(
+          _image(
+            localId: 1,
+            localWorkoutId: localWorkoutId,
+            remoteActivityId: remoteActivityId,
+            remoteImageId: remoteImageId,
+            clientImageId: clientImageId,
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.uploaded,
+          ),
+        );
 
-      await repository.deleteImage(1);
-      await _pumpMicrotasks();
+        await repository.deleteImage(1);
+        await _pumpMicrotasks();
 
-      expect(
-        localDataSource.images[1]!.status,
-        ActivityImageSyncStatus.deleteQueued,
-      );
-      expect(fileService.deletedPaths, isEmpty);
-      expect(remoteDataSource.deleteRemoteImageCount, 0);
-    });
+        expect(
+          localDataSource.images[1]!.status,
+          ActivityImageSyncStatus.deleted,
+        );
+        expect(fileService.deletedPaths, contains(appPrivatePath));
+        expect(remoteDataSource.deleteRemoteImageCount, 1);
+      },
+    );
 
     test(
       'foreign workout and image IDs have no local, file, or remote effects',
@@ -704,7 +698,6 @@ void main() {
         remoteDataSource: remoteDataSource,
         fileService: fileService,
         authRepository: authRepository,
-        authLocalDataSource: authLocalDataSource,
         workoutLocalDataSource: workoutLocalDataSource,
         random: Random(0),
         operationGate: gate,
@@ -1239,7 +1232,6 @@ class FakeActivityImageRemoteDataSource
   Future<ActivityImageUploadIntent> requestUploadUrl({
     required int remoteActivityId,
     required ActivityImageEntity image,
-    required Map<String, String> authHeaders,
   }) async {
     requestUploadUrlCount++;
     events.add('request-url');
@@ -1274,7 +1266,6 @@ class FakeActivityImageRemoteDataSource
     required int remoteActivityId,
     required ActivityImageEntity image,
     required String key,
-    required Map<String, String> authHeaders,
   }) async {
     final callback = beforeConfirm;
     if (callback != null) {
@@ -1301,7 +1292,6 @@ class FakeActivityImageRemoteDataSource
   @override
   Future<List<RemoteActivityImage>> fetchImages({
     required int remoteActivityId,
-    required Map<String, String> authHeaders,
   }) async {
     return <RemoteActivityImage>[];
   }
@@ -1310,7 +1300,6 @@ class FakeActivityImageRemoteDataSource
   Future<void> deleteRemoteImage({
     required int remoteActivityId,
     required int remoteImageId,
-    required Map<String, String> authHeaders,
   }) async {
     deleteRemoteImageCount++;
     events.add('delete-remote');
@@ -1353,13 +1342,6 @@ class FakeActivityImageFileService implements ActivityImageFileService {
       deletedPaths.add(path);
     }
   }
-}
-
-class FakeAuthLocalDataSource extends AuthLocalDataSource {
-  Map<String, String>? authHeaders = const {'Authorization': 'Bearer test'};
-
-  @override
-  Future<Map<String, String>?> getAuthHeaders() async => authHeaders;
 }
 
 class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
@@ -1543,6 +1525,11 @@ class FakeAuthRepository implements AuthRepository {
   Future<UserEntity?> getCurrentUser() async => currentUser;
 
   @override
+  Future<void> updateCurrentUser(UserEntity user) async {
+    currentUser = user;
+  }
+
+  @override
   Future<UserEntity> refreshToken() async {
     onRefresh?.call();
     final error = refreshError;
@@ -1617,11 +1604,6 @@ class FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> updateLastBackendSync() async {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<void> printStoredData() async {
     throw UnimplementedError();
   }
 }

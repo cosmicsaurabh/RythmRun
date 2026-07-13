@@ -1,8 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rythmrun_frontend_flutter/core/network/authenticated_request_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/services/activity_image_file_service.dart';
+import 'package:rythmrun_frontend_flutter/core/services/auth_persistence_service.dart';
+import 'package:rythmrun_frontend_flutter/core/services/auth_token_store.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/sync_coordinator.dart';
+import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
 import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_remote_datasource.dart';
@@ -30,7 +34,17 @@ import '../../domain/usecases/change_password_usecase.dart';
 
 // HTTP Client Provider
 final httpClientProvider = Provider<AppHttpClient>((ref) {
-  return AppHttpClient();
+  final client = AppHttpClient();
+  ref.onDispose(client.close);
+  return client;
+});
+
+final authTokenStoreProvider = Provider<AuthTokenStore>((ref) {
+  return SecureAuthTokenStore();
+});
+
+final authPersistenceServiceProvider = Provider<AuthPersistenceService>((ref) {
+  return AuthPersistenceService(tokenStore: ref.watch(authTokenStoreProvider));
 });
 
 // Data Sources
@@ -40,7 +54,9 @@ final authRemoteDataSourceProvider = Provider<AuthRemoteDataSource>((ref) {
 });
 
 final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
-  return AuthLocalDataSource();
+  return AuthLocalDataSource(
+    persistenceService: ref.watch(authPersistenceServiceProvider),
+  );
 });
 
 final _localDbServiceProvider = Provider<LocalDbService>((ref) {
@@ -56,6 +72,31 @@ final authenticationAttemptGateProvider = Provider<AuthenticationAttemptGate>((
 ) {
   return AuthenticationAttemptGate();
 });
+
+final sessionInvalidationSignalProvider = Provider<SessionInvalidationSignal>((
+  ref,
+) {
+  final signal = SessionInvalidationSignal();
+  ref.onDispose(signal.dispose);
+  return signal;
+});
+
+final authenticatedRequestCoordinatorProvider =
+    Provider<AuthenticatedRequestCoordinator>((ref) {
+      final local = ref.watch(authLocalDataSourceProvider);
+      return AuthenticatedRequestCoordinator(
+        credentialVault: local,
+        rejectedCredentialQuarantine: local,
+        authRemoteDataSource: ref.watch(authRemoteDataSourceProvider),
+        authenticationAttemptGate: ref.watch(authenticationAttemptGateProvider),
+        sessionInvalidationSignal: ref.watch(sessionInvalidationSignalProvider),
+        commitRefreshedSession: (response) async {
+          await local.updateUserData(response.toUserEntity());
+          await local.updateLastBackendSync();
+        },
+        commitServerVerification: local.updateLastBackendSync,
+      );
+    });
 
 final activityImageFileServiceProvider = Provider<ActivityImageFileService>((
   ref,
@@ -77,19 +118,30 @@ final activityImageLocalDataSourceProvider =
 final activityImageRemoteDataSourceProvider =
     Provider<ActivityImageRemoteDataSource>((ref) {
       final httpClient = ref.watch(httpClientProvider);
-      return ActivityImageRemoteDataSource(httpClient: httpClient);
+      return ActivityImageRemoteDataSource(
+        httpClient: httpClient,
+        authenticatedRequests: ref.watch(
+          authenticatedRequestCoordinatorProvider,
+        ),
+      );
     });
 
 final avatarRemoteDataSourceProvider = Provider<AvatarRemoteDataSource>((ref) {
   final httpClient = ref.watch(httpClientProvider);
-  return AvatarRemoteDataSourceImpl(httpClient);
+  return AvatarRemoteDataSourceImpl(
+    httpClient,
+    ref.watch(authenticatedRequestCoordinatorProvider),
+  );
 });
 
 final activityRemoteDataSourceProvider = Provider<ActivityRemoteDataSource>((
   ref,
 ) {
   final httpClient = ref.watch(httpClientProvider);
-  return ActivityRemoteDataSource(httpClient: httpClient);
+  return ActivityRemoteDataSource(
+    httpClient: httpClient,
+    authenticatedRequests: ref.watch(authenticatedRequestCoordinatorProvider),
+  );
 });
 
 // Repository
@@ -99,27 +151,31 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepositoryImpl(
     remoteDataSource,
     localDataSource,
+    authenticatedRequests: ref.watch(authenticatedRequestCoordinatorProvider),
     authenticationAttemptGate: ref.watch(authenticationAttemptGateProvider),
   );
 });
 
 final avatarRepositoryProvider = Provider<AvatarRepository>((ref) {
   final remoteDataSource = ref.watch(avatarRemoteDataSourceProvider);
-  final localDataSource = ref.watch(authLocalDataSourceProvider);
+  final authRepository = ref.watch(authRepositoryProvider);
   final httpClient = ref.watch(httpClientProvider);
-  return AvatarRepositoryImpl(remoteDataSource, localDataSource, httpClient);
+  return AvatarRepositoryImpl(
+    remoteDataSource,
+    authRepository,
+    httpClient,
+    operationGate: ref.watch(userScopeOperationGateProvider),
+  );
 });
 
 final workoutRepositoryProvider = Provider<WorkoutRepository>((ref) {
   final localDataSource = ref.watch(workoutLocalDataSourceProvider);
   final authRepository = ref.watch(authRepositoryProvider);
   final activityRemoteDataSource = ref.watch(activityRemoteDataSourceProvider);
-  final authLocalDataSource = ref.watch(authLocalDataSourceProvider);
   return WorkoutRepositoryImpl(
     localDataSource,
     authRepository,
     activityRemoteDataSource,
-    authLocalDataSource,
     operationGate: ref.watch(userScopeOperationGateProvider),
   );
 });
@@ -132,7 +188,6 @@ final activityImageRepositoryProvider = Provider<ActivityImageRepository>((
     remoteDataSource: ref.watch(activityImageRemoteDataSourceProvider),
     fileService: ref.watch(activityImageFileServiceProvider),
     authRepository: ref.watch(authRepositoryProvider),
-    authLocalDataSource: ref.watch(authLocalDataSourceProvider),
     workoutLocalDataSource: ref.watch(workoutLocalDataSourceProvider),
     operationGate: ref.watch(userScopeOperationGateProvider),
   );

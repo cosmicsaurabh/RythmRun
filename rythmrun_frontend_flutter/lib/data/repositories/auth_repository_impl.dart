@@ -1,6 +1,10 @@
 import 'dart:developer';
 
+import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
+import 'package:rythmrun_frontend_flutter/core/network/authenticated_request_coordinator.dart';
+import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
+import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
 import 'package:rythmrun_frontend_flutter/data/models/change_password_response_model.dart';
 
 import '../../domain/repositories/auth_repository.dart';
@@ -16,13 +20,16 @@ import '../models/registration_request_model.dart';
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource _remoteDataSource;
   final AuthLocalDataSource _localDataSource;
+  final AuthenticatedRequestCoordinator _authenticatedRequests;
   final AuthenticationAttemptGate? _authenticationAttemptGate;
 
   AuthRepositoryImpl(
     this._remoteDataSource,
     this._localDataSource, {
+    required AuthenticatedRequestCoordinator authenticatedRequests,
     AuthenticationAttemptGate? authenticationAttemptGate,
-  }) : _authenticationAttemptGate = authenticationAttemptGate;
+  }) : _authenticatedRequests = authenticatedRequests,
+       _authenticationAttemptGate = authenticationAttemptGate;
 
   Future<T> _runAuthenticationMutation<T>(Future<T> Function() action) async {
     final lease = _authenticationAttemptGate?.tryAcquire();
@@ -41,60 +48,46 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<UserEntity> login(LoginRequestEntity request) async {
     return _runAuthenticationMutation(() async {
+      final authResponse = await _remoteDataSource.loginUser(
+        request.email,
+        request.password,
+      );
       try {
-        // 1. Call remote API
-        final authResponse = await _remoteDataSource.loginUser(
-          request.email,
-          request.password,
-        );
-
-        // 2. Save to local storage
         await _localDataSource.saveAuthData(authResponse);
-
-        // 3. Return user entity
-        return authResponse.toUserEntity();
-      } catch (e) {
-        // Clear any partial data on error
+      } catch (_) {
+        // A failed local commit must not leave an orphan credential pair.
         await _localDataSource.clearAuthData();
         rethrow;
       }
+      return authResponse.toUserEntity();
     });
   }
 
   @override
   Future<UserEntity> register(RegistrationRequestEntity request) async {
     return _runAuthenticationMutation(() async {
+      final requestModel = RegistrationRequestModel.fromEntity(request);
+      final authResponse = await _remoteDataSource.registerUser(requestModel);
       try {
-        // 1. Convert entity to model
-        final requestModel = RegistrationRequestModel.fromEntity(request);
-
-        // 2. Call remote API
-        final authResponse = await _remoteDataSource.registerUser(requestModel);
-
-        // 3. Save to local storage
         await _localDataSource.saveAuthData(authResponse);
-
-        // 4. Return user entity
-        return authResponse.toUserEntity();
-      } catch (e) {
-        // Clear any partial data on error
+      } catch (_) {
         await _localDataSource.clearAuthData();
         rethrow;
       }
+      return authResponse.toUserEntity();
     });
   }
 
   @override
   Future<void> logout() async {
     try {
-      // 1. Get auth headers for the logout request
-      final authHeaders = await _localDataSource.getAuthHeaders();
-
-      // 2. Try to call remote API (but don't fail if it doesn't work)
-      await _remoteDataSource.logoutUser(authHeaders);
-    } catch (e) {
+      await _authenticatedRequests.execute(
+        replayPolicy: AuthenticatedReplayPolicy.idempotent,
+        request: _remoteDataSource.logoutUser,
+      );
+    } catch (_) {
       // Remote revocation is best effort; SessionNotifier owns local cleanup.
-      log('Remote logout failed: $e');
+      log('Remote logout could not be completed.');
     }
   }
 
@@ -103,22 +96,15 @@ class AuthRepositoryImpl implements AuthRepository {
     String currentPassword,
     String newPassword,
   ) async {
-    try {
-      // Get auth headers for the request
-      final authHeaders = await _localDataSource.getAuthHeaders();
-      if (authHeaders == null) {
-        throw Exception('Not authenticated');
-      }
-
-      final response = await _remoteDataSource.changePassword(
-        currentPassword,
-        newPassword,
-        authHeaders,
-      );
-      return response;
-    } catch (e) {
-      rethrow;
-    }
+    return _authenticatedRequests.executeSessionRevoking(
+      reason: SessionInvalidationReason.passwordChanged,
+      request:
+          (authHeaders) => _remoteDataSource.changePassword(
+            currentPassword,
+            newPassword,
+            authHeaders,
+          ),
+    );
   }
 
   /// Check if user has valid offline access (local data available)
@@ -130,30 +116,10 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<UserEntity> refreshToken() async {
-    return _runAuthenticationMutation(() async {
-      try {
-        // 1. Get refresh token from local storage
-        final refreshToken = await _localDataSource.getRefreshToken();
-        if (refreshToken == null) {
-          throw Exception('No refresh token available');
-        }
-
-        // 2. Call remote API
-        final authResponse = await _remoteDataSource.refreshToken(refreshToken);
-
-        // 3. Update local storage
-        await _localDataSource.saveAuthData(authResponse);
-
-        // 4. Return user entity
-        return authResponse.toUserEntity();
-      } catch (e) {
-        // Don't clear data immediately on refresh failure
-        // This could be a network issue - preserve offline access
-        log('AuthRepository: Token refresh failed: $e');
-
-        rethrow;
-      }
-    });
+    // The coordinator owns the AuthenticationAttemptGate lease and commits
+    // both the rotated pair and cached session metadata before releasing it.
+    final authResponse = await _authenticatedRequests.refreshSession();
+    return authResponse.toUserEntity();
   }
 
   @override
@@ -163,13 +129,18 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> updateCurrentUser(UserEntity user) {
+    return _localDataSource.updateUserData(user);
+  }
+
+  @override
   Future<bool> needsTokenRefresh() async {
     return await _localDataSource.needsTokenRefresh();
   }
 
   @override
   Future<SessionValidationStatus> validateSession() {
-    return _runAuthenticationMutation(_validateSession);
+    return _validateSession();
   }
 
   Future<SessionValidationStatus> _validateSession() async {
@@ -177,35 +148,34 @@ class AuthRepositoryImpl implements AuthRepository {
       return SessionValidationStatus.invalid;
     }
 
-    // Check if we need backend sync (7-day requirement)
-    if (await _localDataSource.needsBackendSync()) {
-      log('AuthRepository: Backend sync required (7-day limit reached)');
+    final credentialSnapshot = await _localDataSource.readCredentialSnapshot();
+    if (credentialSnapshot == null) {
+      return SessionValidationStatus.invalid;
+    }
+    final requiresServerCheck =
+        credentialSnapshot.requiresServerVerification ||
+        await _localDataSource.needsBackendSync();
 
-      // Try to verify with server
+    if (requiresServerCheck) {
       try {
-        final authHeaders = await _localDataSource.getAuthHeaders();
-        if (authHeaders != null) {
-          final isValid = await _remoteDataSource.verifySession(authHeaders);
-          if (isValid) {
-            // Update sync timestamp
-            await _localDataSource.updateLastBackendSync();
-            return SessionValidationStatus.valid;
-          }
-          return SessionValidationStatus.unavailable;
-        } else {
-          return SessionValidationStatus.invalid;
-        }
-      } catch (e) {
-        final message = e.toString();
-        if (message.contains('UnauthorizedException') ||
-            message.contains('ForbiddenException') ||
-            message.contains('(401)') ||
-            message.contains('(403)')) {
-          return SessionValidationStatus.invalid;
-        }
-        log(
-          'AuthRepository: Server verification failed, allowing offline access: $e',
+        final isValid = await _authenticatedRequests.execute(
+          replayPolicy: AuthenticatedReplayPolicy.idempotent,
+          request: _remoteDataSource.verifySession,
         );
+        if (!isValid) {
+          return SessionValidationStatus.invalid;
+        }
+        await _authenticatedRequests.markCurrentCredentialsServerVerified();
+        return SessionValidationStatus.valid;
+      } on AuthSessionInvalid {
+        return SessionValidationStatus.invalid;
+      } on UnauthorizedException {
+        return SessionValidationStatus.invalid;
+      } on AuthSessionUnavailable {
+        return SessionValidationStatus.unavailable;
+      } on NetworkException {
+        return SessionValidationStatus.unavailable;
+      } on ServerException {
         return SessionValidationStatus.unavailable;
       }
     }
@@ -245,11 +215,5 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> updateLastBackendSync() async {
     await _localDataSource.updateLastBackendSync();
-  }
-
-  /// Debug method to print stored data (only for development)
-  @override
-  Future<void> printStoredData() async {
-    await _localDataSource.printStoredData();
   }
 }
