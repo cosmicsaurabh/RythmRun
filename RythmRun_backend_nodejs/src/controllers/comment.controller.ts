@@ -13,7 +13,7 @@ export class CommentController {
 
     getComments = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
+            const activityId = parseInt(req.params.activityId as string);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -46,8 +46,8 @@ export class CommentController {
 
     getComment = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
-            const commentId = parseInt(req.params.commentId);
+            const activityId = parseInt(req.params.activityId as string);
+            const commentId = parseInt(req.params.commentId as string);
             if (isNaN(activityId) || isNaN(commentId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -87,7 +87,7 @@ export class CommentController {
 
     createComment = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
+            const activityId = parseInt(req.params.activityId as string);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -139,8 +139,8 @@ export class CommentController {
 
     updateComment = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
-            const commentId = parseInt(req.params.commentId);
+            const activityId = parseInt(req.params.activityId as string);
+            const commentId = parseInt(req.params.commentId as string);
             if (isNaN(activityId) || isNaN(commentId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -199,8 +199,8 @@ export class CommentController {
 
     deleteComment = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
-            const commentId = parseInt(req.params.commentId);
+            const activityId = parseInt(req.params.activityId as string);
+            const commentId = parseInt(req.params.commentId as string);
             if (isNaN(activityId) || isNaN(commentId)) {
                 return res.status(400).json({
                     status: 'error',

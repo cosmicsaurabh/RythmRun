@@ -169,7 +169,7 @@ export class ActivityController {
 
     getActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseActivityId(req.params.activityId);
+            const activityId = parseActivityId(req.params.activityId as string);
             if (activityId === null) {
                 return res.status(400).json({
                     status: 'error',
@@ -228,7 +228,7 @@ export class ActivityController {
 
     updateActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseActivityId(req.params.activityId);
+            const activityId = parseActivityId(req.params.activityId as string);
             if (activityId === null) {
                 return res.status(400).json({
                     status: 'error',
@@ -262,7 +262,7 @@ export class ActivityController {
 
     deleteActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseActivityId(req.params.activityId);
+            const activityId = parseActivityId(req.params.activityId as string);
             if (activityId === null) {
                 return res.status(400).json({
                     status: 'error',

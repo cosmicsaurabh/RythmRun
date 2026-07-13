@@ -7,16 +7,15 @@ import 'package:flutter/foundation.dart';
 class AppConfig {
   // Environment-specific configurations
   static const Map<String, String> _baseUrls = {
-    'dev': 'http://192.168.1.50:8080/api', // local
-    'staging': '',
+    'dev': 'http://192.168.1.47:8080/api', // local (UPDATE THIS IP ADDRESS)
+    'staging': 'https://rythmrun-staging.onrender.com/api', // staging
     'prod': 'https://rythmrun.onrender.com/api', //Render API
   };
 
-  static const Map<String, String> _cloudfrontDomains = {
-    'dev':
-        'd2ixgo5od14vvq.cloudfront.net', // Production CloudFront for dev testing
-    'staging': 'somethingg.cloudfront.net', // Staging CloudFront domain
-    'prod': 'd2ixgo5od14vvq.cloudfront.net', // Production CloudFront domain
+  static const Map<String, String> _r2Domains = {
+    'dev': 'https://dev-account-id.r2.cloudflarestorage.com', // R2 dev (update with your dev R2 account)
+    'staging': 'https://staging-account-id.r2.cloudflarestorage.com', // R2 staging
+    'prod': 'https://your-account-id.r2.cloudflarestorage.com', // R2 prod
   };
 
   static const Map<String, int> _timeouts = {
@@ -47,15 +46,18 @@ class AppConfig {
     return url;
   }
 
-  /// Get the CloudFront domain for the current environment
-  static String get cloudfrontDomain {
+  /// Get the R2 domain for the current environment
+  static String get r2Domain {
     final env = _environment;
-    final domain = _cloudfrontDomains[env];
+    final domain = _r2Domains[env];
     if (domain == null || domain.isEmpty) {
-      throw Exception('No CloudFront domain configured for environment: $env');
+      throw Exception('No R2 domain configured for environment: $env');
     }
     return domain;
   }
+
+  /// Legacy: CloudFront domain (now points to R2)
+  static String get cloudfrontDomain => r2Domain;
 
   /// Get the timeout duration for HTTP requests
   static Duration get timeout {
@@ -87,6 +89,7 @@ class AppConfig {
       log('=== App Configuration ===');
       log('Environment: $environment');
       log('Base URL: $baseUrl');
+      log('R2 Domain: $r2Domain');
       log('Timeout: ${timeout.inSeconds} seconds');
       log('Debug Mode: $isDebug');
       log('Release Mode: $isRelease');

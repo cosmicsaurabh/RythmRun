@@ -10,7 +10,7 @@ export class LikeController {
 
     getLikeStatus = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
+            const activityId = parseInt(req.params.activityId as string);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -43,7 +43,7 @@ export class LikeController {
 
     likeActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
+            const activityId = parseInt(req.params.activityId as string);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -83,7 +83,7 @@ export class LikeController {
 
     unlikeActivity = async (req: Request, res: Response) => {
         try {
-            const activityId = parseInt(req.params.activityId);
+            const activityId = parseInt(req.params.activityId as string);
             if (isNaN(activityId)) {
                 return res.status(400).json({
                     status: 'error',

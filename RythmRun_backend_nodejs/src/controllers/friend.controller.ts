@@ -66,7 +66,7 @@ export class FriendController {
 
     deleteFriendRequest = async (req: Request, res: Response) => {
         try {
-            const requestId = parseInt(req.params.requestId);
+            const requestId = parseInt(req.params.requestId as string);
             if (isNaN(requestId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -99,7 +99,7 @@ export class FriendController {
 
     acceptFriendRequest = async (req: Request, res: Response) => {
         try {
-            const requestId = parseInt(req.params.requestId);
+            const requestId = parseInt(req.params.requestId as string);
             if (isNaN(requestId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -132,7 +132,7 @@ export class FriendController {
 
     rejectFriendRequest = async (req: Request, res: Response) => {
         try {
-            const requestId = parseInt(req.params.requestId);
+            const requestId = parseInt(req.params.requestId as string);
             if (isNaN(requestId)) {
                 return res.status(400).json({
                     status: 'error',
@@ -183,7 +183,7 @@ export class FriendController {
 
     getFriendshipStatus = async (req: Request, res: Response) => {
         try {
-            const otherUserId = parseInt(req.params.userId);
+            const otherUserId = parseInt(req.params.userId as string);
             if (isNaN(otherUserId)) {
                 return res.status(400).json({
                     status: 'error',
