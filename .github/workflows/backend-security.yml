@@ -21,10 +21,10 @@ defaults:
 jobs:
   backend-security:
     name: Backend security
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rythmrun_ci?schema=public
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/rythmrun_ci?schema=public
 
     steps:
       - name: Check out repository
@@ -43,13 +43,19 @@ jobs:
         run: npm ci --no-audit
 
       - name: Validate Prisma schema
-        run: npx prisma validate
+        run: npx --no-install prisma validate
 
       - name: Generate Prisma client
-        run: npx prisma generate
+        run: npx --no-install prisma generate
 
       - name: Type-check backend
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Run backend tests
         run: npm test -- --ci --runInBand
+
+      - name: Build production backend
+        run: npm run build
+
+      - name: Smoke built ESM runtime
+        run: npm run smoke:runtime

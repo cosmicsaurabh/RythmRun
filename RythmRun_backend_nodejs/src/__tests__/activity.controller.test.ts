@@ -1,16 +1,17 @@
 import 'reflect-metadata';
+import { jest } from '@jest/globals';
 
-import { Request, Response } from 'express';
-import { ActivityController } from '../controllers/activity.controller';
+import type { Request, Response } from 'express';
+import { ActivityController } from '../controllers/activity.controller.js';
 import {
   ActivityDomainValidationError,
   ActivityNotFoundError,
-} from '../services/activity.service';
-import { MAX_ACTIVITY_LOCATIONS } from '../models/dto/activity.dto';
+} from '../services/activity.service.js';
+import { MAX_ACTIVITY_LOCATIONS } from '../models/dto/activity.dto.js';
 import {
   MAX_DTO_ISSUE_MESSAGE_LENGTH,
   MAX_DTO_ISSUE_PATH_LENGTH,
-} from '../middleware/validation.middleware';
+} from '../middleware/validation.middleware.js';
 
 function createResponse() {
   const response = {

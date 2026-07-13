@@ -175,6 +175,6 @@ export function validateServerEnvironment(
  * closed if any required runtime configuration is absent or unsafe.
  */
 export function loadAndValidateEnvironment(): ServerEnvironment {
-  dotenv.config();
+  dotenv.config({ quiet: true });
   return validateServerEnvironment(process.env);
 }

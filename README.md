@@ -15,7 +15,7 @@ RythmRun combines an Android-first Flutter client with a TypeScript modular mono
 | A workout must not be lost because the API is unavailable | The completed workout, accepted route points, and status history are committed in one SQLite transaction before any network request | Completed workouts are durable; an in-progress workout is still memory-resident and cannot yet recover after process death |
 | A timed-out request may already have committed remotely | Every workout carries a stable `clientSyncId`; PostgreSQL enforces uniqueness per user and the API resolves replays inside the creation transaction | Synchronization is queued client-to-server, not bidirectional device restore or conflict resolution |
 | Raw GPS samples are noisy and can corrupt metrics | A versioned acceptance policy rejects invalid coordinates, poor accuracy, non-monotonic timestamps, pause-boundary samples, and implausible speeds before distance is accumulated | Conservative thresholds favor metric integrity over retaining every sample |
-| Image upload is a multi-step distributed operation | Images are normalized, persisted to app-private storage, recorded in SQLite, uploaded directly to S3, confirmed by the API, and reconciled through an explicit state machine | Work resumes when the app runs again; this is not an OS-scheduled background worker |
+| Image upload is a multi-step distributed operation | Images are normalized, persisted to app-private storage, recorded in SQLite, uploaded directly to Cloudflare R2, confirmed by the API, and reconciled through an explicit state machine | Work resumes when the app runs again; this is not an OS-scheduled background worker |
 | Deleting or replacing media can fail halfway through | Delete tombstones, persisted retry timestamps, stale-operation recovery, idempotent confirmation, and upload-new-before-delete-old semantics preserve intent | Server cleanup currently uses a process-local retry loop rather than a leased job queue |
 | Account changes can race queued user-scoped work | Riverpod-wired operation gates drain synchronization, image, and profile work before credentials and providers are cleared | The current isolation work is unit-tested; device and staging verification remain release gates |
 
@@ -47,7 +47,7 @@ flowchart LR
     subgraph Server[Node.js modular monolith]
         API[Express routes + middleware]
         SERVICES[Controllers + services\nTSyringe-managed core graph]
-        PRISMA[Prisma data access]
+        PRISMA[Prisma 7.8 + PostgreSQL adapter\none injected client]
         PG[(PostgreSQL)]
         STORAGE[Storage adapter]
 
@@ -55,10 +55,9 @@ flowchart LR
         SERVICES --> STORAGE
     end
 
-    REPOS -->|Presigned PUT / POST| S3[(Amazon S3)]
-    STORAGE --> S3
-    R2[Cloudflare R2]
-    CF -->|Short-lived signed reads| REPOS
+    REPOS -->|Presigned PUT / POST| R2[(Cloudflare R2)]
+    STORAGE --> R2
+    R2 -->|Public / short-lived signed reads| REPOS
 ```
 
 ### Mobile application
@@ -76,16 +75,15 @@ Synchronization is intentionally tied to app-observable events: workout completi
 
 ### Backend
 
-The backend is a strict-TypeScript Express modular monolith with route, middleware, controller, service, DTO, and Prisma boundaries. This keeps transactions and deployment topology simple while the workload does not justify microservices, Kafka, Redis, or Kubernetes.
+The backend is a strict-TypeScript Express modular monolith running as native Node.js ESM, with route, middleware, controller, service, DTO, and Prisma boundaries. This keeps transactions and deployment topology simple while the workload does not justify microservices, Kafka, Redis, or Kubernetes.
 
-`createApp` is separate from listener and retry-loop startup, which makes HTTP-boundary tests deterministic. Startup validates database, JWT, and R2 configuration before infrastructure clients are constructed. Core user, activity, image, and avatar services share a TSyringe-managed Prisma client; older social modules have not yet completed that migration and are intentionally not part of the highlighted system.
+`createApp` is separate from listener, retry-loop, and signal-handling startup, which keeps imports side-effect-free and HTTP-boundary tests deterministic. Startup validates database, JWT, and R2 configuration before infrastructure clients are constructed. Prisma 7.8's `prisma-client` generator writes ESM TypeScript into `src/generated/prisma`; the ordinary TypeScript build emits that client with the application. One `PrismaPg` adapter-backed `PrismaClient` is created for the process, registered once in the TSyringe child container, injected into every database-using service, and disconnected through the server's idempotent shutdown path.
 
 ### Data, identity, and storage
 
-- **SQLite** stores workouts, accepted GPS points, status transitions, image state, and remote-deletion tombstones. Schema migrations preserve compatibility through database version 5.
+- **SQLite** stores workouts, accepted GPS points, status transitions, image state, and remote-deletion tombstones. Schema migrations preserve compatibility through database version 6.
 - **PostgreSQL** stores canonical server records and enforces relational ownership, cascading deletion, image identity, avatar intents, and `(userId, clientSyncId)` uniqueness.
-- **S3** stores binary media. PostgreSQL stores object identity and lifecycle state rather than blobs.
-- **Cloudflare R2** serves activity images and avatars through short-lived signed URLs.
+- **Cloudflare R2** stores binary media through its S3-compatible API. PostgreSQL stores object identity and lifecycle state rather than blobs; activity reads are short-lived signed URLs while configured public delivery supports the intended public objects.
 - **JWTs** authenticate API calls. Access and refresh secrets are distinct and validated at startup; the current refresh/session contract still has known gaps documented below.
 
 There is no AI or LLM integration in the repository. Generated summaries are explicitly deferred rather than represented by unused infrastructure.
@@ -126,16 +124,16 @@ sequenceDiagram
     participant L as Local files + SQLite
     participant A as Express API
     participant P as PostgreSQL
-    participant S as S3
+    participant R as Cloudflare R2
 
     C->>C: Decode, resize, thumbnail, hash
     C->>L: Persist files and queued clientImageId
     C->>A: Request upload authorization for owned activity
     A->>P: Create or resolve pending image record
     A-->>C: Server-issued key + short-lived upload URL
-    C->>S: PUT normalized bytes directly
+    C->>R: PUT normalized bytes directly
     C->>A: Confirm upload metadata
-    A->>S: HEAD object
+    A->>R: HEAD object
     A->>P: Mark image uploaded
     A-->>C: Image metadata + signed read URL
     C->>L: Mark local operation uploaded
@@ -163,18 +161,22 @@ The byte upload deliberately disables generic automatic retry. A later attempt r
 | **SQLite before network** | Workout completion is a local durability boundary rather than an API availability decision | Schema migrations, queue state, and reconciliation become application responsibilities |
 | **Client-generated identities** | Stable IDs separate operation identity from a particular HTTP attempt | The identity contract must be preserved through every persistence and API layer |
 | **Versioned GPS and metric contracts** | Historical workouts retain the rules and units used to calculate them while algorithms evolve | Multiple versions must remain readable and tested |
-| **Modular monolith + dependency injection** | Transactions remain local, deployment stays simple, and infrastructure adapters can be replaced in tests | Process-local timers and partially migrated legacy modules limit horizontal scaling today |
-| **S3 metadata split** | Large bytes bypass Express and PostgreSQL; the API retains ownership and lifecycle control | Presigning, confirmation, orphan cleanup, and signed delivery create a multi-step protocol |
+| **Modular monolith + dependency injection** | Transactions remain local, deployment stays simple, and one adapter-backed database client can be replaced at the composition boundary in tests | Process-local timers and a single-process container lifecycle limit horizontal scaling today |
+| **R2 object-metadata split** | Large bytes bypass Express and PostgreSQL through the S3-compatible R2 API; the backend retains ownership and lifecycle control | Presigning, confirmation, orphan cleanup, and signed delivery create a multi-step protocol |
 
-The image design explicitly favored S3 metadata over database blobs or API-proxied uploads. The engineering plan also records a deliberate decision to keep the modular monolith and add distributed infrastructure only when measurements or failure modes justify it.
+The image design explicitly favored R2 object metadata over database blobs or API-proxied uploads. The engineering plan also records a deliberate decision to keep the modular monolith and add distributed infrastructure only when measurements or failure modes justify it.
 
 ## Repository structure
 
 ```text
 .
 ├── RythmRun_backend_nodejs/
+│   ├── prisma.config.ts          # Prisma 7 datasource, migration, and seed configuration
 │   ├── prisma/                   # PostgreSQL schema and ordered migrations
+│   ├── scripts/                  # Built native-ESM runtime smoke checks
 │   └── src/
+│       ├── config/               # Environment, DI, and adapter-backed database lifecycle
+│       ├── generated/prisma/     # Generated Prisma ESM source (created by prisma generate)
 │       ├── routes/               # HTTP surface
 │       ├── middleware/           # JWT, validation, security boundaries
 │       ├── controllers/          # Transport-to-service adapters
@@ -190,7 +192,7 @@ The image design explicitly favored S3 metadata over database blobs or API-proxi
 │   └── test/                     # Tracking, persistence, repository, state tests
 ├── docs/_engineering/
 │   └── improvement-plan/         # Risk register, phased plan, evidence logs
-└── .github/workflows/            # Backend validation workflow
+└── .github/workflows/            # Backend and Flutter validation workflows
 ```
 
 ## Technology stack
@@ -202,12 +204,12 @@ The image design explicitly favored S3 metadata over database blobs or API-proxi
 | Location and maps | Geolocator, `flutter_map` | GPS acquisition and route visualization |
 | Local persistence | `sqflite`, app-private files | Workout transaction boundary, queues, image durability |
 | Networking | Dart `http` | Reused client, environment timeouts, retry policy overrides |
-| API | Node.js 22, Express, strict TypeScript | Authenticated HTTP boundary and workflow orchestration |
-| Backend dependency graph | TSyringe | Shared infrastructure and injectable core services |
-| Database | PostgreSQL, Prisma | Canonical relational state, migrations, constraints, transactions |
+| API | Node.js 22 native ESM, Express, strict TypeScript | Authenticated HTTP boundary and workflow orchestration |
+| Backend dependency graph | TSyringe | One process-owned Prisma client plus injectable services and infrastructure adapters |
+| Database | PostgreSQL, Prisma 7.8, `@prisma/adapter-pg` | Canonical relational state, migrations, constraints, transactions, and explicit pool lifecycle |
 | Binary storage and delivery | Cloudflare R2 | Direct uploads and signed image reads |
 | Authentication and validation | JWT, bcrypt, Helmet, class-validator | Identity, password hashing, headers, DTO allowlists |
-| Verification | Flutter Test, Jest, TypeScript, Prisma CLI | Unit, repository, HTTP, type, and schema checks |
+| Verification | Flutter Test, native-ESM Jest, TypeScript, Prisma CLI, built-runtime smoke | Unit, repository, HTTP, type, schema, generated-client, and built-artifact checks |
 
 ## Performance and reliability
 
@@ -218,7 +220,7 @@ Implemented controls are concrete, but they are not presented as benchmark resul
 - Backend activity pagination is bounded to 50 records per request.
 - Images are normalized before upload: maximum 1600-pixel edge, JPEG quality 82, and a 300-pixel thumbnail.
 - Image retry schedules and next-attempt times survive restarts; retry delay includes ±20% jitter.
-- Direct-to-S3 upload removes image bytes from the API server and database path.
+- Direct-to-R2 upload removes image bytes from the API server and database path.
 - A reused mobile HTTP client applies 30/15/10-second development/staging/production timeouts and permits risky byte-transfer retries to be disabled.
 - Signed image URLs are short-lived and can be refreshed without re-uploading the object.
 - Workout deletion hides the record immediately while a durable tombstone completes remote deletion later.
@@ -236,7 +238,7 @@ Known performance limits include image transforms on the Flutter UI isolate, eag
 - Avatar presigned policies bind the exact key, MIME type, and byte length; confirmation rechecks object metadata before selection.
 - User-facing activity list and detail responses replace stored R2 keys with short-lived signed R2 URLs; upload-protocol responses still return the key needed by the client.
 - Avatar cleanup rechecks the currently selected object before deleting an older one.
-- The tracked backend workflow uses read-only GitHub permissions, immutable action SHAs, timeouts, and concurrency cancellation.
+- The tracked backend and Flutter workflows use read-only GitHub permissions, immutable action SHAs, pinned runners/toolchains, timeouts, non-persisted checkout credentials, and concurrency cancellation.
 
 ### Open risks
 
@@ -244,7 +246,7 @@ Known performance limits include image transforms on the Flutter UI isolate, eag
 - The refresh-token route and mobile response contract are not aligned, registration does not persist its refresh token, and access-token revocation is incomplete.
 - Refresh tokens are stored unhashed in PostgreSQL and the model permits only one server-side session per user.
 - CORS is currently unrestricted, general API rate limiting is absent, and public activity defaults require a privacy review.
-- Nested activity route and status payloads are not recursively validated, and long GPS payloads retain Express's default request-size limit.
+- Authenticated activity create/PATCH routes now have bounded nested validation, capped error output, an explicit 3 MiB parser, and interim per-user/process admission; deployed proxy alignment, resource limits, real PostgreSQL rollback/concurrency, and prior-client compatibility still require MC-1.8 staging proof.
 - Activity-image confirmation does not yet verify MIME type and checksum end to end; stale pending server uploads need orphan cleanup.
 - Hosted CI, dependency/security scanning, credential rotation evidence, infrastructure policy, backup/restore, and staging verification are not proven by source tests.
 
@@ -252,17 +254,20 @@ These gaps are tracked as release work rather than hidden behind a blanket “se
 
 ## Verification
 
-Local verification on **2026-07-11**:
+Local verification on **2026-07-13**:
 
 | Check | Result |
 | --- | --- |
-| Backend Jest suite | 11 suites, 150 tests passed |
-| TypeScript | `npx tsc --noEmit` passed |
-| Prisma schema | `npx prisma validate` passed |
-| Flutter tests | 130 tests passed |
-| Flutter analyzer | 0 errors, 0 warnings; 20 informational lints remain |
+| Backend clean-install contract | Node 22.22.3 `npm ci --no-audit` restored 612 packages from the lockfile, including exact Prisma CLI/client/adapter 7.8.0, `pg` 8.22.0, and Node 22 types |
+| Backend Jest suite | 15 native-ESM suites and 244 tests passed, including loopback HTTP and database-lifecycle coverage |
+| TypeScript | `npm run typecheck` passed with NodeNext resolution, explicit `.js` specifiers, and generated-client type imports |
+| Prisma schema/client | `prisma.config.ts` owns the datasource URL and migration path; `prisma-client` is configured to generate native-ESM TypeScript under `src/generated/prisma`; the final clean validation/generation rerun is pending |
+| Backend build/runtime smoke | The clean production build passed; the emitted runtime started, returned `200` from `/health`, rejected an unauthenticated protected request with `401`, and shut down cleanly |
+| Flutter tests | 189 tests passed, including 8 analyzer-baseline tests |
+| Flutter analyzer | 0 errors, 0 warnings; the exact 20-finding informational multiset baseline passed |
+| Changed Dart formatting | 3 changed/new files passed |
 
-The repository contains a backend validation workflow for clean install, Prisma validation/generation, type checking, and Jest. Its presence is source evidence only; successful hosted execution and default-branch protection are still recorded as operational checks.
+The repository contains separate stable `Backend security` and `Flutter CI` workflows. The latter pins Flutter 3.44.1/Dart 3.12.1, enforces the lockfile, checks merge-base-changed Dart formatting, rejects warning/error analysis, compares the informational multiset baseline, and runs all Flutter tests. These files and local results are source evidence only: hosted success, independent failure probes, protected CI-control review, and required default-branch checks remain MC-0.7 through MC-0.9 and MC-1.9 through MC-1.11. Local backend verification used Node 22.22.3; the workflow's exact Node 22.23.1 path still needs hosted proof.
 
 ## Getting started
 
@@ -270,7 +275,7 @@ The repository contains a backend validation workflow for clean install, Prisma 
 
 - Node.js 22.x
 - A PostgreSQL database
-- Flutter with a Dart SDK compatible with `^3.7.0`
+- Flutter 3.44.1 with Dart 3.12.1 (the repository pin is `.flutter-version`)
 - Android SDK and an emulator or device
 - Cloudflare R2 configuration; the backend currently validates these at startup even when media flows are not exercised
 
@@ -287,22 +292,23 @@ npm ci --no-audit
 cp .env.example .env
 
 # Replace every placeholder before startup.
-npx prisma generate
-npx prisma migrate dev
+npm run prisma:generate
+npm run prisma:migrate
 npm run dev
 ```
 
-The API listens on port `8080` by default. Required configuration is grouped by responsibility:
+The API listens on port `8080` by default. The development command regenerates and compiles the native-ESM backend before starting it; production startup uses the same built `dist/main.js` entry point. Required configuration is grouped by responsibility:
 
 | Responsibility | Variables |
 | --- | --- |
 | Database | `DATABASE_URL` |
 | JWT | `JWT_SECRET`, `REFRESH_TOKEN_SECRET` |
-| S3 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET` |
-| Signed delivery | `CLOUDFRONT_DOMAIN`, `CLOUDFRONT_KEY_PAIR_ID`, `CLOUDFRONT_PRIVATE_KEY` |
+| R2 account/credentials | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` |
+| R2 buckets | `R2_BUCKET_AVATARS`, `R2_BUCKET_ACTIVITY_IMAGES` |
+| R2 delivery | `R2_PUBLIC_URL` |
 | Runtime | `PORT`, `NODE_ENV` |
 
-Use a least-privilege AWS identity and keep escaped newlines in a one-line `CLOUDFRONT_PRIVATE_KEY`. The validator rejects documented placeholders, short or identical JWT secrets, and malformed configuration.
+Use least-privilege R2 credentials scoped to the reviewed buckets and delivery configuration. The validator rejects documented placeholders, short or identical JWT secrets, and missing configuration.
 
 ### Flutter client
 
@@ -310,7 +316,7 @@ Before running, update the development API values in [`app_config.dart`](rythmru
 
 ```bash
 cd rythmrun_frontend_flutter
-flutter pub get
+flutter pub get --enforce-lockfile
 flutter run
 ```
 
@@ -320,13 +326,22 @@ The checked-in development URL is a LAN address and will not work on another mac
 
 ```bash
 cd RythmRun_backend_nodejs
+npx --no-install prisma validate
+npm run typecheck
+npm run build
+npm run smoke:runtime
 npm test -- --runInBand
-npx tsc --noEmit
-npx prisma validate
 
 cd ../rythmrun_frontend_flutter
-flutter test
-flutter analyze
+flutter pub get --enforce-lockfile
+flutter test --no-pub
+flutter analyze --no-pub --no-fatal-infos
+dart analyze --format machine > /tmp/rythmrun-analyzer.machine
+dart run tool/ci/analyzer_baseline.dart check \
+  --input /tmp/rythmrun-analyzer.machine \
+  --baseline tool/ci/analyzer_baseline.json \
+  --repository-root .. \
+  --package-root .
 ```
 
 ## Future improvements
@@ -338,7 +353,7 @@ The next steps are ordered by risk rather than feature visibility:
 3. **Persist active workouts:** checkpoint the tracking timeline and accepted route so process death, reboot, and OS suspension can recover safely; add Android foreground-service behavior where required.
 4. **Add server-to-client restore:** introduce cursors, revisions, tombstones, chunked route transfer, and a documented conflict policy before calling synchronization bidirectional.
 5. **Externalize asynchronous cleanup:** replace process-local polling with leased durable work, readiness checks, graceful shutdown, structured logs, request IDs, metrics, and alerts.
-6. **Raise the verification bar:** add PostgreSQL integration and migration tests, device-level offline/restart tests, storage lifecycle tests, load baselines, API contracts, and mobile CI.
+6. **Raise the verification bar:** add PostgreSQL integration and migration tests, device-level offline/restart tests, storage lifecycle tests, load baselines, API contracts, and release/device CI evidence.
 
 AI summaries, social expansion, microservices, and additional infrastructure remain deliberately out of scope until the core durability, privacy, and operational evidence is complete.
 
@@ -357,10 +372,14 @@ AI summaries, social expansion, microservices, and additional infrastructure rem
 - [Activity-image reconciliation](rythmrun_frontend_flutter/lib/data/repositories/activity_image_repository_impl.dart)
 - [Retry-safe activity service](RythmRun_backend_nodejs/src/services/activity.service.ts)
 - [Avatar intent and cleanup workflow](RythmRun_backend_nodejs/src/services/avatar.service.ts)
+- [Prisma 7 adapter and pool lifecycle](RythmRun_backend_nodejs/src/config/database.ts)
+- [Built native-ESM runtime smoke](RythmRun_backend_nodejs/scripts/smoke-built-runtime.mjs)
 - [Improvement program and architecture decisions](docs/_engineering/improvement-plan/README.md)
 - [Audit traceability: finding → code → test → operational evidence](docs/_engineering/improvement-plan/AUDIT-TRACEABILITY.md)
 - [Manual verification register](docs/_engineering/improvement-plan/MANUAL-CHECKS.md)
 - [PostgreSQL schema](RythmRun_backend_nodejs/prisma/schema.prisma)
 - [Backend validation workflow](.github/workflows/backend-security.yml)
+- [Flutter validation workflow](.github/workflows/ci.yml)
+- [Analyzer baseline gate](rythmrun_frontend_flutter/tool/ci/analyzer_baseline.dart)
 
 The improvement program is intentionally explicit about what code and tests establish, what still requires a real device or infrastructure, and which claims must remain blocked until evidence exists.

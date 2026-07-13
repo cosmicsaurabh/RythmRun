@@ -4,7 +4,7 @@ published: false
 
 # RythmRun improvement program
 
-> Program status: IP-0 remains the release blocker and its operational evidence is still open. The maintainer has explicitly selected repository-only IP-1 work in parallel and the current package is IP-1.5; this does not authorize migration execution, deployment, or production enablement.
+> Program status: IP-0 remains the release blocker and its operational evidence is still open. The maintainer has explicitly selected repository-only IP-1 work in parallel and the current package is IP-1.6; this does not authorize migration execution, deployment, or production enablement.
 
 This directory turns the repository audit dated 2026-07-10 into an implementation-ready hardening program. It is the canonical place to track the current improvement phase, the next five phases, their decisions, and the evidence required to mark work complete.
 
@@ -29,9 +29,10 @@ The first code-remediation slice, commit `e33f314`, is merged into `origin/main`
 - **Repository-delivered; rollout pending:** IP-1.1 canonical metric contracts and provenance are committed in `ba7b288`; production sampling, backup, rollout, and compatibility remain MC-1.1 through MC-1.4.
 - **Repository-delivered; device verification pending:** IP-1.2 one GPS acceptance policy, deterministic pause timeline, provider-owned route, and map/elevation segmentation is committed in `c41d3dc`; MC-1.5 remains open.
 - **Repository-delivered; device/staging verification pending:** IP-1.3 explicit nullable-state clearing, serialized live/auth operations, restart-safe credential cleanup, active-workout exit decisions, and A→B cache isolation is committed in `06369b7`. MC-1.6 remains open.
-- **Repository-delivered; device/hosted verification pending:** IP-1.4 owner-bound local workout/image access plus SQLite v6 foreign-key, orphan-repair, duplicate-quarantine, cascade, and index enforcement is committed in `a976f4c`. Hosted Flutter CI and MC-1.7 Android in-place migration proof remain open.
-- **Current repository package:** IP-1.5 preserves omitted PATCH history, serializes conflicting partial PATCH merges, bounds nested workout validation and error output, and gives only authenticated activity create/PATCH routes a measured 3 MiB parser behind interim per-user/process admission. The mobile client now emits UTC timestamps and durably stops retrying permanent `400`/`413`/`422` activity rejections by using the existing SQLite v6 block marker. Deployed proxy, memory/latency, real PostgreSQL rollback/concurrency, prior-client timestamp compatibility, and sanitized-telemetry proof remain open under MC-1.8.
-- **Manual/hosted gates:** use [MANUAL-CHECKS.md](./MANUAL-CHECKS.md) for hosted CI, intentional-failure, branch-protection, dependency-audit, deployment, incident, infrastructure, staging, and controlled-reopen evidence.
+- **Repository-delivered; device/hosted verification pending:** IP-1.4 owner-bound local workout/image access plus SQLite v6 foreign-key, orphan-repair, duplicate-quarantine, cascade, and index enforcement is committed in `a976f4c`. MC-1.7 Android in-place migration proof and MC-1.9 hosted FFI execution remain open.
+- **Repository-delivered; staging verification pending:** IP-1.5 preserves omitted PATCH history, serializes conflicting partial PATCH merges, bounds nested workout validation and error output, and gives only authenticated activity create/PATCH routes a measured 3 MiB parser behind interim per-user/process admission. The mobile client emits UTC timestamps and durably stops retrying permanent `400`/`413`/`422` activity rejections. Repository delivery is committed in `d2c1b95`; MC-1.8 still owns deployed proxy, resource, PostgreSQL, compatibility, and telemetry proof.
+- **Current repository package:** IP-1.6 preserves the stable `Backend security` check and completes the previously incomplete Prisma 7 upgrade with exact Prisma 7.8 packages, the `prisma-client` generator, `prisma.config.ts`, a PostgreSQL driver adapter, one DI-managed client/pool, and a native NodeNext ESM backend with explicit startup and cleanup ownership. Its backend gate validates/generates the schema/client, type-checks production source, runs native ESM Jest, emits the production build, and exercises that built graph through a no-database runtime smoke. The separate pinned `Flutter CI` workflow restores the lockfile, formats merge-base-changed Dart files, rejects analyzer errors/warnings, protects the current 20-finding informational multiset baseline, and runs the full test suite. On Node 22.22.3, the final clean install, Prisma validation/generation, production typecheck/build, 15-suite/244-test native ESM run, and built runtime smoke passed locally; the Flutter package retains its 189-test and exact 20-information/zero-warning/zero-error local evidence.
+- **Manual/hosted gates:** use [MANUAL-CHECKS.md](./MANUAL-CHECKS.md) for hosted CI, intentional-failure, branch-protection, dependency-audit, deployment, incident, infrastructure, staging, and controlled-reopen evidence. MC-1.9 through MC-1.11 keep Flutter/required-check evidence separate from repository delivery; MC-1.12 and MC-1.13 own real PostgreSQL/TLS/pool/migration proof and deployment-order/SIGTERM proof that the repository smoke cannot provide.
 - **Concurrent owner action:** IP-0.6 — determine exposure and rotate/revoke credentials when it cannot be excluded.
 
 For subsequent work, take the lowest-numbered unblocked work package in the current phase. A maintainer may combine tightly coupled packages, but must not mark either complete until both sets of acceptance criteria pass. See [audit finding traceability](./AUDIT-TRACEABILITY.md) for the complete mapping.
@@ -79,13 +80,13 @@ The maintainer explicitly selected IP-1 repository development on 2026-07-11 whi
 
 ## What remains unchanged
 
-- Keep Flutter, Riverpod, Express, Prisma, PostgreSQL, SQLite, and S3/CloudFront.
+- Keep Flutter, Riverpod, Express, Prisma, PostgreSQL, SQLite, and Cloudflare R2 through its S3-compatible API.
 - Keep the backend as a modular monolith.
 - Keep local-first workout completion.
 - Preserve `(userId, clientSyncId)` idempotency.
 - Preserve queued remote workout deletion.
 - Preserve the activity-image upload/retry/replace/delete state machine.
-- Keep direct-to-S3 upload and signed CDN reads after hardening them.
+- Keep direct-to-R2 upload and the reviewed public/signed read contracts after hardening them.
 - Keep history list payloads lightweight and load route points only for details.
 - Do not introduce Redis, Kafka, Kubernetes, microservices, event streaming, or generalized AI infrastructure without measured evidence that a completed phase cannot meet its target without them.
 
@@ -137,17 +138,25 @@ Run from the repository root unless a phase adds more specific commands.
 ```bash
 cd RythmRun_backend_nodejs
 npm ci --no-audit
-npx prisma validate
-npx prisma generate
-npm test -- --runInBand
-npx tsc --noEmit
+npx --no-install prisma validate
+npx --no-install prisma generate
+npm run typecheck
+npm test -- --ci --runInBand
+npm run build
+npm run smoke:runtime
 ```
 
 ```bash
 cd rythmrun_frontend_flutter
-flutter pub get
-flutter test
-flutter analyze
+flutter pub get --enforce-lockfile
+flutter test --no-pub
+flutter analyze --no-pub --no-fatal-infos
+dart analyze --format machine > /tmp/rythmrun-analyzer.machine
+dart run tool/ci/analyzer_baseline.dart check \
+  --input /tmp/rythmrun-analyzer.machine \
+  --baseline tool/ci/analyzer_baseline.json \
+  --repository-root .. \
+  --package-root .
 ```
 
 For dependency review, use MC-0.10 in the [manual verification register](./MANUAL-CHECKS.md). Run the outbound command only after explicit approval, record the date and full report in the approved evidence location, and do not silently accept advisories:
@@ -157,7 +166,7 @@ cd RythmRun_backend_nodejs
 npm audit --omit=dev
 ```
 
-The audit baseline on 2026-07-10 was 25 backend tests passing, TypeScript passing, 15 Flutter tests passing, and 159 Flutter analyzer findings (6 warnings and 153 informational findings). This is a comparison baseline, not an acceptable final quality target.
+The audit baseline on 2026-07-10 was 25 backend tests passing, TypeScript passing, 15 Flutter tests passing, and 159 Flutter analyzer findings (6 warnings and 153 informational findings). By IP-1.6 the repository is at 20 informational findings and zero warnings/errors; the committed multiset baseline prevents increases but does not make those 20 findings acceptable forever.
 
 ## Required evidence format
 
@@ -177,7 +186,7 @@ Do not mark a phase complete using only a commit hash. Include the test or opera
 | D-002 | Use `IP-0` through `IP-5` for implementation planning. | The audit already labels its review sections as phases. |
 | D-003 | Canonical workout units will be meters, seconds, and meters/second; presentation converts at the boundary. | GPS speed and the existing entity contract are already expressed as m/s, and this avoids double conversion. |
 | D-004 | Completed local workouts remain local-first and are retained per account across logout, but all reads/mutations must be user-scoped. | Offline history is core product value; access isolation is mandatory. Account deletion must purge the user's local and remote data. |
-| D-005 | The S3 avatar pipeline is the target implementation; the local filesystem avatar pipeline is retired after a controlled compatibility window. | Two pipelines create conflicting security and lifecycle behavior. |
+| D-005 | The Cloudflare R2 avatar pipeline is the target implementation; the local filesystem avatar pipeline is retired after a controlled compatibility window. | Two pipelines create conflicting security and lifecycle behavior. |
 | D-006 | New activities default to private. Public sharing requires an explicit privacy model and route redaction. | Exact GPS start/end points are sensitive. |
 | D-007 | Social work remains disabled/deferred until authentication, privacy, moderation, and route visibility are complete. | Current social routes are broken and there is no frontend journey. |
 | D-008 | Android is the only promised platform until IP-5 either proves iOS readiness or explicitly keeps iOS out of release scope. | iOS currently lacks required photo, AdMob, and background behavior configuration. |
@@ -185,6 +194,8 @@ Do not mark a phase complete using only a commit hash. Include the test or opera
 | D-010 | Access tokens include a session ID and authenticated requests verify that the session remains active. | Logout/password/account revocation must take effect before natural access-token expiry at current MVP scale. |
 | D-011 | Voluntary logout/account switch requires Finish or Discard while a workout is active; forced authentication loss attempts local finalization and blocks cleanup on failed save/GPS shutdown until recovery; direct cross-user authentication is rejected until prior-user live, sync, profile, and auth work drains and durable credentials clear. | Tracking and late callbacks must never continue silently or move state to another account. Durable process-death recovery remains IP-3. |
 | D-012 | For an exact same-user `client_sync_id` collision, retain one deterministic canonical row and quarantine additional local rows from synchronization; if the rows already map to different remote activities, fail and roll back the migration. Never turn an ambiguous duplicate into a new uploadable identity. | A new uploadable ID could create a second remote activity after a lost response. Quarantine preserves local data while failing closed on remote identity ambiguity. |
+| D-013 | Keep stable backend and Flutter CI as separate required checks; pin runners, toolchains, and action commits; baseline informational analyzer findings as a counted multiset while warnings/errors remain fatal. | Separate stable names preserve existing branch-protection evidence, and counted fingerprints prevent line movement or duplicate lints from bypassing the quality gate. |
+| D-014 | Run the backend on exact Prisma 7.8 with the `prisma-client` generator, PostgreSQL driver adapter, one DI-owned client/pool, and native NodeNext ESM. | The dependency-only Prisma 7 update could not validate or run against the Prisma 6 schema/client construction model. Completing the configuration, adapter, generated-output, module, and lifecycle migration removes that hidden local-client dependency while keeping PostgreSQL as the datastore. |
 
 ## Decisions that still require an owner
 

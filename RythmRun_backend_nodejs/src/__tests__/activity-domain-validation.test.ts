@@ -7,12 +7,12 @@ import {
   MAX_ACTIVITY_WALL_SECONDS,
   validateActivityCreate,
   validateMergedActivityUpdate,
-} from '../models/activity-domain-validation';
+} from '../models/activity-domain-validation.js';
 import {
   CreateActivityDto,
   CURRENT_METRICS_VERSION,
   LEGACY_METRICS_VERSION,
-} from '../models/dto/activity.dto';
+} from '../models/dto/activity.dto.js';
 
 const startTime = new Date('2026-03-22T10:00:00.000Z');
 const endTime = new Date('2026-03-22T10:10:00.000Z');

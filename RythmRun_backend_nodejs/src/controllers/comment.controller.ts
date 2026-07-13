@@ -1,6 +1,6 @@
-import { Request, Response } from 'express';
-import { CommentService } from '../services/comment.service';
-import { CreateCommentDto } from '../models/dto/comment.dto';
+import type { Request, Response } from 'express';
+import { CommentService } from '../services/comment.service.js';
+import { CreateCommentDto } from '../models/dto/comment.dto.js';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
 import { injectable, inject } from "tsyringe";
@@ -238,4 +238,4 @@ export class CommentController {
             });
         }
     };
-} 
+}

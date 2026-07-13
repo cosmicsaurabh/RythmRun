@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { container } from '../config/container';
-import { LikeController } from '../controllers/like.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { container } from '../config/container.js';
+import { LikeController } from '../controllers/like.controller.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
 
 // Simple router without mergeParams
 const router = Router();

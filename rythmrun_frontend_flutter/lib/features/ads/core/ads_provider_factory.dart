@@ -15,6 +15,11 @@ class AdsProviderFactory {
   }
 
   AdsProvider create(AdsConfig config) {
+    if (!config.adsEnabled) {
+      final noOpBuilder = _builders[AdsProviderType.noOp];
+      return noOpBuilder?.call(config) ?? const NoOpAdsProvider();
+    }
+
     final builder = _builders[config.providerType];
     if (builder != null) {
       return builder(config);

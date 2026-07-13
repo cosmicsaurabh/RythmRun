@@ -1,13 +1,13 @@
-import express, {
+import express, { Router } from 'express';
+import type {
   NextFunction,
   Request,
   RequestHandler,
   Response,
-  Router,
 } from 'express';
-import { container } from '../config/container';
-import { ActivityController } from '../controllers/activity.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { container } from '../config/container.js';
+import { ActivityController } from '../controllers/activity.controller.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
 
 export const ACTIVITY_JSON_LIMIT_BYTES = 3 * 1024 * 1024;
 export const ACTIVITY_GLOBAL_CONCURRENCY_LIMIT = 4;

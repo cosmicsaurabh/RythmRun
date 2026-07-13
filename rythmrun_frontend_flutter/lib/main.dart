@@ -1,7 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:rythmrun_frontend_flutter/features/ads/service/ads_providers.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/connectivity_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/landing_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/login/screens/login_screen.dart';
@@ -79,7 +78,6 @@ class _RythmRunAppState extends ConsumerState<RythmRunApp>
 
   @override
   Widget build(BuildContext context) {
-    ref.read(adsServiceProvider).initialize();
     ref.listen<SessionData>(sessionProvider, (previous, next) {
       final hadSyncAccess = FeatureGate.isFeatureAvailable(
         'sync_workouts',

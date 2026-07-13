@@ -1,17 +1,17 @@
-import { Prisma, PrismaClient } from '../../generated/prisma';
+import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import {
     GetActivitiesQueryDto,
     CreateActivityDto,
     UpdateActivityDto,
     LEGACY_METRICS_VERSION,
-} from '../models/dto/activity.dto';
+} from '../models/dto/activity.dto.js';
 import {
     ActivityDomainValidationError,
     validateActivityCreate,
     validateMergedActivityUpdate,
-} from '../models/activity-domain-validation';
+} from '../models/activity-domain-validation.js';
 import { injectable, inject } from "tsyringe";
-import s3Service from './s3.service';
+import s3Service from './s3.service.js';
 
 type ActivityImageWithS3Key = {
     s3Key: string;

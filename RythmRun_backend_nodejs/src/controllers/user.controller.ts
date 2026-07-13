@@ -1,8 +1,8 @@
-import { Request, Response } from 'express';
-import { UserService } from '../services/user.service';
-import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto';
+import type { Request, Response } from 'express';
+import { UserService } from '../services/user.service.js';
+import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto.js';
 import { injectable, inject } from "tsyringe";
-import { validateDto } from '../middleware/validation.middleware';
+import { validateDto } from '../middleware/validation.middleware.js';
 
 @injectable()
 export class UserController {

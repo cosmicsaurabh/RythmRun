@@ -1,18 +1,19 @@
 import 'reflect-metadata';
+import { jest } from '@jest/globals';
 
-import { AvatarController } from '../controllers/avatar.controller';
-import { validateDto } from '../middleware/validation.middleware';
+import { AvatarController } from '../controllers/avatar.controller.js';
+import { validateDto } from '../middleware/validation.middleware.js';
 import {
   ConfirmAvatarUploadDto,
   RequestAvatarUploadDto,
-} from '../models/dto/avatar.dto';
+} from '../models/dto/avatar.dto.js';
 import {
   AVATAR_UPLOAD_INTENT_TTL_MS,
   AvatarService,
   AvatarServiceError,
   MAX_AVATAR_UPLOAD_REQUESTS_PER_WINDOW,
   MAX_PENDING_AVATAR_UPLOADS,
-} from '../services/avatar.service';
+} from '../services/avatar.service.js';
 
 const NOW = new Date('2026-07-10T10:00:00.000Z');
 const USER_ID = 1;

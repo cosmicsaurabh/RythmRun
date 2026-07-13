@@ -1,9 +1,19 @@
 import 'reflect-metadata';
-import type { Server } from 'http';
-import type { ActivityImageService } from './services/activity-image.service';
-import type { AvatarService } from './services/avatar.service';
-import os from 'os';
-import { loadAndValidateEnvironment } from './config/env';
+import type { Server } from 'node:http';
+import os from 'node:os';
+
+import { loadAndValidateEnvironment } from './config/env.js';
+import type { DatabaseRuntime } from './config/database.js';
+import type { ActivityImageService } from './services/activity-image.service.js';
+import type { AvatarService } from './services/avatar.service.js';
+
+export interface StartServerOptions {
+  host?: string;
+  port?: number;
+  retryIntervalMs?: number;
+}
+
+const cleanupByServer = new WeakMap<Server, () => Promise<void>>();
 
 function runRetry(operation: string, retry: () => Promise<void>): void {
   try {
@@ -53,7 +63,7 @@ function logListeningAddresses(port: number): void {
   console.log(`For Flutter, use: ${suggestedAddress}/api`);
 }
 
-function getPort(): number {
+function getConfiguredPort(): number {
   const rawPort = process.env.PORT ?? '8080';
   const port = Number(rawPort);
 
@@ -64,67 +74,142 @@ function getPort(): number {
   return port;
 }
 
+function getPort(override: number | undefined): number {
+  if (override === undefined) {
+    return getConfiguredPort();
+  }
+  if (!Number.isInteger(override) || override < 0 || override > 65535) {
+    throw new Error('Explicit port must be an integer between 0 and 65535');
+  }
+  return override;
+}
+
+function createRuntimeCleanup(
+  retryTimer: NodeJS.Timeout,
+  database: DatabaseRuntime,
+): () => Promise<void> {
+  let cleanup: Promise<void> | undefined;
+  return () => {
+    cleanup ??= (async () => {
+      clearInterval(retryTimer);
+      await database.disconnect();
+    })();
+    return cleanup;
+  };
+}
+
 /**
  * Validates configuration before importing any module that constructs Prisma
  * or S3 consumers, then starts the HTTP listener and background retry timer.
  */
-export async function startServer(): Promise<Server> {
-  loadAndValidateEnvironment();
-  const port = getPort();
+export async function startServer(
+  options: StartServerOptions = {},
+): Promise<Server> {
+  const environment = loadAndValidateEnvironment();
+  const port = getPort(options.port);
+  let database: DatabaseRuntime | undefined;
 
-  const [
-    { createApp },
-    { container },
-    { default: userRoutes },
-    { default: friendRoutes },
-    { default: avatarRoutes },
-    { default: activityImageRoutes },
-    { default: activityRoutes },
-    { default: commentRoutes },
-    { default: likeRoutes },
-  ] = await Promise.all([
-    import('./app'),
-    import('./config/container'),
-    import('./routes/user.routes'),
-    import('./routes/friend.routes'),
-    import('./routes/avatar.routes'),
-    import('./routes/activity-image.routes'),
-    import('./routes/activity.routes'),
-    import('./routes/comment.routes'),
-    import('./routes/like.routes'),
-  ]);
-
-  const app = createApp({
-    users: userRoutes,
-    friends: friendRoutes,
-    avatar: avatarRoutes,
-    activityImages: activityImageRoutes,
-    activities: activityRoutes,
-    comments: commentRoutes,
-    likes: likeRoutes,
-  });
-
-  const retryTimer = setInterval(() => {
-    runRetry('Activity image delete', () =>
-      container
-        .resolve<ActivityImageService>('ActivityImageService')
-        .retryPendingDeletes(),
+  try {
+    const { configureContainer, container } = await import(
+      './config/container.js'
     );
-    runRetry('Avatar cleanup', () =>
-      container.resolve<AvatarService>('AvatarService').retryPendingCleanup(),
-    );
-  }, 15 * 60 * 1000);
-  retryTimer.unref();
+    database = configureContainer(environment.DATABASE_URL);
 
-  const server = app.listen(port, () => logListeningAddresses(port));
-  server.on('close', () => clearInterval(retryTimer));
-  return server;
+    const [
+      { createApp },
+      { default: userRoutes },
+      { default: friendRoutes },
+      { default: avatarRoutes },
+      { default: activityImageRoutes },
+      { default: activityRoutes },
+      { default: commentRoutes },
+      { default: likeRoutes },
+    ] = await Promise.all([
+      import('./app.js'),
+      import('./routes/user.routes.js'),
+      import('./routes/friend.routes.js'),
+      import('./routes/avatar.routes.js'),
+      import('./routes/activity-image.routes.js'),
+      import('./routes/activity.routes.js'),
+      import('./routes/comment.routes.js'),
+      import('./routes/like.routes.js'),
+    ]);
+
+    const app = createApp({
+      users: userRoutes,
+      friends: friendRoutes,
+      avatar: avatarRoutes,
+      activityImages: activityImageRoutes,
+      activities: activityRoutes,
+      comments: commentRoutes,
+      likes: likeRoutes,
+    });
+
+    let server!: Server;
+    await new Promise<void>((resolve, reject) => {
+      const onListening = (error?: Error): void => {
+        if (error !== undefined) {
+          reject(error);
+          return;
+        }
+        resolve();
+      };
+
+      server =
+        options.host === undefined
+          ? app.listen(port, onListening)
+          : app.listen(port, options.host, onListening);
+    });
+
+    const retryTimer = setInterval(() => {
+      runRetry('Activity image delete', () =>
+        container
+          .resolve<ActivityImageService>('ActivityImageService')
+          .retryPendingDeletes(),
+      );
+      runRetry('Avatar cleanup', () =>
+        container.resolve<AvatarService>('AvatarService').retryPendingCleanup(),
+      );
+    }, options.retryIntervalMs ?? 15 * 60 * 1000);
+    retryTimer.unref();
+
+    const cleanup = createRuntimeCleanup(retryTimer, database);
+    cleanupByServer.set(server, cleanup);
+    server.once('close', () => {
+      void cleanup().catch((error: unknown) => {
+        const category = error instanceof Error ? error.name : 'UnknownError';
+        console.error(`Server cleanup failed (${category})`);
+      });
+    });
+    server.once('error', () => {
+      void cleanup().catch(() => undefined);
+    });
+    const address = server.address();
+    const listeningPort =
+      address !== null && typeof address === 'object' ? address.port : port;
+    logListeningAddresses(listeningPort);
+    return server;
+  } catch (error: unknown) {
+    await database?.disconnect();
+    throw error;
+  }
 }
 
-if (require.main === module) {
-  startServer().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : 'Unknown startup error';
-    console.error(`Server startup failed: ${message}`);
-    process.exitCode = 1;
-  });
+export async function stopServer(server: Server): Promise<void> {
+  const cleanup = cleanupByServer.get(server);
+  try {
+    if (server.listening) {
+      await new Promise<void>((resolve, reject) => {
+        server.close(error => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+  } finally {
+    await cleanup?.();
+  }
 }

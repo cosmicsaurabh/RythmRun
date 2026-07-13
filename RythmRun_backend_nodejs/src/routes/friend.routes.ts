@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { container } from '../config/container';
-import { FriendController } from '../controllers/friend.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { container } from '../config/container.js';
+import { FriendController } from '../controllers/friend.controller.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
 
 const router = Router();
 const friendController = container.resolve(FriendController);

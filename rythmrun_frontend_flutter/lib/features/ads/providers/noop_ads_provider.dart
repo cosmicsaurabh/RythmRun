@@ -15,7 +15,10 @@ class NoOpAdsProvider implements AdsProvider {
   }
 
   @override
-  Future<AdsResult> show(AdsPlacement placement) async {
+  Future<AdsResult> show(
+    AdsPlacement placement, {
+    bool Function()? isStillEligible,
+  }) async {
     return const AdsResult.unavailable('Ads disabled');
   }
 

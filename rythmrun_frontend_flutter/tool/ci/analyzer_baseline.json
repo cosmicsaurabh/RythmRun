@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "toolchain": {
+    "flutter": "3.44.1",
+    "dart": "3.12.1"
+  },
+  "findings": [
+    {
+      "code": "AVOID_PRINT",
+      "path": "rythmrun_frontend_flutter/lib/core/services/auth_persistence_service.dart",
+      "messageSha256": "110a8bc2c45f0938b394fd04f89868b227994ea4daddb5432b354947a9074e37",
+      "count": 7
+    },
+    {
+      "code": "AVOID_PRINT",
+      "path": "rythmrun_frontend_flutter/lib/presentation/common/providers/settings_provider.dart",
+      "messageSha256": "110a8bc2c45f0938b394fd04f89868b227994ea4daddb5432b354947a9074e37",
+      "count": 4
+    },
+    {
+      "code": "AVOID_PRINT",
+      "path": "rythmrun_frontend_flutter/lib/presentation/features/login/screens/login_screen.dart",
+      "messageSha256": "110a8bc2c45f0938b394fd04f89868b227994ea4daddb5432b354947a9074e37",
+      "count": 1
+    },
+    {
+      "code": "AVOID_PRINT",
+      "path": "rythmrun_frontend_flutter/lib/presentation/features/tracking_history/screens/tracking_history_screen.dart",
+      "messageSha256": "110a8bc2c45f0938b394fd04f89868b227994ea4daddb5432b354947a9074e37",
+      "count": 1
+    },
+    {
+      "code": "FILE_NAMES",
+      "path": "rythmrun_frontend_flutter/lib/core/utils/unit _coverter.dart",
+      "messageSha256": "6d498493a754c595c52115a21a2226ff8d40d5399ce749b1acdbedc6a1328d6f",
+      "count": 1
+    },
+    {
+      "code": "HASH_AND_EQUALS",
+      "path": "rythmrun_frontend_flutter/lib/domain/entities/registration_request_entity.dart",
+      "messageSha256": "8165d3ae3f0c48687a83a18406e221f73a47c0c1381402abac856268c28b9bae",
+      "count": 1
+    },
+    {
+      "code": "HASH_AND_EQUALS",
+      "path": "rythmrun_frontend_flutter/lib/presentation/features/login/models/login_state.dart",
+      "messageSha256": "8165d3ae3f0c48687a83a18406e221f73a47c0c1381402abac856268c28b9bae",
+      "count": 1
+    },
+    {
+      "code": "HASH_AND_EQUALS",
+      "path": "rythmrun_frontend_flutter/lib/presentation/features/registration/models/registration_state.dart",
+      "messageSha256": "8165d3ae3f0c48687a83a18406e221f73a47c0c1381402abac856268c28b9bae",
+      "count": 1
+    },
+    {
+      "code": "USE_BUILD_CONTEXT_SYNCHRONOUSLY",
+      "path": "rythmrun_frontend_flutter/lib/presentation/features/home/screens/home_screen.dart",
+      "messageSha256": "8c23b862e437f9d512bb6e09a15e1ef7c2442ed058c83b05dcc01f7376e125a8",
+      "count": 1
+    },
+    {
+      "code": "USE_BUILD_CONTEXT_SYNCHRONOUSLY",
+      "path": "rythmrun_frontend_flutter/lib/presentation/features/settings/screens/settings_screen.dart",
+      "messageSha256": "8c23b862e437f9d512bb6e09a15e1ef7c2442ed058c83b05dcc01f7376e125a8",
+      "count": 2
+    }
+  ]
+}

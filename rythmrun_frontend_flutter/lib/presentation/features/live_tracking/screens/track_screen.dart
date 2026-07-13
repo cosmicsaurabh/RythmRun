@@ -3,15 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
-import 'package:rythmrun_frontend_flutter/features/ads/core/ads_result.dart';
 import 'package:rythmrun_frontend_flutter/features/ads/presentation/banner_ad_widget.dart';
 import 'package:rythmrun_frontend_flutter/features/ads/service/ads_providers.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/workout_completion_ad_gate.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/widgets/workout_recovery_card.dart';
 import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart';
-import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed.dart';
 import 'package:rythmrun_frontend_flutter/presentation/shared/widgets/connectivity_badge.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
@@ -30,6 +30,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
   late Animation<double> _scaleAnimation;
   bool _isCardExpanded = false;
   bool _isActiveWorkoutExpanded = false;
+  bool _isFinishingWorkout = false;
+  bool _isRecoveringWorkout = false;
+  final WorkoutCompletionAdGate _completionAdGate = WorkoutCompletionAdGate();
 
   @override
   void initState() {
@@ -63,6 +66,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     WidgetRef ref,
     WorkoutType workoutType,
   ) async {
+    if (_isFinishingWorkout) return;
     final liveTrackingNotifier = ref.read(liveTrackingProvider.notifier);
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -79,6 +83,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
   }
 
   void _onStartTrackingPressed() {
+    if (_isFinishingWorkout) return;
     final liveTrackingState = ref.read(liveTrackingProvider);
     final liveTrackingNotifier = ref.read(liveTrackingProvider.notifier);
 
@@ -223,6 +228,18 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     LiveTrackingState liveTrackingState,
     LiveTrackingNotifier liveTrackingNotifier,
   ) {
+    if (_isFinishingWorkout) {
+      return _buildFinishingWorkoutContent();
+    }
+
+    if (liveTrackingNotifier.hasUnsavedCompletedWorkout ||
+        liveTrackingNotifier.hasPendingTrackingCleanup) {
+      return _buildWorkoutRecoveryContent(
+        liveTrackingState,
+        liveTrackingNotifier,
+      );
+    }
+
     if (liveTrackingState.hasActiveSession) {
       return _buildActiveWorkoutContent(
         liveTrackingState,
@@ -237,6 +254,136 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     return _buildCollapsedContent(liveTrackingState);
   }
 
+  Widget _buildFinishingWorkoutContent() {
+    return const Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CupertinoActivityIndicator(radius: 18),
+        SizedBox(height: spacingMd),
+        Text(
+          'Finishing workout…',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        SizedBox(height: spacingSm),
+        Text(
+          'Your workout is being saved. Start controls will return when completion handling finishes.',
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWorkoutRecoveryContent(
+    LiveTrackingState state,
+    LiveTrackingNotifier notifier,
+  ) {
+    final savePending = notifier.hasUnsavedCompletedWorkout;
+    return WorkoutRecoveryCard(
+      savePending: savePending,
+      isBusy: _isRecoveringWorkout || _isFinishingWorkout,
+      errorMessage: state.errorMessage,
+      onRetry: () => _retryWorkoutRecovery(notifier),
+      onDiscard: () => _confirmDiscardUnsavedWorkout(notifier),
+    );
+  }
+
+  Future<void> _retryWorkoutRecovery(LiveTrackingNotifier notifier) async {
+    if (_isRecoveringWorkout || _isFinishingWorkout) return;
+    setState(() {
+      _isRecoveringWorkout = true;
+    });
+
+    try {
+      if (notifier.hasUnsavedCompletedWorkout) {
+        final result = await notifier.retryUnsavedWorkoutSaveWithResult();
+        if (!mounted) return;
+
+        final message =
+            result.isNewlySaved
+                ? notifier.hasPendingTrackingCleanup
+                    ? 'Workout saved. Retry tracking cleanup to continue.'
+                    : 'Workout saved. You can start your next workout.'
+                : 'Workout is still not saved. Check storage and retry.';
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+        return;
+      }
+
+      final didCleanUp = await notifier.retryPendingTrackingCleanup();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            didCleanUp
+                ? 'Tracking cleanup finished.'
+                : 'Tracking cleanup is still pending. Please retry.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRecoveringWorkout = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _confirmDiscardUnsavedWorkout(
+    LiveTrackingNotifier notifier,
+  ) async {
+    if (_isRecoveringWorkout || _isFinishingWorkout) return;
+    final shouldDiscard = await showDialog<bool>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Discard unsaved workout?'),
+            content: const Text(
+              'This permanently removes the completed workout that could not be saved.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Keep workout'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: CustomAppColors.statusDanger,
+                ),
+                child: const Text('Discard'),
+              ),
+            ],
+          ),
+    );
+    if (shouldDiscard != true || !mounted) return;
+
+    setState(() {
+      _isRecoveringWorkout = true;
+    });
+    try {
+      final discarded = await notifier.discardWorkout();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            discarded
+                ? 'Unsaved workout discarded.'
+                : 'Workout could not be discarded. Please try again.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRecoveringWorkout = false;
+        });
+      }
+    }
+  }
+
   Widget _buildCollapsedContent(LiveTrackingState liveTrackingState) {
     return InkWell(
       onTap: _onStartTrackingPressed,
@@ -246,7 +393,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           Container(
             padding: const EdgeInsets.all(spacingMd),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
+              color: Theme.of(
+                context,
+              ).colorScheme.onPrimary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(radiusMd),
             ),
             child: Icon(
@@ -285,7 +434,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           Icon(
             Icons.arrow_forward_ios,
             size: 20,
-            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
+            color: Theme.of(
+              context,
+            ).colorScheme.onPrimary.withValues(alpha: 0.7),
           ),
         ],
       ),
@@ -307,7 +458,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.3),
+              color: Theme.of(
+                context,
+              ).colorScheme.onPrimary.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -346,7 +499,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
         Container(
           padding: const EdgeInsets.all(spacingLg),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.15),
+            color: Theme.of(
+              context,
+            ).colorScheme.onPrimary.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -371,7 +526,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 15,
-            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.85),
+            color: Theme.of(
+              context,
+            ).colorScheme.onPrimary.withValues(alpha: 0.85),
             height: 1.4,
           ),
         ),
@@ -473,7 +630,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radiusLg),
             border: Border.all(
-              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
+              color: Theme.of(
+                context,
+              ).colorScheme.onPrimary.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
@@ -586,8 +745,11 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
                 ),
               _buildControlButton(
                 icon: Icons.stop,
-                label: 'Finish',
-                onPressed: () => _showStopConfirmation(notifier),
+                label: _isFinishingWorkout ? 'Saving' : 'Finish',
+                onPressed:
+                    _isFinishingWorkout
+                        ? null
+                        : () => _showStopConfirmation(notifier),
               ),
             ],
           ),
@@ -632,7 +794,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
               Container(
                 width: 1,
                 height: 20,
-                color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onPrimary.withValues(alpha: 0.2),
               ),
               _buildCompactMetric(
                 label: 'Pace',
@@ -657,7 +821,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
         children: [
           Icon(
             icon,
-            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8),
+            color: Theme.of(
+              context,
+            ).colorScheme.onPrimary.withValues(alpha: 0.8),
             size: 18,
           ),
           const SizedBox(height: spacingXs),
@@ -675,7 +841,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             label,
             style: TextStyle(
               fontSize: 10,
-              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
+              color: Theme.of(
+                context,
+              ).colorScheme.onPrimary.withValues(alpha: 0.7),
               fontWeight: FontWeight.w500,
             ),
             maxLines: 1,
@@ -753,7 +921,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           const SizedBox(height: spacingMd),
           // Session info
           Divider(
-            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.2),
+            color: Theme.of(
+              context,
+            ).colorScheme.onPrimary.withValues(alpha: 0.2),
             height: 1,
           ),
           const SizedBox(height: spacingSm),
@@ -798,14 +968,18 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
             Icon(
               icon,
               size: 16,
-              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
+              color: Theme.of(
+                context,
+              ).colorScheme.onPrimary.withValues(alpha: 0.7),
             ),
             const SizedBox(width: spacingXs),
             Text(
               label,
               style: TextStyle(
                 fontSize: 11,
-                color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onPrimary.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -841,7 +1015,9 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
           '$label: ',
           style: TextStyle(
             fontSize: 12,
-            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.6),
+            color: Theme.of(
+              context,
+            ).colorScheme.onPrimary.withValues(alpha: 0.6),
           ),
         ),
         Text(
@@ -875,7 +1051,7 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
   Widget _buildControlButton({
     required IconData icon,
     required String label,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return ElevatedButton(
       onPressed: onPressed,
@@ -905,26 +1081,24 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
   }
 
   void _showStopConfirmation(LiveTrackingNotifier notifier) {
+    if (_isFinishingWorkout) return;
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
+          (dialogContext) => AlertDialog(
             title: const Text('Finish Workout?'),
             content: const Text(
               'Are you sure you want to finish this workout? This action cannot be undone.',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
                 onPressed: () async {
-                  Navigator.pop(context);
-                  await notifier.stopWorkout();
-                  ref.read(trackingHistoryProvider.notifier).refresh();
-                  await _showPostActivityAd();
-                  _collapseCard();
+                  Navigator.pop(dialogContext);
+                  await _finishWorkout(notifier);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: CustomAppColors.statusDanger,
@@ -936,19 +1110,86 @@ class _TrackScreenState extends ConsumerState<TrackScreen>
     );
   }
 
-  Future<void> _showPostActivityAd() async {
-    final adsService = ref.read(adsServiceProvider);
-    final result = await adsService.showPostActivityAd();
-    if (!mounted) return;
+  Future<void> _finishWorkout(LiveTrackingNotifier notifier) async {
+    if (_isFinishingWorkout) return;
+    final finishingUserId = ref.read(sessionProvider).user?.id;
+    setState(() {
+      _isFinishingWorkout = true;
+    });
 
-    if (result.status == AdsResultStatus.failed ||
-        result.status == AdsResultStatus.unavailable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.errorMessage ?? 'No ad available right now.'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    try {
+      final result = await notifier.stopWorkout();
+      if (!mounted) return;
+      bool isCurrentUserScope() {
+        if (!mounted || finishingUserId == null) return false;
+        final currentSession = ref.read(sessionProvider);
+        return currentSession.user?.id == finishingUserId &&
+            currentSession.pendingExitReason == null;
+      }
+
+      if (!isCurrentUserScope()) return;
+
+      switch (result.status) {
+        case LiveWorkoutFinalizationStatus.saved:
+          final hasPendingRecovery =
+              notifier.hasUnsavedCompletedWorkout ||
+              notifier.hasPendingTrackingCleanup;
+          if (hasPendingRecovery) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Workout saved. Complete tracking cleanup before continuing.',
+                ),
+              ),
+            );
+            return;
+          }
+
+          await _completionAdGate.showAfterDurableCompletion(
+            result: result,
+            hasPendingRecovery: false,
+            isCurrentUserScope: isCurrentUserScope,
+            showAd: () => _showPostActivityAd(isCurrentUserScope),
+          );
+          if (mounted) {
+            _collapseCard();
+          }
+          break;
+        case LiveWorkoutFinalizationStatus.savePending:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Workout is not saved yet. Use Retry save or explicitly discard it.',
+              ),
+            ),
+          );
+          break;
+        case LiveWorkoutFinalizationStatus.failed:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Workout could not be finished. Your active workout is retained; please retry.',
+              ),
+            ),
+          );
+          break;
+        case LiveWorkoutFinalizationStatus.noActiveWorkout:
+          break;
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFinishingWorkout = false;
+        });
+      }
     }
+  }
+
+  Future<void> _showPostActivityAd(bool Function() isStillEligible) async {
+    // Ads are optional. An SDK/load failure must never mask a successfully
+    // saved workout or replace the save-recovery UI.
+    await ref
+        .read(adsServiceProvider)
+        .showPostActivityAd(isStillEligible: isStillEligible);
   }
 }

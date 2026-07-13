@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -18,11 +17,11 @@ class AdmobAdsProvider implements AdsProvider {
 
   bool _isLoadingRewarded = false;
   bool _isLoadingInterstitial = false;
+  bool _isDisposed = false;
 
   @override
   Future<void> initialize() async {
     await MobileAds.instance.initialize();
-    await Future.wait([_loadRewardedAd(), _loadInterstitialAd()]);
   }
 
   @override
@@ -38,12 +37,15 @@ class AdmobAdsProvider implements AdsProvider {
   }
 
   @override
-  Future<AdsResult> show(AdsPlacement placement) {
+  Future<AdsResult> show(
+    AdsPlacement placement, {
+    bool Function()? isStillEligible,
+  }) {
     switch (placement) {
       case AdsPlacement.startOfDayOffer:
-        return _showRewardedAd();
+        return _showRewardedAd(isStillEligible);
       case AdsPlacement.postActivityUnskippable:
-        return _showInterstitialAd();
+        return _showInterstitialAd(isStillEligible);
       case AdsPlacement.activityBanner:
         return Future.value(
           const AdsResult.unavailable('Use buildBanner for banner placements'),
@@ -63,11 +65,15 @@ class AdmobAdsProvider implements AdsProvider {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _startOfDayRewardedAd?.dispose();
+    _startOfDayRewardedAd = null;
     _postActivityInterstitialAd?.dispose();
+    _postActivityInterstitialAd = null;
   }
 
   Future<bool> _loadRewardedAd() async {
+    if (_isDisposed) return false;
     if (_isLoadingRewarded) return _startOfDayRewardedAd != null;
     final adUnitId = _adUnitIdFor(AdsPlacement.startOfDayOffer);
     if (adUnitId == null) return false;
@@ -79,6 +85,12 @@ class AdmobAdsProvider implements AdsProvider {
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
+          if (_isDisposed) {
+            ad.dispose();
+            _isLoadingRewarded = false;
+            completer.complete(false);
+            return;
+          }
           _startOfDayRewardedAd = ad;
           _isLoadingRewarded = false;
           completer.complete(true);
@@ -95,6 +107,7 @@ class AdmobAdsProvider implements AdsProvider {
   }
 
   Future<bool> _loadInterstitialAd() async {
+    if (_isDisposed) return false;
     if (_isLoadingInterstitial) return _postActivityInterstitialAd != null;
     final adUnitId = _adUnitIdFor(AdsPlacement.postActivityUnskippable);
     if (adUnitId == null) return false;
@@ -106,6 +119,12 @@ class AdmobAdsProvider implements AdsProvider {
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
+          if (_isDisposed) {
+            ad.dispose();
+            _isLoadingInterstitial = false;
+            completer.complete(false);
+            return;
+          }
           _postActivityInterstitialAd = ad;
           _isLoadingInterstitial = false;
           completer.complete(true);
@@ -121,12 +140,20 @@ class AdmobAdsProvider implements AdsProvider {
     return completer.future;
   }
 
-  Future<AdsResult> _showRewardedAd() async {
+  Future<AdsResult> _showRewardedAd(bool Function()? isStillEligible) async {
+    if (!_canContinue(isStillEligible)) {
+      return const AdsResult.unavailable('Rewarded ad no longer eligible');
+    }
     if (_startOfDayRewardedAd == null) {
       final loaded = await _loadRewardedAd();
       if (!loaded || _startOfDayRewardedAd == null) {
         return const AdsResult.unavailable('Rewarded ad unavailable');
       }
+    }
+    if (!_canContinue(isStillEligible)) {
+      _startOfDayRewardedAd?.dispose();
+      _startOfDayRewardedAd = null;
+      return const AdsResult.unavailable('Rewarded ad no longer eligible');
     }
 
     final completer = Completer<AdsResult>();
@@ -137,7 +164,7 @@ class AdmobAdsProvider implements AdsProvider {
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         _startOfDayRewardedAd = null;
-        _loadRewardedAd();
+        if (!_isDisposed) _loadRewardedAd();
         if (!completer.isCompleted) {
           completer.complete(
             rewardEarned
@@ -149,7 +176,7 @@ class AdmobAdsProvider implements AdsProvider {
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
         _startOfDayRewardedAd = null;
-        _loadRewardedAd();
+        if (!_isDisposed) _loadRewardedAd();
         if (!completer.isCompleted) {
           completer.complete(AdsResult.failed(error.message));
         }
@@ -165,12 +192,22 @@ class AdmobAdsProvider implements AdsProvider {
     return completer.future;
   }
 
-  Future<AdsResult> _showInterstitialAd() async {
+  Future<AdsResult> _showInterstitialAd(
+    bool Function()? isStillEligible,
+  ) async {
+    if (!_canContinue(isStillEligible)) {
+      return const AdsResult.unavailable('Post-activity ad no longer eligible');
+    }
     if (_postActivityInterstitialAd == null) {
       final loaded = await _loadInterstitialAd();
       if (!loaded || _postActivityInterstitialAd == null) {
         return const AdsResult.unavailable('Interstitial ad unavailable');
       }
+    }
+    if (!_canContinue(isStillEligible)) {
+      _postActivityInterstitialAd?.dispose();
+      _postActivityInterstitialAd = null;
+      return const AdsResult.unavailable('Post-activity ad no longer eligible');
     }
 
     final completer = Completer<AdsResult>();
@@ -180,14 +217,18 @@ class AdmobAdsProvider implements AdsProvider {
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         _postActivityInterstitialAd = null;
-        _loadInterstitialAd();
-        completer.complete(const AdsResult.completed());
+        if (!_isDisposed) _loadInterstitialAd();
+        if (!completer.isCompleted) {
+          completer.complete(const AdsResult.completed());
+        }
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
         _postActivityInterstitialAd = null;
-        _loadInterstitialAd();
-        completer.complete(AdsResult.failed(error.message));
+        if (!_isDisposed) _loadInterstitialAd();
+        if (!completer.isCompleted) {
+          completer.complete(AdsResult.failed(error.message));
+        }
       },
     );
 
@@ -195,27 +236,13 @@ class AdmobAdsProvider implements AdsProvider {
     return completer.future;
   }
 
-  String? _adUnitIdFor(AdsPlacement placement) {
-    final configUnitId = _config.adUnitFor(placement);
-    if (configUnitId != null && configUnitId.isNotEmpty) {
-      return configUnitId;
-    }
+  bool _canContinue(bool Function()? isStillEligible) {
+    return !_isDisposed && (isStillEligible?.call() ?? true);
+  }
 
-    final isAndroid = Platform.isAndroid;
-    return switch (placement) {
-      AdsPlacement.startOfDayOffer =>
-        isAndroid
-            ? 'ca-app-pub-9575153117176686/1433176172'
-            : 'ca-app-pub-3940256099942544/1712485313', // iOS test ID - replace when you have iOS
-      AdsPlacement.postActivityUnskippable =>
-        isAndroid
-            ? 'ca-app-pub-9575153117176686/9279876606'
-            : 'ca-app-pub-3940256099942544/4411468910', // iOS test ID - replace when you have iOS
-      AdsPlacement.activityBanner =>
-        isAndroid
-            ? 'ca-app-pub-9575153117176686/5180849497'
-            : 'ca-app-pub-3940256099942544/2934735716', // iOS test ID - replace when you have iOS
-    };
+  String? _adUnitIdFor(AdsPlacement placement) {
+    final configUnitId = _config.adUnitFor(placement)?.trim();
+    return configUnitId == null || configUnitId.isEmpty ? null : configUnitId;
   }
 }
 

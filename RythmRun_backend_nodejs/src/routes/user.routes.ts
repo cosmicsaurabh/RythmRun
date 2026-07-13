@@ -1,7 +1,8 @@
-import { RequestHandler, Router } from 'express';
-import { container } from '../config/container';
-import { UserController } from '../controllers/user.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { Router } from 'express';
+import type { RequestHandler } from 'express';
+import { container } from '../config/container.js';
+import { UserController } from '../controllers/user.controller.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
 
 export interface UserRouteController {
   register: RequestHandler;

@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { container } from '../config/container';
-import { ActivityImageController } from '../controllers/activity-image.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { container } from '../config/container.js';
+import { ActivityImageController } from '../controllers/activity-image.controller.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
 
 const router = Router({ mergeParams: true });
 const activityImageController = container.resolve(ActivityImageController);

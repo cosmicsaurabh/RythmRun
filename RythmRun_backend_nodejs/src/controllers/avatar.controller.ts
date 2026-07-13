@@ -1,11 +1,11 @@
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import { inject, injectable } from 'tsyringe';
-import { DtoValidationError, validateDto } from '../middleware/validation.middleware';
+import { DtoValidationError, validateDto } from '../middleware/validation.middleware.js';
 import {
   ConfirmAvatarUploadDto,
   RequestAvatarUploadDto,
-} from '../models/dto/avatar.dto';
-import { AvatarService, AvatarServiceError } from '../services/avatar.service';
+} from '../models/dto/avatar.dto.js';
+import { AvatarService, AvatarServiceError } from '../services/avatar.service.js';
 
 @injectable()
 export class AvatarController {

@@ -1,13 +1,13 @@
 import { randomUUID } from 'crypto';
 import { inject, injectable } from 'tsyringe';
-import { Prisma, PrismaClient } from '../../generated/prisma';
+import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import {
   AVATAR_CONTENT_TYPES,
   ConfirmAvatarUploadDto,
   MAX_AVATAR_SIZE_BYTES,
   RequestAvatarUploadDto,
-} from '../models/dto/avatar.dto';
-import { S3Service } from './s3.service';
+} from '../models/dto/avatar.dto.js';
+import { S3Service } from './s3.service.js';
 
 export const AVATAR_UPLOAD_INTENT_TTL_MS = 5 * 60 * 1000;
 export const AVATAR_UPLOAD_RATE_WINDOW_MS = 60 * 60 * 1000;

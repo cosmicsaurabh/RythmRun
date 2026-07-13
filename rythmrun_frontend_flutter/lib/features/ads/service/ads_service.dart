@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:rythmrun_frontend_flutter/features/ads/core/ads_config.dart';
 import 'package:rythmrun_frontend_flutter/features/ads/core/ads_placement.dart';
@@ -11,13 +13,19 @@ class AdsService {
     required AdsConfig config,
     required AdsProviderFactory providerFactory,
     required AdsStorage storage,
+    Duration initializationTimeout = const Duration(seconds: 10),
+    Duration showTimeout = const Duration(seconds: 45),
   }) : _config = config,
        _providerFactory = providerFactory,
-       _storage = storage;
+       _storage = storage,
+       _initializationTimeout = initializationTimeout,
+       _showTimeout = showTimeout;
 
   final AdsConfig _config;
   final AdsProviderFactory _providerFactory;
   final AdsStorage _storage;
+  final Duration _initializationTimeout;
+  final Duration _showTimeout;
   AdsProvider? _provider;
   Future<void>? _initialization;
   DateTime? _lastPostActivityShown;
@@ -32,16 +40,31 @@ class AdsService {
   }
 
   Future<void> initialize() {
-    _initialization ??= _init();
+    _initialization ??= _initializeFailClosed();
     return _initialization!;
+  }
+
+  Future<void> _initializeFailClosed() async {
+    try {
+      await _init().timeout(_initializationTimeout);
+    } catch (_) {
+      final provider = _provider;
+      if (provider != null) _abandonProvider(provider);
+    }
   }
 
   Future<void> _init() async {
     if (!_adsEnabled) return;
-    _provider = _providerFactory.create(_config);
-    await _provider!.initialize();
-    _lastPostActivityShown = await _storage.getLastPostActivityAd();
-    _lastStartOfDayReward = await _storage.getLastStartOfDayReward();
+    final provider = _providerFactory.create(_config);
+    _provider = provider;
+    await provider.initialize();
+    if (!identical(_provider, provider)) return;
+    final lastPostActivityShown = await _storage.getLastPostActivityAd();
+    if (!identical(_provider, provider)) return;
+    final lastStartOfDayReward = await _storage.getLastStartOfDayReward();
+    if (!identical(_provider, provider)) return;
+    _lastPostActivityShown = lastPostActivityShown;
+    _lastStartOfDayReward = lastStartOfDayReward;
   }
 
   Future<void> _ensureInitialized() async {
@@ -61,20 +84,39 @@ class AdsService {
       return const AdsResult.unavailable('Start-of-day cooldown active');
     }
 
-    await _ensureInitialized();
-
-    final result = await _provider!.show(AdsPlacement.startOfDayOffer);
+    final AdsResult result;
+    try {
+      await _ensureInitialized();
+      final provider = _provider;
+      if (provider == null) {
+        return const AdsResult.unavailable('Start-of-day ad unavailable');
+      }
+      result = await provider.show(AdsPlacement.startOfDayOffer);
+    } catch (_) {
+      return const AdsResult.unavailable('Start-of-day ad unavailable');
+    }
     if (result.isSuccess) {
       final now = DateTime.now();
       _lastStartOfDayReward = now;
-      await _storage.setLastStartOfDayReward(now);
+      try {
+        await _storage.setLastStartOfDayReward(now);
+      } catch (_) {
+        // Optional cooldown persistence must not escape into product flows.
+      }
     }
     return result;
   }
 
-  Future<AdsResult> showPostActivityAd() async {
+  Future<AdsResult> showPostActivityAd({
+    bool Function()? isStillEligible,
+  }) async {
     if (!_adsEnabled || !_config.enablePostActivityAd) {
       return const AdsResult.unavailable('Post-activity ad disabled');
+    }
+
+    bool upstreamEligibility() => isStillEligible?.call() ?? true;
+    if (!upstreamEligibility()) {
+      return const AdsResult.unavailable('Post-activity ad no longer eligible');
     }
 
     if (isAdFreeToday) {
@@ -85,12 +127,38 @@ class AdsService {
       return const AdsResult.unavailable('Post-activity cooldown active');
     }
 
-    await _ensureInitialized();
-    final result = await _provider!.show(AdsPlacement.postActivityUnskippable);
+    final AdsResult result;
+    var operationActive = true;
+    bool operationEligibility() => operationActive && upstreamEligibility();
+    try {
+      await _ensureInitialized();
+      final provider = _provider;
+      if (provider == null || !operationEligibility()) {
+        return const AdsResult.unavailable('Post-activity ad unavailable');
+      }
+      result = await provider
+          .show(
+            AdsPlacement.postActivityUnskippable,
+            isStillEligible: operationEligibility,
+          )
+          .timeout(_showTimeout);
+    } on TimeoutException {
+      final provider = _provider;
+      if (provider != null) _abandonProvider(provider);
+      return const AdsResult.unavailable('Post-activity ad unavailable');
+    } catch (_) {
+      return const AdsResult.unavailable('Post-activity ad unavailable');
+    } finally {
+      operationActive = false;
+    }
     if (result.isSuccess) {
       final now = DateTime.now();
       _lastPostActivityShown = now;
-      await _storage.setLastPostActivityAd(now);
+      try {
+        await _storage.setLastPostActivityAd(now);
+      } catch (_) {
+        // Optional cooldown persistence must not escape into product flows.
+      }
     }
     return result;
   }
@@ -121,6 +189,14 @@ class AdsService {
   }
 
   void dispose() {
-    _provider?.dispose();
+    final provider = _provider;
+    if (provider != null) _abandonProvider(provider);
+  }
+
+  void _abandonProvider(AdsProvider provider) {
+    if (identical(_provider, provider)) {
+      _provider = null;
+    }
+    provider.dispose();
   }
 }

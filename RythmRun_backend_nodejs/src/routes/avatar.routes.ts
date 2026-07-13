@@ -1,7 +1,8 @@
-import { RequestHandler, Router } from 'express';
-import { container } from '../config/container';
-import { AvatarController } from '../controllers/avatar.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { Router } from 'express';
+import type { RequestHandler } from 'express';
+import { container } from '../config/container.js';
+import { AvatarController } from '../controllers/avatar.controller.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
 
 export interface AvatarRouteController {
   getUploadUrl: RequestHandler;

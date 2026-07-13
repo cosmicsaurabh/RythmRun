@@ -1,6 +1,8 @@
 import 'reflect-metadata';
+import { jest } from '@jest/globals';
+import type { ActivityImageService as ActivityImageServiceType } from '../services/activity-image.service.js';
 
-jest.mock('../services/s3.service', () => ({
+jest.unstable_mockModule('../services/s3.service.js', () => ({
   __esModule: true,
   default: {
     getPresignedPutUrl: jest.fn(async ({ key }: { key: string }) => ({
@@ -17,12 +19,12 @@ jest.mock('../services/s3.service', () => ({
   },
 }));
 
-import { ActivityImageService } from '../services/activity-image.service';
+const { ActivityImageService } = await import('../services/activity-image.service.js');
 import {
   ConfirmActivityImageUploadDto,
   RequestActivityImageUploadUrlDto,
-} from '../models/dto/activity-image.dto';
-import s3Service from '../services/s3.service';
+} from '../models/dto/activity-image.dto.js';
+const { default: s3Service } = await import('../services/s3.service.js');
 
 function createMockPrisma() {
   return {
@@ -42,7 +44,7 @@ function createMockPrisma() {
 
 describe('ActivityImageService', () => {
   let prisma: ReturnType<typeof createMockPrisma>;
-  let service: ActivityImageService;
+  let service: ActivityImageServiceType;
 
   const userId = 1;
   const activityId = 99;

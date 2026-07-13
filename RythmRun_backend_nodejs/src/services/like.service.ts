@@ -1,11 +1,9 @@
-import { PrismaClient } from '../../generated/prisma';
+import { inject, injectable } from 'tsyringe';
+import type { PrismaClient } from '../generated/prisma/client.js';
 
+@injectable()
 export class LikeService {
-    private prisma: PrismaClient;
-
-    constructor() {
-        this.prisma = new PrismaClient();
-    }
+    constructor(@inject('PrismaClient') private prisma: PrismaClient) {}
 
     private async verifyActivityAccess(userId: number, activityId: number) {
         const activity = await this.prisma.activity.findFirst({
@@ -124,4 +122,4 @@ export class LikeService {
             likeCount
         };
     }
-} 
+}

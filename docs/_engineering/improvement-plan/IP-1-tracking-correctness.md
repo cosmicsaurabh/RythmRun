@@ -10,7 +10,7 @@ published: false
 | Priority | P1 |
 | Target | 7 focused work packages after IP-0 |
 | Owner | Unassigned |
-| Last updated | 2026-07-11 |
+| Last updated | 2026-07-13 |
 | Depends on | IP-0 patched deployment; incident containment remains active until IP-0 exits |
 | Exit condition | Metrics, account-switch, cascade, PATCH, long-payload, and CI gates pass |
 
@@ -33,7 +33,7 @@ The audit's next highest risks are user-visible trust failures and cross-account
 - SQLite declares cascades but does not enable `PRAGMA foreign_keys=ON` on each connection.
 - Backend `PATCH` can delete status history when that property was omitted.
 - A representative 750-point activity is about 103 KB, already above Express's default JSON limit.
-- No tracked CI workflow protects existing tests or the fixes in this phase.
+- The tracked backend workflow has no reviewed hosted-run/required-check evidence; its initial dependency-only Prisma 7 upgrade did not include the required config, adapter, generated-client, module, or lifecycle migration; and no Flutter workflow protects the mobile fixes.
 
 ## Scope
 
@@ -356,7 +356,7 @@ Repository delivery uses GPS policy version 1 within the not-yet-deployed metric
 
 **Automated tests**
 
-Final-tree DTO/domain/controller/service and Flutter coverage below has passed. Updated socket-boundary cases cover the HTTP parser/admission bullets, but their final rerun remains required before the two socket exit gates can close.
+Final-tree DTO/domain/controller/service, Flutter, and socket-boundary coverage below has passed. The socket cases cover the HTTP parser/admission bullets; MC-1.8 still owns deployed proxy, resource, real PostgreSQL, compatibility, and telemetry proof.
 
 - Audited 750-point fixture above the 100 KiB ordinary-route limit succeeds.
 - A representative multi-hour fixture below both caps succeeds.
@@ -379,52 +379,73 @@ Final-tree DTO/domain/controller/service and Flutter coverage below has passed. 
 
 **Primary files**
 
+- Existing `.github/workflows/backend-security.yml`
 - New `.github/workflows/ci.yml`
-- Root `.gitignore` (carefully preserve its existing user changes and explicitly unignore `.github/workflows/`)
-- Backend and Flutter configuration only as required for deterministic CI
+- Root `.gitignore` with exact workflow allowlisting
+- `RythmRun_backend_nodejs/package.json` and `package-lock.json`
+- `RythmRun_backend_nodejs/prisma.config.ts` and `prisma/schema.prisma`
+- `RythmRun_backend_nodejs/tsconfig.json`, test TypeScript/Jest configuration, and explicit `.js` import specifiers
+- `RythmRun_backend_nodejs/src/config/database.ts` and `src/config/container.ts`
+- `RythmRun_backend_nodejs/src/server.ts`, `src/main.ts`, and `scripts/smoke-built-runtime.mjs`
+- `rythmrun_frontend_flutter/.flutter-version`
+- `rythmrun_frontend_flutter/tool/ci/analyzer_baseline.dart`
+- `rythmrun_frontend_flutter/tool/ci/analyzer_baseline.json`
+- `rythmrun_frontend_flutter/test/tool/analyzer_baseline_test.dart`
 
 **Implementation**
 
-1. Backend job on a pinned supported Node version:
-   - `npm ci`;
-   - `npx prisma generate`;
-   - `npx tsc --noEmit`;
-   - `npm test -- --runInBand`.
-2. Flutter job on a pinned Flutter/Dart version matching `pubspec.yaml`:
-   - dependency restore;
-   - formatting check for touched/new files, expanding to the repository after existing formatting debt is fixed;
-   - `flutter test`;
-   - `flutter analyze` with a machine-readable baseline.
-3. Fix the six existing warnings in this phase so errors/warnings are fatal. Commit a small comparison script and normalized baseline file for the remaining informational findings (rule + repository-relative path + message fingerprint); fail on additions while allowing removals. Define changed files from the merge-base diff only for reporting—do not rely on an undefined "touched file" rule.
-4. Cache only reproducible dependency data, never generated secret/config files.
-5. Require both jobs before merge once the workflow is stable.
+1. Preserve the existing `Backend security` workflow/job name so MC-0.7 through MC-0.9 and future rulesets keep one stable identity. Pin Ubuntu 24.04, Node 22.23.1, and action commits; retain read-only permissions, non-persisted checkout credentials, concurrency cancellation, and the npm download cache keyed by the lockfile.
+2. Complete the clean-install Prisma migration instead of retaining a rollback. Pin `prisma`, `@prisma/client`, and `@prisma/adapter-pg` to 7.8.0; move the CLI datasource into `prisma.config.ts`; use the `prisma-client` generator to emit TypeScript under `src/generated/prisma`; and instantiate PostgreSQL through explicit pool limits/timeouts rather than a parameterless client.
+3. Centralize database ownership. Create one adapter-backed `PrismaClient`, register it in the dependency container, inject it into every service/controller path, remove the unused per-request refresh-token client, and make disconnect idempotent. Load/validate configuration before importing infrastructure consumers, separate `main` from the server module, and close the listener, retry timer, and Prisma runtime through an explicit shutdown path.
+4. Migrate production execution to native NodeNext ESM: set the package module type, emit ES2023/NodeNext, use explicit `.js` relative specifiers, keep generated Prisma output inside the compiled `src` tree, and run Jest through its native ESM path. A production build—not a source-only transform—must prove the emitted graph resolves under raw Node.js.
+5. Run the backend job with `npm ci --no-audit`, `npx --no-install prisma validate`, Prisma generation, the production TypeScript typecheck, the complete native ESM Jest suite, `npm run build`, and `npm run smoke:runtime`. The built smoke imports the emitted server/client/container/routes, serves liveness, proves an unauthenticated protected request stops before persistence, and exercises cleanup against an intentionally unreachable database URL. It does **not** connect to PostgreSQL, run migrations, validate TLS, measure the pool, prove a database transaction, exercise R2, or reproduce deployed SIGTERM behavior; MC-1.12 and MC-1.13 own those gates.
+6. Add a separate `Flutter CI` job on Ubuntu 24.04 with immutable checkout and Flutter-action commits, exact Flutter 3.44.1/Dart 3.12.1, read-only permissions, no secrets, no workspace cache, and lock-enforced dependency restoration.
+7. Define formatting scope from `git merge-base` against the event's base/before commit—or the required base SHA supplied to a manual dispatch—with full history. Consume NUL-delimited Git names into a quoted Bash array and format only existing added/copied/modified/renamed Dart files. This protects new work while the 14-file whole-tree formatting debt remains; a zero-parent push checks all tracked Dart files.
+8. Run `flutter analyze --no-pub --no-fatal-infos` so warning/error diagnostics remain fatal. Separately parse `dart analyze --format machine` and compare informational diagnostics with a sorted JSON multiset keyed by analyzer rule, repository-relative path, and SHA-256 of the whitespace-normalized message. Ignore line/column, preserve duplicate counts, reject malformed/out-of-package records and baseline schema/order/duplicate errors, fail additions or count increases, and allow removals.
+9. Keep the source workflow independent of production/database/R2 credentials. The current backend npm cache contains only reproducible download data; Flutter starts without a cache. Require reviewed ownership of workflow/comparator/baseline changes when configuring branch rules so a pull request cannot approve its own weaker gate. Because build/migration tools are development dependencies, MC-1.13 must prove install, generate/build, migrate, prune, and start ordering on the real host before deployment.
+
+**Analyzer-baseline maintenance**
+
+1. Use the exact `.flutter-version` toolchain and an unchanged lockfile. Run `dart analyze --format machine` from `rythmrun_frontend_flutter` and keep the output outside the repository.
+2. Prefer fixing a finding. To preview a necessary baseline rewrite, run `dart run tool/ci/analyzer_baseline.dart render --input <machine-output> --repository-root .. --package-root .` and redirect stdout to a temporary file.
+3. Review the normalized JSON diff. A path/message-key addition or count increase is new debt and needs an explicit rationale; line-number movement must not change the file. Never add warnings/errors to the baseline—the renderer and checker reject them.
+4. Run the comparator tests, the real baseline check, formatting, full Flutter tests, and both analyzers. Baseline/comparator/workflow changes also require the protected independent review in MC-1.11.
 
 **Acceptance**
 
-- A deliberately failing backend test, Flutter test, type error, and new analyzer warning each cause the expected CI failure in a temporary branch/PR.
-- A synthetic new informational finding fails the baseline comparison, while removing an old finding passes.
+- Repository implementation: clean generation targets Prisma 7.8's adapter-backed client and native ESM production output; one DI-managed database lifetime replaces the former independent constructors; and the emitted build has a dedicated no-database smoke. On Node 22.22.3, clean install, Prisma validation/generation, production typecheck/build, all 15 native ESM suites and 244 tests, and the built smoke pass. The Flutter package retains its 189-test, three-file format, and exact 20-information/zero-warning/zero-error evidence.
+- Hosted evidence: MC-0.7/MC-1.9 record successful backend/Flutter runs for the reviewed SHA. MC-0.8/MC-1.10 use temporary non-merge revisions to prove backend test/type, Flutter test/format, analyzer warning, and new-information failures independently. MC-0.9/MC-1.11 then prove both stable checks and CI-control review are required.
+- A workflow file, local test, built smoke, or source inspection is not hosted/deployed evidence. MC-1.12 must prove the full migration chain, real adapter queries/transactions, TLS, custom-schema behavior where applicable, and connection-pool limits on PostgreSQL. MC-1.13 must prove artifact/install/migrate/start ordering and bounded deployed SIGTERM cleanup. These gates also do not prove deployed proxy limits, Android driver behavior, dependency-advisory status, or production safety.
 
 ### IP-1.7 — Prevent real ads in development and gate ads on durable completion
 
 **Primary files**
 
+- `rythmrun_frontend_flutter/lib/features/ads/core/ads_build_config.dart`
+- `rythmrun_frontend_flutter/lib/features/ads/core/ads_config.dart`
 - `rythmrun_frontend_flutter/lib/features/ads/providers/admob_ads_provider.dart`
-- Ads config/provider factory and app configuration
+- Ads config/provider factory/service and app initialization
+- `rythmrun_frontend_flutter/android/app/build.gradle`
 - `rythmrun_frontend_flutter/android/app/src/main/AndroidManifest.xml`
-- Live tracking completion result and Track screen ad trigger
+- Live tracking finalization result, Track screen recovery UI, and the workout-completion ad gate
 
 **Implementation**
 
-1. Debug, test, and staging builds use the no-op provider or official Google test IDs only. Remove production-ID fallbacks from Dart and inject the Android application ID per flavor/environment.
-2. A release build fails configuration when production ads are intentionally enabled without explicit production IDs; development never falls through to them.
-3. Make workout Finish return an explicit durable-save/finalization result. Show any post-activity ad only after the local workout transaction succeeds; failure/retry/recovery UI always comes first.
-4. Full consent, placement, and monetization policy remains IP-5.5.
+1. Make the default configuration ads-disabled with the no-op provider and every placement flag off. AdMob must consume only an explicitly resolved unit ID; remove every Dart or manifest production-ID fallback.
+2. Use one compile-time contract in Dart and Android Gradle: `ADS_ENV`, `ADS_ENABLED`, `ADMOB_ANDROID_APP_ID`, and `ADMOB_POST_ACTIVITY_UNIT_ID`. Accepted environments are `development`, `staging`, and `production`; ads default to disabled. The exact operator contract and safe commands live in `rythmrun_frontend_flutter/CONFIGURATION.md`.
+3. Development, test, profile, and staging behavior is always no-op in Dart. Android debug/profile and every ads-disabled release use the official Google sample application ID in the merged manifest, never an application ID supplied for production. Safe manifests delay native Mobile Ads measurement startup and remove ad-identifier/Privacy Sandbox ad permissions until IP-5.5. Passing production-looking IDs cannot turn ads on in these modes.
+4. Production ads are Android-release-only and require `ADS_ENV=production`, `ADS_ENABLED=true`, a well-formed non-sample application ID, and a well-formed non-sample post-activity unit ID from the same publisher. Gradle validates every production-enabled configuration independently of requested task names and fails before packaging when either value is absent, malformed, a Google sample, or from a different publisher. Only the release manifest can receive validated values; Dart repeats the validation before selecting AdMob.
+5. Keep start-of-day rewarded and activity-banner placements disabled. iOS remains ads-disabled. Enabling live production serving, consent/privacy choices, placement policy, and any additional placement remains IP-5.5; completing IP-1.7 does not authorize a production-ads rollout.
+6. Finish returns `LiveWorkoutFinalizationResult` with an explicit status and a newly assigned local workout ID only after the local repository transaction commits. `noActiveWorkout`, `savePending`, and `failed` are not ad-eligible outcomes.
+7. A per-screen completion gate claims each newly committed local workout ID at most once and requests the optional post-activity placement only while the same user scope remains active and no save or tracking-cleanup recovery remains. Recheck the live scope after initialization and immediately before provider display; bound initialization/show waits and invalidate late continuations. An ad timeout/load/SDK failure cannot hang or replace the saved state, show late under another scope, or surface ahead of recovery.
+8. On save or cleanup failure, retain the completed/active state and show actionable Retry UI before any monetization. Discarding an unsaved workout requires explicit confirmation. A later recovery save deliberately does not request an ad; recovery is never an ad opportunity.
 
-**Tests**
+**Repository acceptance**
 
-- Debug/staging configuration cannot resolve a production app/unit ID.
-- Local save failure shows no ad and retains actionable workout state.
-- Successful durable completion may invoke the configured test/no-op placement once.
+- Resolver tests cover the default-disabled path, development/staging isolation, release-only production enablement, malformed/sample/mismatched IDs, Android-only scope, and post-activity-only configuration.
+- Source/configuration tests prove every shipping Android/iOS ads surface is free of production IDs, the Android manifest uses a placeholder, delays native measurement startup, removes ad/privacy permissions, safe build types use the official sample application ID, no production fallback remains, and task-name-independent Gradle validation owns the same four inputs as Dart.
+- Finalization and gate tests prove a failed/pending/no-op finish cannot request an ad, a committed workout may request it once, duplicate Finish cannot request it again, and retained recovery state remains actionable.
+- MC-1.14 separately proves the packaged Android configuration and recovery-first behavior on a supported build/device. Repository tests or source inspection alone do not prove the merged manifest or installed-device experience.
 
 ## Rollout and migration order
 
@@ -456,7 +477,7 @@ Final-tree DTO/domain/controller/service and Flutter coverage below has passed. 
 | A logout → B login | A work drains; local clear succeeds; no A cache or late callback is visible under B | Session/provider/repository integration tests + MC-1.6 |
 | Delete owned workout | All child rows cascade; foreign key check clean | SQLite migration test |
 | PATCH name only | Route/status rows unchanged | Controller/service plus Prisma query-shape/stateful fake; real PostgreSQL in MC-1.8 |
-| 750-point payload | Authenticated body is parsed and reaches the create handler | Socket-boundary test (final rerun pending); persisted create in MC-1.8 |
+| 750-point payload | Authenticated body is parsed and reaches the create handler | Final-tree socket-boundary test; persisted create in MC-1.8 |
 | Oversize/malformed payload | Stable non-retryable 4xx; no partial rows | HTTP boundary plus transaction query-shape/stateful-fake coverage; real PostgreSQL proof in MC-1.8 |
 | CI failure probe | Required job fails for intentional regression | CI run link |
 
@@ -478,11 +499,15 @@ Final-tree DTO/domain/controller/service and Flutter coverage below has passed. 
 - [ ] SQLite host migration/DAO tests run under an explicitly initialized FFI database in CI; platform-only checks are assigned to device integration tests.
 - [ ] MC-1.7 proves the v5→v6 in-place upgrade, reopen, owner denial, cascades, and forward-fix response on a supported Android release build.
 - [x] Omitted PATCH collections are preserved in repository service/controller coverage; explicit empty arrays clear and non-empty arrays replace in one serializable nested update with conflict retry.
-- [ ] Final-tree socket coverage proves representative long-workout parsing plus invalid/oversized rejection; the updated cases are authored, but their final rerun remains pending.
-- [ ] Final-tree socket coverage proves the larger parser is authenticated, route-specific, concurrency guarded, and leaves unrelated routes at 100 KiB; the updated cases are authored, but their final rerun remains pending.
+- [x] Final-tree socket coverage proves representative long-workout parsing plus invalid/oversized rejection.
+- [x] Final-tree socket coverage proves the larger parser is authenticated, route-specific, concurrency guarded, and leaves unrelated routes at 100 KiB.
 - [ ] MC-1.8 proves deployed proxy alignment, resource bounds, PATCH rollback, and sanitized telemetry in isolated staging.
-- [ ] Backend and Flutter CI jobs run and fail on intentional regressions.
-- [ ] Debug/staging cannot use production AdMob IDs, and ads never appear before durable local completion.
+- [x] Repository CI definitions pin backend/Flutter toolchains, preserve least privilege, run the complete suites, and protect the 20-finding informational analyzer multiset while making warnings/errors fatal.
+- [ ] MC-0.7 and MC-1.9 prove successful hosted `Backend security` and `Flutter CI` execution for the reviewed commit.
+- [ ] MC-0.8 and MC-1.10 prove each backend/Flutter failure path independently on temporary non-merge revisions.
+- [ ] MC-0.9 and MC-1.11 prove both stable checks and reviewed CI-control ownership are required for normal merges.
+- [x] Repository tests prove ads default off, development/staging cannot select production AdMob IDs, and only a newly committed local workout can reach the one-shot post-activity gate.
+- [ ] MC-1.14 proves safe merged-manifest configuration and recovery-before-ads behavior on a supported Android build/device; IP-5.5 consent and live production enablement remain open.
 
 ## Evidence log
 
@@ -498,3 +523,5 @@ Final-tree DTO/domain/controller/service and Flutter coverage below has passed. 
 | 2026-07-11 | IP-1.4 | `flutter analyze`; `git diff --check`; independent migration/ownership/evidence review | Pass with existing analyzer baseline only | Analyzer reports the existing 20 informational findings and zero warnings/errors; IP-1.4 adds none. Android in-place migration/backup/forward-fix proof, physical orphan-image file cleanup, and hosted CI are not claimed. |
 | 2026-07-11 | IP-1.5 | Activity DTO/controller/domain/service suites; all backend non-socket suites; Flutter HTTP/model/repository suites and full suite; Prisma validation; backend build | Executed local gates pass; final socket/staging/hosted verification pending | Focused backend activity coverage 94/94 and all final-tree non-socket backend coverage 206/206 passed. Focused changed Flutter coverage 43/43 and the full Flutter suite 181/181 passed. The updated socket suite now covers the HTTP maximum fixture, POST/PATCH parser failures, case-insensitive auth/parser ordering, ordinary activity routes, and admission release, but its final-tree rerun could not obtain external execution approval after the local quota was exhausted; the earlier 13/13 predecessor run is not treated as final evidence. Owner-scoped serializable PATCH preserve/clear/replace, bounded adversarial validation, permanent/retryable mobile classification, account-switch halting, UTC instant preservation, idempotency, and stateful transaction-fake behavior are covered. MC-1.8 and hosted CI remain open. |
 | 2026-07-11 | IP-1.5 | Backend build and Prisma validation; `flutter analyze`; `git diff --check`; independent payload/transaction/documentation reviews | Pass with existing analyzer baseline | No Prisma or SQLite migration is included. Flutter reuses the v6 `sync_blocked_reason` column and adds UTC serialization plus permanent rejection classification. Analyzer reports the existing 20 informational findings and zero warnings/errors, with none in IP-1.5 files. The admission guard is deliberately process-local and interim; deployed proxy sizing, memory/latency, real PostgreSQL rollback, previous-client timestamp compatibility, and sanitized telemetry are not claimed by local tests. |
+| 2026-07-13 | IP-1.6 | Prisma 7.8 config/adapter/client migration; native NodeNext ESM conversion; shared database/server lifecycle; clean install, schema/type/build/test/built-smoke gates; Flutter CI/analyzer baseline package | Pass locally; hosted/deployed gates pending | The earlier Prisma 6.10.1 rollback checkpoint is superseded by the complete Prisma 7.8 modernization. Under Node 22.22.3, `npm ci --no-audit` restored 612 packages; Prisma 7.8 validation/generation, production typecheck/build, 15/15 native ESM suites and 244/244 tests, and the built health/auth/shutdown smoke passed. The unchanged Flutter package retains 189/189 tests, three-file format proof, and an exact 20-information/zero-warning/zero-error analyzer result. MC-0.7/0.8/0.9, MC-1.9/1.10/1.11, real PostgreSQL gate MC-1.12, and artifact/deployed-shutdown gate MC-1.13 remain pending. |
+| 2026-07-13 | IP-1.7 | Ads resolver/factory/service/source contracts; durable completion/gate/provider/recovery tests; full Flutter suite; analyzer baseline; Android debug merged manifest; direct and generic-task incomplete-production probes | Repository gates pass; packaged device proof pending | Flutter 218/218 passed serially. All 22 changed Dart files are formatted; analysis has 19 informational findings, zero warnings/errors, and the committed 20-finding baseline accepts the one removal. `processDebugMainManifest` resolves the official Google sample application ID, sets delayed measurement initialization to `true`, and omits all four ad/privacy permissions. Production ads enabled without IDs fail configuration with the two missing keys even through the generic Gradle `tasks` entry point, proving validation no longer depends on release-task name matching. A full debug APK retry passed manifest/code stages but exhausted host disk during generated asset/native merging, so no artifact/device claim is made; MC-1.14 remains pending. IP-5.5 still owns consent, placement approval, live-ID packaging, and production enablement. |

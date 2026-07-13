@@ -1,5 +1,5 @@
-import { Request, Response } from 'express';
-import { LikeService } from '../services/like.service';
+import type { Request, Response } from 'express';
+import { LikeService } from '../services/like.service.js';
 import { injectable, inject } from "tsyringe";
 
 @injectable()
@@ -120,4 +120,4 @@ export class LikeController {
             });
         }
     };
-} 
+}

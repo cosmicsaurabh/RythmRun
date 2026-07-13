@@ -81,10 +81,11 @@ userScopeTeardownProvider = Provider<UserScopeTeardown>((ref) {
             ref
                 .read(liveTrackingProvider.notifier)
                 .retryPendingTrackingCleanup(),
-    discardWorkout:
-        () => ref
-            .read(liveTrackingProvider.notifier)
-            .discardWorkout(forAccountExit: true),
+    discardWorkout: () async {
+      await ref
+          .read(liveTrackingProvider.notifier)
+          .discardWorkout(forAccountExit: true);
+    },
     suspendAndDrainWork: operationGate.suspendAndDrain,
     invalidateUserState: invalidateUserState,
     activateWork: activateWork,

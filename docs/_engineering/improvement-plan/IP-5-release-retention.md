@@ -74,13 +74,13 @@ After the IP-5 release gate, RythmRun has a repeatable staging-to-production rel
 
 **Implementation**
 
-1. Extend the app/bootstrap seam introduced in IP-0.5 into a complete Express app factory that configures middleware/routes but does not listen, start timers, or create extra clients at import time; do not create a second competing bootstrap.
-2. Make `server.ts` the only production entry point:
+1. Extend the app/bootstrap seam introduced in IP-0.5 and modernized in IP-1.6 into a complete Express app factory that configures middleware/routes but does not listen, start timers, or create extra clients at import time; do not create a second competing bootstrap. IP-1.6 already provides one adapter-backed Prisma lifetime, native ESM `main`/`server` separation, and basic cleanup, but its built smoke is deliberately database-free and does not complete readiness or deployed bounded-shutdown proof.
+2. Keep `main.ts` as the only production process entry and `server.ts` as the import-safe start/stop module:
    - load/validate environment first;
    - create shared dependencies;
    - start the HTTP server;
    - start/attach the IP-4 durable worker according to deployment topology.
-3. Update `package.json` main/start/dev/build behavior and the hosting start command so the compiled `server` entry is what runs. Prove a clean build artifact contains and starts the intended file.
+3. Keep `package.json` main/start/dev/build behavior and the hosting start command aligned so the compiled `main` entry is what runs. Prove a clean build artifact contains and starts the intended file. Treat MC-1.12 real-PostgreSQL evidence and MC-1.13 artifact/SIGTERM evidence as prerequisites, not substitutes for the fuller readiness and worker-lifecycle work here.
 4. Add endpoints:
    - liveness: fast process/event-loop response with no sensitive configuration;
    - readiness: bounded PostgreSQL query and required dependency state; S3/CDN checks are cached/bounded or represented through recent worker/upload health so every probe does not create external cost;

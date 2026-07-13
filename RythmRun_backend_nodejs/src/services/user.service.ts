@@ -1,9 +1,9 @@
-import { PrismaClient, User } from '../../generated/prisma';
-import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto';
+import type { PrismaClient, User } from '../generated/prisma/client.js';
+import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto.js';
 import * as bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { injectable, inject } from "tsyringe";
-import { getJwtSecrets } from '../config/env';
+import { getJwtSecrets } from '../config/env.js';
 
 @injectable()
 export class UserService {

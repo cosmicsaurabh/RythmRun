@@ -1,12 +1,10 @@
-import { PrismaClient } from '../../generated/prisma';
-import { CreateCommentDto } from '../models/dto/comment.dto';
+import { inject, injectable } from 'tsyringe';
+import type { PrismaClient } from '../generated/prisma/client.js';
+import { CreateCommentDto } from '../models/dto/comment.dto.js';
 
+@injectable()
 export class CommentService {
-    private prisma: PrismaClient;
-
-    constructor() {
-        this.prisma = new PrismaClient();
-    }
+    constructor(@inject('PrismaClient') private prisma: PrismaClient) {}
 
     private readonly userSelect = {
         id: true,
@@ -165,4 +163,4 @@ export class CommentService {
             message: 'Comment deleted successfully'
         };
     }
-} 
+}

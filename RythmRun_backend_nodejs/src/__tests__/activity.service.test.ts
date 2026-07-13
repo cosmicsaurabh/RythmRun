@@ -1,6 +1,8 @@
 import 'reflect-metadata';
+import { jest } from '@jest/globals';
+import type { ActivityService as ActivityServiceType } from '../services/activity.service.js';
 
-jest.mock('../services/s3.service', () => ({
+jest.unstable_mockModule('../services/s3.service.js', () => ({
   __esModule: true,
   default: {
     getActivityImageReadUrl: jest.fn((key: string) => ({
@@ -11,18 +13,18 @@ jest.mock('../services/s3.service', () => ({
   },
 }));
 
-import {
+const {
   ActivityDomainValidationError,
   ActivityNotFoundError,
   ActivityService,
-} from '../services/activity.service';
+} = await import('../services/activity.service.js');
 import {
   CreateActivityDto,
   CURRENT_METRICS_VERSION,
   LEGACY_METRICS_VERSION,
   UpdateActivityDto,
-} from '../models/dto/activity.dto';
-import s3Service from '../services/s3.service';
+} from '../models/dto/activity.dto.js';
+const { default: s3Service } = await import('../services/s3.service.js');
 
 // Keep root and transactional delegates distinct so a test fails if a write
 // escapes the callback transaction.
@@ -72,7 +74,7 @@ function createMockPrisma() {
 }
 
 describe('ActivityService', () => {
-  let service: ActivityService;
+  let service: ActivityServiceType;
   let prisma: any;
   let mockTx: any;
 

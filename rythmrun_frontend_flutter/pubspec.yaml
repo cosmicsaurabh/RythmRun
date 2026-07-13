@@ -19,7 +19,10 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 version: 1.0.2+19
 
 environment:
+  # Keep the existing Dart language-version floor while the Flutter constraint,
+  # lockfile, and .flutter-version enforce the reviewed Dart 3.12.1 toolchain.
   sdk: ^3.7.0
+  flutter: ">=3.44.0 <3.45.0"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -84,8 +87,8 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  # Host SQLite tests must retain the package's declared Dart 3.7 SDK floor;
-  # sqlite3 3.x raises that floor and switches to native build hooks.
+  # Retain the reviewed SQLite 2.x host-test stack until its native-assets
+  # migration is implemented and verified as a separate change.
   sqflite_common_ffi: 2.3.6
   sqlite3: 2.9.4
 

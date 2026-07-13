@@ -35,10 +35,11 @@ frontend.md
 # ALLOWED: This gitignore file
 !.gitignore
 
-# ALLOWED: Backend security workflow
+# ALLOWED: Reviewed CI workflows
 !.github/
 !.github/workflows/
 !.github/workflows/backend-security.yml
+!.github/workflows/ci.yml
 
 
 legacy/

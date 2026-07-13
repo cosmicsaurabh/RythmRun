@@ -1,15 +1,13 @@
-import { Request, Response } from 'express';
-import { FriendService } from '../services/friend.service';
-import { SendFriendRequestDto } from '../models/dto/friend.dto';
+import type { Request, Response } from 'express';
+import { FriendService } from '../services/friend.service.js';
+import { SendFriendRequestDto } from '../models/dto/friend.dto.js';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
+import { inject, injectable } from 'tsyringe';
 
+@injectable()
 export class FriendController {
-    private friendService: FriendService;
-
-    constructor() {
-        this.friendService = new FriendService();
-    }
+    constructor(@inject('FriendService') private friendService: FriendService) {}
 
     createFriendRequest = async (req: Request, res: Response) => {
         try {
@@ -214,4 +212,4 @@ export class FriendController {
             });
         }
     };
-} 
+}

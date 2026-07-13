@@ -1,3 +1,5 @@
+import { jest } from '@jest/globals';
+
 const mockEvents: string[] = [];
 const mockRetryPendingDeletes = jest.fn().mockResolvedValue(undefined);
 const mockRetryPendingCleanup = jest.fn().mockResolvedValue(undefined);
@@ -17,9 +19,17 @@ const mockRetryTimer = {
 };
 let mockRetryCallback: (() => void) | undefined;
 const mockServer = {
-  on: jest.fn().mockReturnThis(),
+  listening: true,
+  address: jest.fn(() => ({ address: '127.0.0.1', family: 'IPv4', port: 8091 })),
+  once: jest.fn().mockReturnThis(),
+  close: jest.fn((callback: (error?: Error) => void) => {
+    mockServer.listening = false;
+    callback();
+    return mockServer;
+  }),
 };
-const mockListen = jest.fn((_port: number, callback: () => void) => {
+const mockDatabaseDisconnect = jest.fn().mockResolvedValue(undefined);
+const mockListen = jest.fn((_port: number, callback: (error?: Error) => void) => {
   mockEvents.push('listen');
   callback();
   return mockServer;
@@ -31,13 +41,14 @@ const mockRouteModule = (name: string) => {
   return { __esModule: true, default: mockRouter };
 };
 
-jest.mock('../config/env', () => ({
+jest.unstable_mockModule('../config/env.js', () => ({
   loadAndValidateEnvironment: jest.fn(() => {
     mockEvents.push('validate');
+    return { DATABASE_URL: 'postgresql://ci:ci@127.0.0.1:5432/ci' };
   }),
 }));
 
-jest.mock('../app', () => {
+jest.unstable_mockModule('../app.js', () => {
   mockEvents.push('app-import');
   return {
     __esModule: true,
@@ -45,33 +56,39 @@ jest.mock('../app', () => {
   };
 });
 
-jest.mock('../config/container', () => {
+jest.unstable_mockModule('../config/container.js', () => {
   mockEvents.push('container-import');
   return {
     container: {
       resolve: mockResolve,
     },
+    configureContainer: jest.fn(() => ({
+      client: {},
+      disconnect: mockDatabaseDisconnect,
+    })),
   };
 });
 
-jest.mock('../routes/user.routes', () => mockRouteModule('users'));
-jest.mock('../routes/friend.routes', () => mockRouteModule('friends'));
-jest.mock('../routes/avatar.routes', () => mockRouteModule('avatar'));
-jest.mock('../routes/activity-image.routes', () =>
+jest.unstable_mockModule('../routes/user.routes.js', () => mockRouteModule('users'));
+jest.unstable_mockModule('../routes/friend.routes.js', () => mockRouteModule('friends'));
+jest.unstable_mockModule('../routes/avatar.routes.js', () => mockRouteModule('avatar'));
+jest.unstable_mockModule('../routes/activity-image.routes.js', () =>
   mockRouteModule('activity-images'),
 );
-jest.mock('../routes/activity.routes', () => mockRouteModule('activities'));
-jest.mock('../routes/comment.routes', () => mockRouteModule('comments'));
-jest.mock('../routes/like.routes', () => mockRouteModule('likes'));
+jest.unstable_mockModule('../routes/activity.routes.js', () => mockRouteModule('activities'));
+jest.unstable_mockModule('../routes/comment.routes.js', () => mockRouteModule('comments'));
+jest.unstable_mockModule('../routes/like.routes.js', () => mockRouteModule('likes'));
 
-import { startServer } from '../server';
+const { startServer, stopServer } = await import('../server.js');
 
 describe('server bootstrap', () => {
   const originalPort = process.env.PORT;
   const originalNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
+    jest.clearAllMocks();
     mockEvents.length = 0;
+    mockServer.listening = true;
     process.env.PORT = '8091';
     process.env.NODE_ENV = 'production';
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -80,6 +97,7 @@ describe('server bootstrap', () => {
       mockRetryCallback = callback as () => void;
       return mockRetryTimer as unknown as NodeJS.Timeout;
     });
+    jest.spyOn(global, 'clearInterval').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -98,7 +116,7 @@ describe('server bootstrap', () => {
   });
 
   it('validates environment before importing consumers or listening', async () => {
-    await startServer();
+    const server = await startServer();
 
     expect(mockEvents[0]).toBe('validate');
     expect(mockEvents).toContain('app-import');
@@ -125,5 +143,22 @@ describe('server bootstrap', () => {
     expect(JSON.stringify((console.error as jest.Mock).mock.calls)).not.toContain(
       sensitiveMessage,
     );
+
+    await stopServer(server);
+    expect(mockDatabaseDisconnect).toHaveBeenCalledTimes(1);
+    expect(clearInterval).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects listener startup errors and disconnects the database', async () => {
+    const listenError = new Error('address already in use');
+    listenError.name = 'ListenError';
+    mockListen.mockImplementationOnce((_port, callback) => {
+      callback(listenError);
+      return mockServer;
+    });
+
+    await expect(startServer()).rejects.toBe(listenError);
+    expect(mockDatabaseDisconnect).toHaveBeenCalledTimes(1);
+    expect(setInterval).not.toHaveBeenCalled();
   });
 });

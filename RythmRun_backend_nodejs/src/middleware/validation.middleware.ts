@@ -1,5 +1,7 @@
-import { ClassConstructor, plainToInstance } from 'class-transformer';
-import { validate, ValidationError } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
+import type { ClassConstructor } from 'class-transformer';
+import { validate } from 'class-validator';
+import type { ValidationError } from 'class-validator';
 
 export interface DtoValidationIssue {
     property: string;

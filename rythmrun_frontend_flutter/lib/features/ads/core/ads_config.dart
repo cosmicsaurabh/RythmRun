@@ -4,13 +4,13 @@ enum AdsProviderType { noOp, admob, unity, ironSource }
 
 class AdsConfig {
   const AdsConfig({
-    this.adsEnabled = true,
-    this.enableStartOfDayOffer = true,
-    this.enablePostActivityAd = true,
-    this.enableActivityBanner = true,
+    this.adsEnabled = false,
+    this.enableStartOfDayOffer = false,
+    this.enablePostActivityAd = false,
+    this.enableActivityBanner = false,
     this.postActivityCooldown = const Duration(minutes: 15),
     this.startOfDayRewardCooldown = const Duration(hours: 24),
-    this.providerType = AdsProviderType.admob,
+    this.providerType = AdsProviderType.noOp,
     this.adUnitIds = const {},
   });
 
@@ -49,5 +49,16 @@ class AdsConfig {
 
   String? adUnitFor(AdsPlacement placement) => adUnitIds[placement];
 
-  static AdsConfig defaults() => const AdsConfig();
+  static const AdsConfig disabled = AdsConfig();
+
+  static AdsConfig postActivityAdmob({required String adUnitId}) {
+    return AdsConfig(
+      adsEnabled: true,
+      enablePostActivityAd: true,
+      providerType: AdsProviderType.admob,
+      adUnitIds: {AdsPlacement.postActivityUnskippable: adUnitId},
+    );
+  }
+
+  static AdsConfig defaults() => disabled;
 }
