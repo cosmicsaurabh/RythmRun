@@ -87,7 +87,7 @@ export class ActivityImageController {
       const activityId = this.parseActivityId(req, res);
       if (activityId == null) return;
 
-      const imageId = parseInt(req.params.imageId);
+      const imageId = parseInt(req.params.imageId as string);
       if (isNaN(imageId)) {
         return res.status(400).json({
           status: 'error',
@@ -111,7 +111,7 @@ export class ActivityImageController {
   };
 
   private parseActivityId(req: Request, res: Response): number | null {
-    const activityId = parseInt(req.params.activityId);
+    const activityId = parseInt(req.params.activityId as string);
     if (isNaN(activityId)) {
       res.status(400).json({
         status: 'error',
