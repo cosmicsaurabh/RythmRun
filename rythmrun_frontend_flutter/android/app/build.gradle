@@ -27,6 +27,78 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// Flutter passes --dart-define values to Gradle as comma-separated Base64
+// KEY=VALUE entries. Decode the same inputs used by AdsBuildConfig so the
+// native AdMob application ID and Dart unit ID cannot be configured separately.
+def dartDefines = [:]
+if (project.hasProperty('dart-defines')) {
+    project.property('dart-defines').split(',').each { encodedDefine ->
+        def decodedDefine = new String(encodedDefine.decodeBase64(), 'UTF-8')
+        def keyAndValue = decodedDefine.split('=', 2)
+        if (keyAndValue.length == 2) {
+            dartDefines[keyAndValue[0]] = keyAndValue[1]
+        }
+    }
+}
+
+def adsEnvironmentValue =
+    dartDefines.containsKey('ADS_ENV') ? dartDefines['ADS_ENV'] : 'development'
+def adsEnabledValue =
+    dartDefines.containsKey('ADS_ENABLED') ? dartDefines['ADS_ENABLED'] : 'false'
+def adsEnvironment = adsEnvironmentValue.trim().toLowerCase()
+def allowedAdsEnvironments = ['development', 'staging', 'production']
+def adsConfigurationError = null
+if (!allowedAdsEnvironments.contains(adsEnvironment)) {
+    adsConfigurationError = 'ADS_ENV must be development, staging, or production.'
+}
+if (adsConfigurationError == null && !['true', 'false'].contains(adsEnabledValue)) {
+    adsConfigurationError = 'ADS_ENABLED must be true or false.'
+}
+
+def productionAdsRequested = adsEnvironment == 'production' && adsEnabledValue == 'true'
+
+def googleSampleAppId = 'ca-app-pub-3940256099942544~3347511713'
+def googleSamplePublisherPrefix = 'ca-app-pub-3940256099942544'
+def productionAppId = (dartDefines['ADMOB_ANDROID_APP_ID'] ?: '').trim()
+def productionPostActivityUnitId =
+    (dartDefines['ADMOB_POST_ACTIVITY_UNIT_ID'] ?: '').trim()
+
+if (adsConfigurationError == null && productionAdsRequested) {
+    def missingKeys = []
+    if (productionAppId.isEmpty()) {
+        missingKeys.add('ADMOB_ANDROID_APP_ID')
+    }
+    if (productionPostActivityUnitId.isEmpty()) {
+        missingKeys.add('ADMOB_POST_ACTIVITY_UNIT_ID')
+    }
+    if (!missingKeys.isEmpty()) {
+        adsConfigurationError =
+            "Production ads require explicit values for: ${missingKeys.join(', ')}."
+    }
+
+    if (adsConfigurationError == null) {
+        def appIdIsValid =
+            productionAppId ==~ '^ca-app-pub-[0-9]{16}~[0-9]{10}$'
+        def unitIdIsValid =
+            productionPostActivityUnitId ==~ '^ca-app-pub-[0-9]{16}/[0-9]{10}$'
+        def usesGoogleSampleId =
+            productionAppId.startsWith(googleSamplePublisherPrefix) ||
+            productionPostActivityUnitId.startsWith(googleSamplePublisherPrefix)
+        def appPublisher = productionAppId.split('~', 2)[0]
+        def unitPublisher = productionPostActivityUnitId.split('/', 2)[0]
+        if (!appIdIsValid || !unitIdIsValid || usesGoogleSampleId || appPublisher != unitPublisher) {
+            adsConfigurationError =
+                'ADMOB_ANDROID_APP_ID and ADMOB_POST_ACTIVITY_UNIT_ID must be valid, '
+                + 'non-sample IDs from the same publisher.'
+        }
+    }
+}
+
+def releaseAdmobAppId =
+    productionAdsRequested && adsConfigurationError == null
+        ? productionAppId
+        : googleSampleAppId
+
 // Load signing properties from android/key.properties
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file("key.properties")
@@ -61,6 +133,7 @@ android {
         targetSdk = 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+        manifestPlaceholders += [admobApplicationId: googleSampleAppId]
     }
     signingConfigs {
         release {
@@ -83,9 +156,11 @@ android {
                 "proguard-rules.pro"
             )
             debuggable false
+            manifestPlaceholders += [admobApplicationId: releaseAdmobAppId]
         }
         debug {
             debuggable true
+            manifestPlaceholders += [admobApplicationId: googleSampleAppId]
         }
     }
 }
@@ -97,4 +172,8 @@ flutter {
 dependencies {
     // Kotlin standard library is included automatically by the Kotlin plugin
     implementation "androidx.activity:activity-ktx:1.8.0"
-} 
+}
+
+if (adsConfigurationError != null) {
+    throw new GradleException(adsConfigurationError)
+}

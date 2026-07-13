@@ -421,23 +421,31 @@ Final-tree DTO/domain/controller/service, Flutter, and socket-boundary coverage 
 
 **Primary files**
 
+- `rythmrun_frontend_flutter/lib/features/ads/core/ads_build_config.dart`
+- `rythmrun_frontend_flutter/lib/features/ads/core/ads_config.dart`
 - `rythmrun_frontend_flutter/lib/features/ads/providers/admob_ads_provider.dart`
-- Ads config/provider factory and app configuration
+- Ads config/provider factory/service and app initialization
+- `rythmrun_frontend_flutter/android/app/build.gradle`
 - `rythmrun_frontend_flutter/android/app/src/main/AndroidManifest.xml`
-- Live tracking completion result and Track screen ad trigger
+- Live tracking finalization result, Track screen recovery UI, and the workout-completion ad gate
 
 **Implementation**
 
-1. Debug, test, and staging builds use the no-op provider or official Google test IDs only. Remove production-ID fallbacks from Dart and inject the Android application ID per flavor/environment.
-2. A release build fails configuration when production ads are intentionally enabled without explicit production IDs; development never falls through to them.
-3. Make workout Finish return an explicit durable-save/finalization result. Show any post-activity ad only after the local workout transaction succeeds; failure/retry/recovery UI always comes first.
-4. Full consent, placement, and monetization policy remains IP-5.5.
+1. Make the default configuration ads-disabled with the no-op provider and every placement flag off. AdMob must consume only an explicitly resolved unit ID; remove every Dart or manifest production-ID fallback.
+2. Use one compile-time contract in Dart and Android Gradle: `ADS_ENV`, `ADS_ENABLED`, `ADMOB_ANDROID_APP_ID`, and `ADMOB_POST_ACTIVITY_UNIT_ID`. Accepted environments are `development`, `staging`, and `production`; ads default to disabled. The exact operator contract and safe commands live in `rythmrun_frontend_flutter/CONFIGURATION.md`.
+3. Development, test, profile, and staging behavior is always no-op in Dart. Android debug/profile and every ads-disabled release use the official Google sample application ID in the merged manifest, never an application ID supplied for production. Safe manifests delay native Mobile Ads measurement startup and remove ad-identifier/Privacy Sandbox ad permissions until IP-5.5. Passing production-looking IDs cannot turn ads on in these modes.
+4. Production ads are Android-release-only and require `ADS_ENV=production`, `ADS_ENABLED=true`, a well-formed non-sample application ID, and a well-formed non-sample post-activity unit ID from the same publisher. Gradle validates every production-enabled configuration independently of requested task names and fails before packaging when either value is absent, malformed, a Google sample, or from a different publisher. Only the release manifest can receive validated values; Dart repeats the validation before selecting AdMob.
+5. Keep start-of-day rewarded and activity-banner placements disabled. iOS remains ads-disabled. Enabling live production serving, consent/privacy choices, placement policy, and any additional placement remains IP-5.5; completing IP-1.7 does not authorize a production-ads rollout.
+6. Finish returns `LiveWorkoutFinalizationResult` with an explicit status and a newly assigned local workout ID only after the local repository transaction commits. `noActiveWorkout`, `savePending`, and `failed` are not ad-eligible outcomes.
+7. A per-screen completion gate claims each newly committed local workout ID at most once and requests the optional post-activity placement only while the same user scope remains active and no save or tracking-cleanup recovery remains. Recheck the live scope after initialization and immediately before provider display; bound initialization/show waits and invalidate late continuations. An ad timeout/load/SDK failure cannot hang or replace the saved state, show late under another scope, or surface ahead of recovery.
+8. On save or cleanup failure, retain the completed/active state and show actionable Retry UI before any monetization. Discarding an unsaved workout requires explicit confirmation. A later recovery save deliberately does not request an ad; recovery is never an ad opportunity.
 
-**Tests**
+**Repository acceptance**
 
-- Debug/staging configuration cannot resolve a production app/unit ID.
-- Local save failure shows no ad and retains actionable workout state.
-- Successful durable completion may invoke the configured test/no-op placement once.
+- Resolver tests cover the default-disabled path, development/staging isolation, release-only production enablement, malformed/sample/mismatched IDs, Android-only scope, and post-activity-only configuration.
+- Source/configuration tests prove every shipping Android/iOS ads surface is free of production IDs, the Android manifest uses a placeholder, delays native measurement startup, removes ad/privacy permissions, safe build types use the official sample application ID, no production fallback remains, and task-name-independent Gradle validation owns the same four inputs as Dart.
+- Finalization and gate tests prove a failed/pending/no-op finish cannot request an ad, a committed workout may request it once, duplicate Finish cannot request it again, and retained recovery state remains actionable.
+- MC-1.14 separately proves the packaged Android configuration and recovery-first behavior on a supported build/device. Repository tests or source inspection alone do not prove the merged manifest or installed-device experience.
 
 ## Rollout and migration order
 
@@ -498,7 +506,8 @@ Final-tree DTO/domain/controller/service, Flutter, and socket-boundary coverage 
 - [ ] MC-0.7 and MC-1.9 prove successful hosted `Backend security` and `Flutter CI` execution for the reviewed commit.
 - [ ] MC-0.8 and MC-1.10 prove each backend/Flutter failure path independently on temporary non-merge revisions.
 - [ ] MC-0.9 and MC-1.11 prove both stable checks and reviewed CI-control ownership are required for normal merges.
-- [ ] Debug/staging cannot use production AdMob IDs, and ads never appear before durable local completion.
+- [x] Repository tests prove ads default off, development/staging cannot select production AdMob IDs, and only a newly committed local workout can reach the one-shot post-activity gate.
+- [ ] MC-1.14 proves safe merged-manifest configuration and recovery-before-ads behavior on a supported Android build/device; IP-5.5 consent and live production enablement remain open.
 
 ## Evidence log
 
@@ -515,3 +524,4 @@ Final-tree DTO/domain/controller/service, Flutter, and socket-boundary coverage 
 | 2026-07-11 | IP-1.5 | Activity DTO/controller/domain/service suites; all backend non-socket suites; Flutter HTTP/model/repository suites and full suite; Prisma validation; backend build | Executed local gates pass; final socket/staging/hosted verification pending | Focused backend activity coverage 94/94 and all final-tree non-socket backend coverage 206/206 passed. Focused changed Flutter coverage 43/43 and the full Flutter suite 181/181 passed. The updated socket suite now covers the HTTP maximum fixture, POST/PATCH parser failures, case-insensitive auth/parser ordering, ordinary activity routes, and admission release, but its final-tree rerun could not obtain external execution approval after the local quota was exhausted; the earlier 13/13 predecessor run is not treated as final evidence. Owner-scoped serializable PATCH preserve/clear/replace, bounded adversarial validation, permanent/retryable mobile classification, account-switch halting, UTC instant preservation, idempotency, and stateful transaction-fake behavior are covered. MC-1.8 and hosted CI remain open. |
 | 2026-07-11 | IP-1.5 | Backend build and Prisma validation; `flutter analyze`; `git diff --check`; independent payload/transaction/documentation reviews | Pass with existing analyzer baseline | No Prisma or SQLite migration is included. Flutter reuses the v6 `sync_blocked_reason` column and adds UTC serialization plus permanent rejection classification. Analyzer reports the existing 20 informational findings and zero warnings/errors, with none in IP-1.5 files. The admission guard is deliberately process-local and interim; deployed proxy sizing, memory/latency, real PostgreSQL rollback, previous-client timestamp compatibility, and sanitized telemetry are not claimed by local tests. |
 | 2026-07-13 | IP-1.6 | Prisma 7.8 config/adapter/client migration; native NodeNext ESM conversion; shared database/server lifecycle; clean install, schema/type/build/test/built-smoke gates; Flutter CI/analyzer baseline package | Pass locally; hosted/deployed gates pending | The earlier Prisma 6.10.1 rollback checkpoint is superseded by the complete Prisma 7.8 modernization. Under Node 22.22.3, `npm ci --no-audit` restored 612 packages; Prisma 7.8 validation/generation, production typecheck/build, 15/15 native ESM suites and 244/244 tests, and the built health/auth/shutdown smoke passed. The unchanged Flutter package retains 189/189 tests, three-file format proof, and an exact 20-information/zero-warning/zero-error analyzer result. MC-0.7/0.8/0.9, MC-1.9/1.10/1.11, real PostgreSQL gate MC-1.12, and artifact/deployed-shutdown gate MC-1.13 remain pending. |
+| 2026-07-13 | IP-1.7 | Ads resolver/factory/service/source contracts; durable completion/gate/provider/recovery tests; full Flutter suite; analyzer baseline; Android debug merged manifest; direct and generic-task incomplete-production probes | Repository gates pass; packaged device proof pending | Flutter 218/218 passed serially. All 22 changed Dart files are formatted; analysis has 19 informational findings, zero warnings/errors, and the committed 20-finding baseline accepts the one removal. `processDebugMainManifest` resolves the official Google sample application ID, sets delayed measurement initialization to `true`, and omits all four ad/privacy permissions. Production ads enabled without IDs fail configuration with the two missing keys even through the generic Gradle `tasks` entry point, proving validation no longer depends on release-task name matching. A full debug APK retry passed manifest/code stages but exhausted host disk during generated asset/native merging, so no artifact/device claim is made; MC-1.14 remains pending. IP-5.5 still owns consent, placement approval, live-ID packaging, and production enablement. |

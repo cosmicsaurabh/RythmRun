@@ -9,7 +9,10 @@ abstract class AdsProvider {
     return false;
   }
 
-  Future<AdsResult> show(AdsPlacement placement);
+  Future<AdsResult> show(
+    AdsPlacement placement, {
+    bool Function()? isStillEligible,
+  });
 
   Widget buildBanner(AdsPlacement placement);
 

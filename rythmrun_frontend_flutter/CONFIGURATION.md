@@ -48,6 +48,95 @@ Profile Mode: false
 - **Retries**: 2 attempts
 - **Build Command**: `flutter run --release` or `./scripts/build_prod.sh`
 
+## Advertising Configuration (IP-1.7)
+
+Advertising has a separate compile-time environment contract. `ADS_ENV` does not select the API base URL described above. Values are supplied with Flutter `--dart-define` flags and are read by both Dart and Android Gradle; changing them after an APK is built has no effect.
+
+Ads are disabled by default. Development, test, profile, staging, iOS, and an ads-disabled production release use the no-op provider. Safe Android packages receive the official Google sample application ID so the manifest remains valid, delay native Mobile Ads measurement startup, remove ad-identifier/Privacy Sandbox ad permissions from the merged manifest, and never call Mobile Ads initialization from Dart.
+
+### Exact variables
+
+| Variable | Allowed value | Default | Contract |
+| --- | --- | --- | --- |
+| `ADS_ENV` | `development`, `staging`, or `production` | `development` | Advertising environment only. Use the full names; `dev` and `prod` are not accepted. |
+| `ADS_ENABLED` | `true` or `false` | `false` | `true` is effective only for an Android release with `ADS_ENV=production`. Use lowercase values. |
+| `ADMOB_ANDROID_APP_ID` | `ca-app-pub-<16-digit-publisher-id>~<10-digit-app-id>` | empty | Required only when production ads are intentionally enabled. It must be non-sample. |
+| `ADMOB_POST_ACTIVITY_UNIT_ID` | `ca-app-pub-<same-16-digit-publisher-id>/<10-digit-unit-id>` | empty | Required only when production ads are intentionally enabled. It must be non-sample and use the application ID's publisher. |
+
+The production application and unit IDs must be explicit, well formed, from the same publisher, and outside Google's sample publisher. Any Android build configured with `ADS_ENV=production` and `ADS_ENABLED=true` validates those values independently of the requested Gradle task, so aggregate/custom tasks cannot bypass the check. Missing, malformed, sample, or publisher-mismatched values fail configuration before packaging. Valid production values are injected only into the release manifest; debug/profile manifests keep the sample application ID and Dart remains no-op. There is no source-code fallback.
+
+Only the post-activity placement can be configured by this contract. Start-of-day rewarded ads and activity banners remain disabled. iOS remains ads-disabled. Consent/privacy choices, live production serving, placement approval, and any additional placement remain blocked on IP-5.5.
+
+### Resolution matrix
+
+| Build/configuration | Dart provider | Android manifest application ID | Result |
+| --- | --- | --- | --- |
+| No ad defines | No-op | Official Google sample ID | Safe default |
+| Development or staging, `ADS_ENABLED=false` | No-op | Official Google sample ID | Supported non-production configuration |
+| Development or staging, `ADS_ENABLED=true` | No-op | Official Google sample ID | Fails closed; do not pass production IDs to these builds |
+| Debug/profile with production ads requested, missing/invalid IDs | None | No package | Configuration fails independently of the Gradle task name |
+| Debug/profile with production ads requested, valid explicit IDs | No-op | Official Google sample ID | Values cannot enable ads or be used by a provider; supplied compile-time defines may still be embedded in the Dart artifact, so this is prohibited for normal builds |
+| Production release, `ADS_ENABLED=false` | No-op | Official Google sample ID | Supported ads-disabled release |
+| Android production release, `ADS_ENABLED=true`, valid explicit IDs | AdMob, post-activity only | Explicit application ID | Configuration is packageable, but live use still requires IP-5.5 |
+| Android production release, `ADS_ENABLED=true`, missing/invalid IDs | None | No package | Configuration fails before packaging |
+| iOS | No-op | Not applicable | Ads remain out of scope until IP-5.5 |
+
+Never pass production IDs to development, test, staging, or routine verification commands. Never commit them to this file, a script, a Dart source file, an Android manifest, a screenshot, or test output. The release owner must inject approved values through the protected release system only after IP-5.5 is complete.
+
+### Safe commands
+
+Development and tests default safely, but pass the intent explicitly in reproducible QA commands:
+
+```bash
+flutter run \
+  --dart-define=ADS_ENV=development \
+  --dart-define=ADS_ENABLED=false
+
+flutter test \
+  --dart-define=ADS_ENV=development \
+  --dart-define=ADS_ENABLED=false
+```
+
+Staging/profile with ads disabled:
+
+```bash
+flutter run --profile \
+  --dart-define=ADS_ENV=staging \
+  --dart-define=ADS_ENABLED=false
+```
+
+Production release with ads disabled:
+
+```bash
+flutter build apk --release \
+  --dart-define=ADS_ENV=production \
+  --dart-define=ADS_ENABLED=false
+```
+
+Fail-closed release check. This command must fail before producing an APK because production ads were requested without IDs:
+
+```bash
+flutter build apk --release \
+  --dart-define=ADS_ENV=production \
+  --dart-define=ADS_ENABLED=true
+```
+
+Production-ID shape template for the protected release system only; the strings below are placeholders, are intentionally not valid IDs, and must not be pasted into a real build:
+
+```bash
+flutter build apk --release \
+  --dart-define=ADS_ENV=production \
+  --dart-define=ADS_ENABLED=true \
+  --dart-define='ADMOB_ANDROID_APP_ID=ca-app-pub-<16-digit-publisher-id>~<10-digit-app-id>' \
+  --dart-define='ADMOB_POST_ACTIVITY_UNIT_ID=ca-app-pub-<same-16-digit-publisher-id>/<10-digit-unit-id>'
+```
+
+### Workout-completion boundary
+
+The post-activity placement is optional and is downstream of local durability. Finish must first return a newly saved local workout ID. Save-pending, failed, no-active-workout, or tracking-cleanup-pending outcomes show recovery UI and cannot request an ad. A single newly committed ID can reach the completion gate at most once. A save completed later through Retry deliberately does not request an ad. Eligibility is rechecked after asynchronous initialization and again immediately before provider display. Initialization/show waits are bounded, and timeout, SDK/load, or cooldown-storage failures cannot hang completion, show late, hide, roll back, or turn a saved workout into a failed completion.
+
+Repository tests cover this state/configuration contract. Follow MC-1.14 in `docs/_engineering/improvement-plan/MANUAL-CHECKS.md` for merged-manifest and supported-device proof. That check does not authorize live ads; IP-5.5 remains the release gate.
+
 ### How to Change Configuration
 
 #### 1. Update Environment URLs
@@ -103,4 +192,3 @@ static const Map<String, int> _timeouts = {
 1. Check the build mode you're using
 2. Verify the configuration in `AppConfig._environment`
 3. Use `AppConfig.printConfig()` to debug
-

@@ -457,8 +457,21 @@ void main() {
       expect(context.repository.startCalls, 1);
       expect(context.notifier.state.currentSession!.type, WorkoutType.running);
 
+      expect(context.notifier.hasUnsavedCompletedWorkout, isTrue);
+      var emittedAfterPendingSaveCleared = false;
+      final removeListener = context.notifier.addListener((_) {
+        if (!context.notifier.hasUnsavedCompletedWorkout) {
+          emittedAfterPendingSaveCleared = true;
+        }
+      }, fireImmediately: false);
+
       saveCompleter.complete();
-      await pendingStop;
+      final result = await pendingStop;
+      removeListener();
+
+      expect(result.status, LiveWorkoutFinalizationStatus.saved);
+      expect(context.notifier.hasUnsavedCompletedWorkout, isFalse);
+      expect(emittedAfterPendingSaveCleared, isTrue);
       await context.dispose();
     });
 
@@ -486,6 +499,7 @@ void main() {
           results.map((result) => result.status),
           everyElement(LiveWorkoutFinalizationStatus.saved),
         );
+        expect(results.map((result) => result.localWorkoutId), everyElement(1));
         expect(context.workoutRepository.saved, hasLength(1));
         await context.dispose();
       },
@@ -549,9 +563,11 @@ void main() {
         expect(context.notifier.hasUnsavedCompletedWorkout, isTrue);
 
         context.workoutRepository.failSave = false;
-        final didRetry = await context.notifier.retryUnsavedWorkoutSave();
+        final retry =
+            await context.notifier.retryUnsavedWorkoutSaveWithResult();
 
-        expect(didRetry, isTrue);
+        expect(retry.status, LiveWorkoutFinalizationStatus.saved);
+        expect(retry.localWorkoutId, 2);
         expect(context.notifier.hasUnsavedCompletedWorkout, isFalse);
         expect(context.notifier.state.errorMessage, isNull);
         expect(context.workoutRepository.saved, hasLength(2));
@@ -567,10 +583,11 @@ void main() {
         context.workoutRepository.failSave = true;
         await context.notifier.stopWorkout();
 
-        await context.notifier.discardWorkout();
+        final discarded = await context.notifier.discardWorkout();
         context.workoutRepository.failSave = false;
         await context.notifier.startWorkout(WorkoutType.cycling);
 
+        expect(discarded, isTrue);
         expect(context.notifier.hasUnsavedCompletedWorkout, isFalse);
         expect(
           context.notifier.state.currentSession!.type,

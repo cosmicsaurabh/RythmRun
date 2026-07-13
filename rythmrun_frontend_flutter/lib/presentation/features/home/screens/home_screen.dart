@@ -33,7 +33,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _maybePromptStartOfDayOffer() async {
     if (!mounted || _hasPromptedStartOffer) return;
     final adsService = ref.read(adsServiceProvider);
-    await adsService.initialize();
 
     if (!adsService.canShowStartOfDayOffer) {
       setState(() {
@@ -41,6 +40,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       });
       return;
     }
+
+    await adsService.initialize();
+    if (!mounted) return;
 
     setState(() {
       _hasPromptedStartOffer = true;
