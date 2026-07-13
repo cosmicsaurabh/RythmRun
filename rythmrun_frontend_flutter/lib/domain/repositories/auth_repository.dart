@@ -31,6 +31,9 @@ abstract class AuthRepository {
   /// Get current authenticated user
   Future<UserEntity?> getCurrentUser();
 
+  /// Persist non-secret cached profile metadata for the active user.
+  Future<void> updateCurrentUser(UserEntity user);
+
   /// Check if session needs token refresh
   Future<bool> needsTokenRefresh();
 
@@ -58,7 +61,4 @@ abstract class AuthRepository {
 
   /// Update the last backend sync timestamp
   Future<void> updateLastBackendSync();
-
-  /// Debug method to print stored data (only for development)
-  Future<void> printStoredData();
 }

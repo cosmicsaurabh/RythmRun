@@ -1,12 +1,13 @@
+import 'dart:async';
 import 'dart:developer';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/auth_failures.dart';
 import '../../../domain/repositories/auth_repository.dart';
 import '../../../domain/entities/user_entity.dart';
 import '../../../core/di/injection_container.dart';
 import '../../../core/services/authentication_attempt_gate.dart';
-import '../../../core/services/auth_persistence_service.dart';
+import '../../../core/services/session_invalidation_signal.dart';
 import '../session/user_scope_teardown.dart';
 import 'user_scope_teardown_provider.dart';
 
@@ -64,6 +65,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
   final AuthRepository _authRepository;
   final UserScopeTeardown _userScopeTeardown;
   final AuthenticationAttemptGate _authenticationAttemptGate;
+  StreamSubscription<SessionInvalidationEvent>? _invalidationSubscription;
   bool _isSessionExitInProgress = false;
   int _sessionOperationGeneration = 0;
 
@@ -71,13 +73,31 @@ class SessionNotifier extends StateNotifier<SessionData> {
     this._authRepository,
     this._userScopeTeardown, {
     AuthenticationAttemptGate? authenticationAttemptGate,
+    SessionInvalidationSignal? sessionInvalidationSignal,
     bool autoInitialize = true,
   }) : _authenticationAttemptGate =
            authenticationAttemptGate ?? AuthenticationAttemptGate(),
        super(const SessionData(state: SessionState.initial)) {
+    _invalidationSubscription = sessionInvalidationSignal?.events.listen((_) {
+      if (state.state == SessionState.unauthenticated ||
+          state.pendingExitReason != null ||
+          _isSessionExitInProgress) {
+        return;
+      }
+      unawaited(handleForcedAuthenticationLoss());
+    });
     if (autoInitialize) {
       _initializeSession();
     }
+  }
+
+  @override
+  void dispose() {
+    final subscription = _invalidationSubscription;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+    super.dispose();
   }
 
   bool _publishAuthenticated(
@@ -99,6 +119,18 @@ class SessionNotifier extends StateNotifier<SessionData> {
       pendingExitReason: null,
     );
     return true;
+  }
+
+  void _publishVerificationRequired(int expectedGeneration) {
+    if (!_isSessionOperationCurrent(expectedGeneration)) return;
+    state = state.copyWith(
+      state: SessionState.checking,
+      user: null,
+      errorMessage:
+          'Online session verification is required before account access can continue.',
+      exitRequirement: UserScopeExitRequirement.none,
+      pendingExitReason: null,
+    );
   }
 
   int? _beginSessionOperation() {
@@ -163,13 +195,6 @@ class SessionNotifier extends StateNotifier<SessionData> {
       return;
     }
 
-    if (kDebugMode) {
-      print('🚀 SessionProvider: Initializing session...');
-      // Print stored data for debugging
-      await _authRepository.printStoredData();
-      if (!_isSessionOperationCurrent(generation)) return;
-    }
-
     try {
       // First, check if we have user data and if we need token refresh
       final userData = await _authRepository.getCurrentUser();
@@ -177,22 +202,8 @@ class SessionNotifier extends StateNotifier<SessionData> {
       final needsRefresh = await _authRepository.needsTokenRefresh();
       if (!_isSessionOperationCurrent(generation)) return;
 
-      if (kDebugMode) {
-        print('🔍 SessionProvider: User data exists: ${userData != null}');
-        print('🔍 SessionProvider: Needs token refresh: $needsRefresh');
-        if (userData != null) {
-          print('🔍 SessionProvider: User ID: ${userData.id}');
-          print(
-            '🔍 SessionProvider: Avatar configured: ${userData.profilePicturePath != null}',
-          );
-        }
-      }
-
       if (userData != null) {
         if (needsRefresh) {
-          if (kDebugMode) {
-            print('🔄 SessionProvider: Attempting token refresh...');
-          }
           await _refreshToken(generation);
           return;
         }
@@ -219,55 +230,53 @@ class SessionNotifier extends StateNotifier<SessionData> {
             await handleForcedAuthenticationLoss();
             break;
           case SessionValidationStatus.unavailable:
-            _publishAuthenticated(
-              userData,
-              sessionState: SessionState.authenticatedOffline,
-              errorMessage:
-                  canStayOffline
-                      ? 'Offline mode - limited functionality available'
-                      : 'Backend verification is required when connectivity returns',
-              expectedGeneration: generation,
-            );
+            if (canStayOffline) {
+              _publishAuthenticated(
+                userData,
+                sessionState: SessionState.authenticatedOffline,
+                errorMessage: 'Offline mode - limited functionality available',
+                expectedGeneration: generation,
+              );
+            } else {
+              _publishVerificationRequired(generation);
+            }
             break;
         }
         return;
       }
 
-      // No user data found - check if we need to refresh tokens
-      if (needsRefresh) {
-        try {
-          await _refreshToken(generation);
-          return;
-        } catch (e) {
-          // Token refresh failed and no user data
-          log('SessionProvider: Token refresh failed and no user data: $e');
-        }
-      }
-
+      // Cached identity and credentials are one admission unit. Orphan
+      // credentials cannot authorize a protected or offline subtree.
+      await handleForcedAuthenticationLoss();
+    } on AuthSessionInvalid {
       if (_isSessionOperationCurrent(generation)) {
-        state = const SessionData(state: SessionState.unauthenticated);
+        await handleForcedAuthenticationLoss();
       }
-    } catch (e) {
+    } on AuthSessionUnavailable {
       if (!_isSessionOperationCurrent(generation)) return;
-      // Only clear session if it's a serious error and we have no local data
       final userData = await _authRepository.getCurrentUser();
       if (!_isSessionOperationCurrent(generation)) return;
-      if (userData != null) {
-        log(
-          'SessionProvider: Error during initialization, but user data exists - enabling offline mode',
-        );
+      final canStayOffline =
+          userData != null && await _authRepository.canStayLoggedInOffline();
+      if (!_isSessionOperationCurrent(generation)) return;
+      if (userData != null && canStayOffline) {
         _publishAuthenticated(
           userData,
           sessionState: SessionState.authenticatedOffline,
-          errorMessage: 'Error during startup - offline mode enabled',
+          errorMessage: 'Connection failed - offline mode enabled',
           expectedGeneration: generation,
         );
       } else {
-        log(
-          'SessionProvider: Error during initialization and no local user data: $e',
-        );
-        await handleForcedAuthenticationLoss();
+        _publishVerificationRequired(generation);
       }
+    } catch (_) {
+      if (!_isSessionOperationCurrent(generation)) return;
+      state = state.copyWith(
+        state: SessionState.checking,
+        errorMessage:
+            'Account data could not be verified. Retry when connectivity is available.',
+        user: null,
+      );
     }
   }
 
@@ -286,12 +295,17 @@ class SessionNotifier extends StateNotifier<SessionData> {
         sessionState: SessionState.authenticated,
         expectedGeneration: generation,
       );
-    } catch (e) {
+    } on AuthSessionInvalid {
+      if (!_isSessionOperationCurrent(generation)) return;
+      await handleForcedAuthenticationLoss();
+    } on AuthSessionUnavailable {
       if (!_isSessionOperationCurrent(generation)) return;
       final userData = await _authRepository.getCurrentUser();
       if (!_isSessionOperationCurrent(generation)) return;
-      if (userData != null && !_isAuthenticationRejection(e)) {
-        log('SessionProvider: Token refresh failed, enabling offline mode: $e');
+      final canStayOffline =
+          userData != null && await _authRepository.canStayLoggedInOffline();
+      if (!_isSessionOperationCurrent(generation)) return;
+      if (userData != null && canStayOffline) {
         _publishAuthenticated(
           userData,
           sessionState: SessionState.authenticatedOffline,
@@ -299,18 +313,12 @@ class SessionNotifier extends StateNotifier<SessionData> {
           expectedGeneration: generation,
         );
       } else {
-        log('SessionProvider: Token refresh failed and no local user data: $e');
-        await handleForcedAuthenticationLoss();
+        _publishVerificationRequired(generation);
       }
+    } catch (_) {
+      if (!_isSessionOperationCurrent(generation)) return;
+      _publishVerificationRequired(generation);
     }
-  }
-
-  bool _isAuthenticationRejection(Object error) {
-    final message = error.toString();
-    return message.contains('UnauthorizedException') ||
-        message.contains('ForbiddenException') ||
-        message.contains('(401)') ||
-        message.contains('(403)');
   }
 
   /// Called after successful login
@@ -365,7 +373,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
       profilePicturePath: path,
       profilePictureType: type,
     );
-    await AuthPersistenceService.updateUserData(updatedUser);
+    await _authRepository.updateCurrentUser(updatedUser);
     if (state.user?.id != ownerUserId) return;
     state = state.copyWith(user: updatedUser);
   }
@@ -410,7 +418,12 @@ class SessionNotifier extends StateNotifier<SessionData> {
   }
 
   void cancelPendingExit() {
-    if (_isSessionExitInProgress || state.pendingExitReason == null) return;
+    if (_isSessionExitInProgress ||
+        state.pendingExitReason == null ||
+        state.pendingExitReason ==
+            UserScopeExitReason.forcedAuthenticationLoss) {
+      return;
+    }
     _sessionOperationGeneration += 1;
     state = state.copyWith(
       errorMessage: null,
@@ -432,6 +445,33 @@ class SessionNotifier extends StateNotifier<SessionData> {
     }
 
     _sessionOperationGeneration += 1;
+
+    final isForcedAuthenticationLoss =
+        reason == UserScopeExitReason.forcedAuthenticationLoss;
+    var cleanupMarkerPersisted = false;
+    if (isForcedAuthenticationLoss) {
+      try {
+        // A backend-rejected or otherwise invalid session must remain
+        // fail-closed if local workout recovery blocks teardown and the process
+        // exits before credentials can be fully cleared.
+        await _authRepository.markAuthCleanupPending();
+        cleanupMarkerPersisted = true;
+      } catch (_) {
+        await _authenticationAttemptGate.suspendAndDrain();
+        const result = UserScopeTeardownResult.blocked(
+          requirement: UserScopeExitRequirement.accountCleanup,
+          message:
+              'Account cleanup could not be secured for restart. Retry before continuing.',
+        );
+        state = state.copyWith(
+          state: SessionState.checking,
+          errorMessage: result.message,
+          exitRequirement: result.requirement,
+          pendingExitReason: reason,
+        );
+        return result;
+      }
+    }
 
     late final UserScopeExitRequirement requirement;
     try {
@@ -486,7 +526,9 @@ class SessionNotifier extends StateNotifier<SessionData> {
       await _authenticationAttemptGate.suspendAndDrain();
 
       try {
-        await _authRepository.markAuthCleanupPending();
+        if (!cleanupMarkerPersisted) {
+          await _authRepository.markAuthCleanupPending();
+        }
       } catch (_) {
         const result = UserScopeTeardownResult.blocked(
           requirement: UserScopeExitRequirement.accountCleanup,
@@ -613,27 +655,43 @@ class SessionNotifier extends StateNotifier<SessionData> {
           break;
         case SessionValidationStatus.unavailable:
           final user = state.user;
-          if (user != null) {
+          final canStayOffline =
+              user != null && await _authRepository.canStayLoggedInOffline();
+          if (!_isSessionOperationCurrent(generation)) return;
+          if (user != null && canStayOffline) {
             _publishAuthenticated(
               user,
               sessionState: SessionState.authenticatedOffline,
               errorMessage: 'Offline mode - limited functionality available',
               expectedGeneration: generation,
             );
+          } else {
+            _publishVerificationRequired(generation);
           }
           break;
       }
-    } catch (e) {
+    } on AuthSessionInvalid {
+      if (!_isSessionOperationCurrent(generation)) return;
+      await handleForcedAuthenticationLoss();
+    } on AuthSessionUnavailable {
       if (!_isSessionOperationCurrent(generation)) return;
       final user = state.user;
-      if (user != null) {
+      final canStayOffline =
+          user != null && await _authRepository.canStayLoggedInOffline();
+      if (!_isSessionOperationCurrent(generation)) return;
+      if (user != null && canStayOffline) {
         _publishAuthenticated(
           user,
           sessionState: SessionState.authenticatedOffline,
           errorMessage: 'Offline mode - limited functionality available',
           expectedGeneration: generation,
         );
+      } else {
+        _publishVerificationRequired(generation);
       }
+    } catch (_) {
+      if (!_isSessionOperationCurrent(generation)) return;
+      _publishVerificationRequired(generation);
     }
   }
 }
@@ -646,6 +704,7 @@ final StateNotifierProvider<SessionNotifier, SessionData> sessionProvider =
         authRepository,
         teardown,
         authenticationAttemptGate: ref.watch(authenticationAttemptGateProvider),
+        sessionInvalidationSignal: ref.watch(sessionInvalidationSignalProvider),
       );
     });
 

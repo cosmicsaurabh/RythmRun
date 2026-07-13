@@ -6,6 +6,7 @@ const mockUserController = {
   login: jest.fn(),
   logout: jest.fn(),
   refreshToken: jest.fn(),
+  me: jest.fn(),
   updateProfile: jest.fn(),
   changePassword: jest.fn(),
 };
@@ -16,11 +17,15 @@ jest.unstable_mockModule('../config/container.js', () => ({
   },
 }));
 
-const { default: userRoutes } = await import('../routes/user.routes.js');
+const { createUserRouter, default: userRoutes } = await import(
+  '../routes/user.routes.js'
+);
 
 interface RouterLayer {
+  handle?: unknown;
   route?: {
     path: string;
+    stack: RouterLayer[];
   };
 }
 
@@ -34,11 +39,35 @@ describe('user routes', () => {
       '/register',
       '/login',
       '/logout',
+      '/me',
       '/refresh-token',
       '/profile',
       '/change-password',
     ]);
     expect(routePaths).not.toContain('/profile-picture');
     expect(routePaths).not.toContain('/profile-picture/:id');
+  });
+
+  it('keeps refresh public while protecting the current-user route', () => {
+    const authenticate = jest.fn();
+    const router = createUserRouter({
+      controller: mockUserController,
+      authenticate,
+    });
+    const routeLayers = (router as unknown as { stack: RouterLayer[] }).stack;
+    const refreshRoute = routeLayers.find(
+      (layer) => layer.route?.path === '/refresh-token',
+    )?.route;
+    const meRoute = routeLayers.find(
+      (layer) => layer.route?.path === '/me',
+    )?.route;
+
+    expect(refreshRoute?.stack.map((layer) => layer.handle)).toEqual([
+      mockUserController.refreshToken,
+    ]);
+    expect(meRoute?.stack.map((layer) => layer.handle)).toEqual([
+      authenticate,
+      mockUserController.me,
+    ]);
   });
 });

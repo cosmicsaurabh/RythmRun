@@ -28,7 +28,7 @@ model User {
   friendsAsUser1      Friend[]             @relation("UserFriends")
   friendsAsUser2      Friend[]             @relation("UserFriends2")
   likes               Like[]
-  refreshToken        RefreshToken?
+  authSessions        AuthSession[]
 }
 
 model AvatarUploadIntent {
@@ -174,11 +174,42 @@ model Friend {
   @@unique([user1Id, user2Id])
 }
 
-model RefreshToken {
-  id         Int      @id @default(autoincrement())
-  userId     Int      @unique
-  token      String   @unique @db.VarChar(512)
-  expiryDate DateTime
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+enum AuthSessionStatus {
+  ACTIVE
+  REVOKED
+}
+
+model AuthSession {
+  id            String               @id @db.Uuid
+  userId        Int
+  familyId      String               @unique @db.Uuid
+  status        AuthSessionStatus    @default(ACTIVE)
+  createdAt     DateTime             @default(now())
+  lastUsedAt    DateTime             @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshTokenRecord[]
+
+  @@index([userId, status, expiresAt])
+  @@index([familyId, status])
+  @@index([status, expiresAt])
+  @@index([expiresAt])
+}
+
+model RefreshTokenRecord {
+  jti           String              @id @db.Uuid
+  sessionId     String              @db.Uuid
+  tokenDigest   String              @unique @db.Char(64)
+  issuedAt      DateTime            @default(now())
+  expiresAt     DateTime
+  usedAt        DateTime?
+  revokedAt     DateTime?
+  replacedByJti String?             @unique @db.Uuid
+  session       AuthSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  replacedBy    RefreshTokenRecord? @relation("RefreshRotation", fields: [replacedByJti], references: [jti], onDelete: SetNull)
+  replaces      RefreshTokenRecord? @relation("RefreshRotation")
+
+  @@index([sessionId, usedAt, revokedAt])
+  @@index([expiresAt])
 }

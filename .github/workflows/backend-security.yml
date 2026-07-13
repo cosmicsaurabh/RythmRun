@@ -25,6 +25,24 @@ jobs:
     timeout-minutes: 15
     env:
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/rythmrun_ci?schema=public
+      JWT_SECRET: ci-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz
+      NODE_ENV: test
+      REFRESH_TOKEN_SECRET: ci-refresh-secret-0123456789-abcdefghijklmnopqrstuv
+      RUN_DATABASE_INTEGRATION: '1'
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: rythmrun_ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_USER: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d rythmrun_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Check out repository
@@ -47,6 +65,9 @@ jobs:
 
       - name: Generate Prisma client
         run: npx --no-install prisma generate
+
+      - name: Apply backend migrations to PostgreSQL
+        run: npm run migrate:deploy
 
       - name: Type-check backend
         run: npm run typecheck

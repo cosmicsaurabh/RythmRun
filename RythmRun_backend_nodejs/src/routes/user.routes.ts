@@ -9,6 +9,7 @@ export interface UserRouteController {
   login: RequestHandler;
   logout: RequestHandler;
   refreshToken: RequestHandler;
+  me: RequestHandler;
   updateProfile: RequestHandler;
   changePassword: RequestHandler;
 }
@@ -55,13 +56,20 @@ export function createUserRouter({
   router.post('/logout', authenticate, controller.logout);
 
   /**
+   * @route GET /api/users/me
+   * @description Return the authenticated user's safe profile fields
+   * @auth Required
+   */
+  router.get('/me', authenticate, controller.me);
+
+  /**
    * @route POST /api/users/refresh-token
    * @description Get new access token using refresh token
-   * @auth Required
+   * @auth Refresh token in the request body
    * @body {string} refreshToken
    * @returns {Object} New access and refresh tokens
    */
-  router.post('/refresh-token', authenticate, controller.refreshToken);
+  router.post('/refresh-token', controller.refreshToken);
 
   /**
    * Profile Management Routes

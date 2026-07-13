@@ -78,13 +78,14 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     final registrationState = ref.watch(registrationProvider);
     final registrationNotifier = ref.read(registrationProvider.notifier);
 
-    // Listen for success and navigate to login
+    // Registration also establishes the session. The app-level session
+    // listener owns stack normalization for both authentication paths.
     ref.listen<bool>(registrationProvider.select((state) => state.isSuccess), (
       previous,
       next,
     ) {
       if (next) {
-        _showSuccessDialog();
+        _showSuccessMessage();
         registrationNotifier.resetForm();
       }
     });
@@ -356,63 +357,18 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     );
   }
 
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder:
-          (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(radiusLg),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(spacingLg),
-                  decoration: BoxDecoration(
-                    color: CustomAppColors.statusSuccess.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    checkCircleIcon,
-                    color: CustomAppColors.statusSuccess,
-                    size: 48,
-                  ),
-                ),
-                const SizedBox(height: spacingLg),
-                Text(
-                  'Account Created!',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: spacingSm),
-                Text(
-                  'Your account has been created successfully. You can now sign in with your credentials.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: CustomAppColors.secondaryText,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-            actions: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (Navigator.canPop(context)) {
-                      Navigator.of(context).pop(); // close dialog
-                    }
-                    if (Navigator.canPop(context)) {
-                      Navigator.of(context).pop(); // Go back to login
-                    }
-                  },
-                  child: const Text('Continue to Sign In'),
-                ),
-              ),
-            ],
+  void _showSuccessMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          "Account created. You're signed in!",
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: CustomAppColors.statusSuccess,
           ),
+        ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: CustomAppColors.statusSuccess.withValues(alpha: 0.1),
+      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
+import 'package:rythmrun_frontend_flutter/core/network/authenticated_request_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 
 abstract class AvatarRemoteDataSource {
@@ -7,9 +8,8 @@ abstract class AvatarRemoteDataSource {
     String ext,
     String contentType,
     int sizeBytes,
-    String token,
   );
-  Future<void> confirmUpload(String key, String contentType, String token);
+  Future<void> confirmUpload(String key, String contentType);
 }
 
 class AvatarUploadAuthorization {
@@ -67,28 +67,28 @@ class AvatarUploadAuthorization {
 
 class AvatarRemoteDataSourceImpl implements AvatarRemoteDataSource {
   final AppHttpClient httpClient;
+  final AuthenticatedRequestExecutor authenticatedRequests;
 
-  AvatarRemoteDataSourceImpl(this.httpClient);
+  AvatarRemoteDataSourceImpl(this.httpClient, this.authenticatedRequests);
 
   @override
   Future<AvatarUploadAuthorization> getUploadUrl(
     String ext,
     String contentType,
     int sizeBytes,
-    String token,
   ) async {
-    final response = await httpClient.post(
-      AppConfig.getUrl('/avatar/upload-url'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'ext': ext,
-        'contentType': contentType,
-        'sizeBytes': sizeBytes,
-      }),
-      maxRetries: 0,
+    final response = await authenticatedRequests.execute(
+      request:
+          (authHeaders) => httpClient.post(
+            AppConfig.getUrl('/avatar/upload-url'),
+            headers: {'Content-Type': 'application/json', ...authHeaders},
+            body: jsonEncode({
+              'ext': ext,
+              'contentType': contentType,
+              'sizeBytes': sizeBytes,
+            }),
+            maxRetries: 0,
+          ),
     );
 
     try {
@@ -103,18 +103,16 @@ class AvatarRemoteDataSourceImpl implements AvatarRemoteDataSource {
   }
 
   @override
-  Future<void> confirmUpload(
-    String key,
-    String contentType,
-    String token,
-  ) async {
-    await httpClient.post(
-      AppConfig.getUrl('/avatar/confirm'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({'key': key, 'contentType': contentType}),
+  Future<void> confirmUpload(String key, String contentType) async {
+    await authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
+      request:
+          (authHeaders) => httpClient.post(
+            AppConfig.getUrl('/avatar/confirm'),
+            headers: {'Content-Type': 'application/json', ...authHeaders},
+            body: jsonEncode({'key': key, 'contentType': contentType}),
+            maxRetries: 0,
+          ),
     );
   }
 }

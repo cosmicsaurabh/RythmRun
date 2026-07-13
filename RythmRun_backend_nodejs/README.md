@@ -8,6 +8,8 @@ RythmRun's backend is a Node.js 22, Express, and strict-TypeScript modular monol
 - `prisma.config.ts` supplies the datasource URL and migration/seed locations to the Prisma CLI.
 - `prisma/schema.prisma` uses the Prisma 7 `prisma-client` generator and emits ESM TypeScript into `src/generated/prisma`.
 - `src/config/database.ts` owns `PrismaPg` and `PrismaClient` construction. The application container injects one client into its services and server shutdown disconnects it.
+- Access JWTs are short-lived session credentials. Every protected request validates standard token claims and confirms the referenced PostgreSQL `AuthSession` is still active; middleware never constructs its own database client.
+- Refresh JWTs rotate through digest-only `RefreshTokenRecord` rows. The server retains used records through the absolute session lifetime so exact replay can revoke the family without storing a raw refresh token.
 - The PostgreSQL adapter uses a maximum pool size of 10, a five-second connection timeout, and a five-minute idle timeout. Provider-specific TLS remains part of deployment configuration and staging proof.
 - `src/main.ts` is the production entry point; `npm run build` emits it as `dist/main.js` and `npm start` runs that built file.
 - Cloudflare R2 stores media through its S3-compatible API. The backend issues user-scoped signed upload operations and signed delivery URLs; media bytes do not pass through PostgreSQL.
@@ -16,9 +18,9 @@ Generated Prisma source and `dist/` are build outputs and are not hand-edited or
 
 ## Main API routes
 
-All application routes except registration and login require authentication; the liveness endpoint is public.
+Registration, login, refresh, and liveness are public HTTP routes. Refresh authenticates the presented refresh JWT itself; all other application routes require an active access-token session.
 
-- Users: `POST /api/users/register`, `POST /api/users/login`, `POST /api/users/logout`, `POST /api/users/refresh-token`, `PUT /api/users/profile`, and `PUT /api/users/change-password`.
+- Users: `POST /api/users/register`, `POST /api/users/login`, `POST /api/users/refresh-token`, `POST /api/users/logout`, `GET /api/users/me`, `PUT /api/users/profile`, and `PUT /api/users/change-password`.
 - Avatars: `POST /api/avatar/upload-url` and `POST /api/avatar/confirm`.
 - Activities: `GET/POST /api/activities` and `GET/PATCH/DELETE /api/activities/:activityId`.
 - Activity images: list, request upload, confirm, and delete below `/api/activities/:activityId/images`.
@@ -76,15 +78,16 @@ The backend CI uses the following order:
 npm ci --no-audit
 npx --no-install prisma validate
 npx --no-install prisma generate
+npm run migrate:deploy
 npm run typecheck
 npm test -- --ci --runInBand
 npm run build
 npm run smoke:runtime
 ```
 
-`npm test` invokes Jest through Node's ESM VM support. `npm run build` cleans `dist`, regenerates the Prisma client, and compiles the production TypeScript project. The final smoke imports the emitted `dist/server.js`, starts a loopback listener, checks `/health` and unauthenticated rejection on a protected route, and closes the server.
+`npm test` invokes Jest through Node's ESM VM support. The hosted backend workflow provisions a disposable PostgreSQL database, applies the complete migration chain, sets `RUN_DATABASE_INTEGRATION=1`, and runs the serial refresh/session tests in the same Jest process. Without that explicit flag, the destructive database suite is skipped; its database-name guard also refuses any URL that is not clearly test/CI-scoped. `npm run build` cleans `dist`, regenerates the Prisma client, and compiles the production TypeScript project. The final smoke imports the emitted `dist/server.js`, starts a loopback listener, checks `/health` and unauthenticated rejection on a protected route, and closes the server.
 
-These checks deliberately use a syntactically valid but unreachable PostgreSQL URL. They prove schema/configuration parsing, generation, production type safety, ESM tests, emitted module resolution, basic listener startup, and shutdown. They do **not** prove a real database connection, migration execution, TLS, schema selection, pooling under load, authenticated queries, or transaction behavior.
+The PostgreSQL integration suite proves migration application, adapter-backed auth queries, digest-only storage, serializable refresh concurrency/replay behavior, session caps, and logout/password revocation against synthetic rows. It does **not** prove provider TLS, a deployed custom schema, pooling under production load, proxy behavior, or production rollout. The built smoke deliberately remains database-free.
 
 ## Build and deployment order
 
@@ -100,5 +103,7 @@ npm start
 ```
 
 `migrate:deploy` must have a real target `DATABASE_URL`, a verified backup/rollback procedure, and exactly one migration owner. Run it against an isolated staging database and a representative upgrade copy before production. Start or promote the already-built artifact only after the migration step succeeds; do not rebuild different source for production.
+
+The auth-session migration intentionally drops the legacy plaintext refresh table because old JWTs have no `sid`/`jti` and cannot be backfilled safely. It therefore forces a one-time sign-in. Drain old backend instances before applying this cutover, promote only the matching session-aware artifact, and never roll back by recreating plaintext token rows or resurrecting revoked sessions.
 
 Before declaring a release database-compatible, staging must also prove provider-required TLS, the intended PostgreSQL schema, an authenticated query, bounded connection usage, disconnect on shutdown, and the serializable rollback/concurrency paths used by activity writes. The no-database CI smoke does not close those operational gates.

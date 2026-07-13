@@ -36,6 +36,13 @@ export class LoginUserDto {
     password!: string;
 }
 
+export class RefreshTokenDto {
+    @IsString()
+    @MinLength(1)
+    @MaxLength(4096)
+    refreshToken!: string;
+}
+
 export class ChangePasswordDto {
     @IsString()
     @MinLength(8)

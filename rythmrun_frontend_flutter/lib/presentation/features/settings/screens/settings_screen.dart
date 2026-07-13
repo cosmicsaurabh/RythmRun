@@ -20,10 +20,7 @@ class SettingsScreen extends ConsumerWidget {
         title: const Text('Settings'),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        actions: const [
-          ConnectivityBadge(),
-          SizedBox(width: spacingMd),
-        ],
+        actions: const [ConnectivityBadge(), SizedBox(width: spacingMd)],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(spacingLg),
@@ -384,7 +381,9 @@ class SettingsScreen extends ConsumerWidget {
                         padding: const EdgeInsets.all(spacingSm),
                         margin: const EdgeInsets.only(bottom: spacingLg),
                         decoration: BoxDecoration(
-                          color: CustomAppColors.statusError.withValues(alpha: 0.1),
+                          color: CustomAppColors.statusError.withValues(
+                            alpha: 0.1,
+                          ),
                           borderRadius: BorderRadius.circular(radiusSm),
                           border: Border.all(
                             color: CustomAppColors.statusError,
@@ -463,6 +462,7 @@ class SettingsScreen extends ConsumerWidget {
                                   .read(changePasswordProvider.notifier)
                                   .changePassword(currentPassword, newPassword);
 
+                              if (!context.mounted) return;
                               if (successMessage != null) {
                                 // Success - close dialog and show success snackbar
                                 Navigator.pop(context);

@@ -10,7 +10,6 @@ import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gat
 import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_image_remote_datasource.dart';
-import 'package:rythmrun_frontend_flutter/data/datasources/auth_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/workout_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/activity_image_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/activity_image_repository.dart';
@@ -21,7 +20,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
   final ActivityImageRemoteDataSource _remoteDataSource;
   final ActivityImageFileService _fileService;
   final AuthRepository _authRepository;
-  final AuthLocalDataSource _authLocalDataSource;
   final WorkoutLocalDataSource _workoutLocalDataSource;
   final Random _random;
   final UserScopeOperationGate? _operationGate;
@@ -33,7 +31,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     required ActivityImageRemoteDataSource remoteDataSource,
     required ActivityImageFileService fileService,
     required AuthRepository authRepository,
-    required AuthLocalDataSource authLocalDataSource,
     required WorkoutLocalDataSource workoutLocalDataSource,
     Random? random,
     UserScopeOperationGate? operationGate,
@@ -41,7 +38,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
        _remoteDataSource = remoteDataSource,
        _fileService = fileService,
        _authRepository = authRepository,
-       _authLocalDataSource = authLocalDataSource,
        _workoutLocalDataSource = workoutLocalDataSource,
        _random = random ?? Random(),
        _operationGate = operationGate;
@@ -270,42 +266,11 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
         return;
       }
 
-      var authHeaders = await _authLocalDataSource.getAuthHeaders();
-      await _ensureOwnerStillCurrent(userId);
-      if (authHeaders == null) {
-        return;
-      }
-
-      try {
-        await _refreshRemoteImagesWithHeaders(
-          userId: userId,
-          localWorkoutId: localWorkoutId,
-          remoteActivityId: remoteActivityId,
-          authHeaders: authHeaders,
-        );
-      } on UnauthorizedException catch (_) {
-        authHeaders = await _refreshAuthHeaders(userId);
-        if (authHeaders == null) {
-          return;
-        }
-        await _refreshRemoteImagesWithHeaders(
-          userId: userId,
-          localWorkoutId: localWorkoutId,
-          remoteActivityId: remoteActivityId,
-          authHeaders: authHeaders,
-        );
-      } on ForbiddenException catch (_) {
-        authHeaders = await _refreshAuthHeaders(userId);
-        if (authHeaders == null) {
-          return;
-        }
-        await _refreshRemoteImagesWithHeaders(
-          userId: userId,
-          localWorkoutId: localWorkoutId,
-          remoteActivityId: remoteActivityId,
-          authHeaders: authHeaders,
-        );
-      }
+      await _refreshRemoteImages(
+        userId: userId,
+        localWorkoutId: localWorkoutId,
+        remoteActivityId: remoteActivityId,
+      );
     });
   }
 
@@ -331,13 +296,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
 
       await _runImageJanitor(userId);
 
-      final initialAuthHeaders = await _authLocalDataSource.getAuthHeaders();
-      await _ensureOwnerStillCurrent(userId);
-      if (initialAuthHeaders == null) {
-        return;
-      }
-      var authHeaders = initialAuthHeaders;
-
       final images = await _localDataSource.getImagesReadyForSync(
         userId,
         DateTime.now(),
@@ -346,15 +304,9 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
 
       for (final image in images) {
         await _ensureOwnerStillCurrent(userId);
-        final nextAuthHeaders = await _syncImageWithAuthRetry(
-          userId,
-          image,
-          authHeaders,
-        );
-        if (nextAuthHeaders == null) {
+        if (!await _syncImageWithRecovery(userId, image)) {
           return;
         }
-        authHeaders = nextAuthHeaders;
       }
     } on _ActivityImageOwnerChangedException {
       // The original owner's row remains in its durable retryable state.
@@ -365,26 +317,21 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     }
   }
 
-  Future<Map<String, String>?> _syncImageWithAuthRetry(
+  Future<bool> _syncImageWithRecovery(
     int userId,
     ActivityImageEntity image,
-    Map<String, String> authHeaders,
   ) async {
     try {
-      await _syncImage(userId, image, authHeaders);
-      return authHeaders;
+      await _syncImage(userId, image);
+      return true;
     } on _ActivityImageOwnerChangedException {
-      return null;
-    } on UnauthorizedException catch (_) {
-      return _refreshAuthAndRetryImage(userId, image);
-    } on ForbiddenException catch (_) {
-      return _refreshAuthAndRetryImage(userId, image);
+      return false;
     } catch (error) {
       if (!await _isOwnerStillCurrent(userId)) {
-        return null;
+        return false;
       }
       await _markRetryingOrFailed(userId, image, error);
-      return authHeaders;
+      return true;
     }
   }
 
@@ -429,72 +376,23 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     }
   }
 
-  Future<Map<String, String>?> _refreshAuthAndRetryImage(
-    int userId,
-    ActivityImageEntity image,
-  ) async {
-    Map<String, String>? refreshedAuthHeaders;
-    try {
-      refreshedAuthHeaders = await _refreshAuthHeaders(userId);
-    } on _ActivityImageOwnerChangedException {
-      return null;
-    }
-    if (refreshedAuthHeaders == null) {
-      if (!await _isOwnerStillCurrent(userId)) {
-        return null;
-      }
-      await _markRetryingOrFailed(userId, image, 'Auth refresh failed');
-      return null;
-    }
-
-    try {
-      await _syncImage(
-        userId,
-        image,
-        refreshedAuthHeaders,
-        alreadyClaimed: true,
-      );
-    } on _ActivityImageOwnerChangedException {
-      return null;
-    } catch (retryError) {
-      if (!await _isOwnerStillCurrent(userId)) {
-        return null;
-      }
-      await _markRetryingOrFailed(userId, image, retryError);
-    }
-
-    return refreshedAuthHeaders;
-  }
-
   Future<void> _syncImage(
     int userId,
-    ActivityImageEntity image,
-    Map<String, String> authHeaders, {
+    ActivityImageEntity image, {
     bool alreadyClaimed = false,
   }) async {
     if (image.status == ActivityImageSyncStatus.queued ||
         image.status == ActivityImageSyncStatus.waitingForActivitySync ||
         image.status == ActivityImageSyncStatus.retrying) {
-      await _syncUpload(
-        userId,
-        image,
-        authHeaders,
-        alreadyClaimed: alreadyClaimed,
-      );
+      await _syncUpload(userId, image, alreadyClaimed: alreadyClaimed);
     } else if (image.status == ActivityImageSyncStatus.deleteQueued) {
-      await _syncDelete(
-        userId,
-        image,
-        authHeaders,
-        alreadyClaimed: alreadyClaimed,
-      );
+      await _syncDelete(userId, image, alreadyClaimed: alreadyClaimed);
     }
   }
 
   Future<void> _syncUpload(
     int userId,
-    ActivityImageEntity image,
-    Map<String, String> authHeaders, {
+    ActivityImageEntity image, {
     bool alreadyClaimed = false,
   }) async {
     final localImageId = _requireLocalImageId(image);
@@ -539,7 +437,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     final intent = await _remoteDataSource.requestUploadUrl(
       remoteActivityId: remoteActivityId,
       image: image,
-      authHeaders: authHeaders,
     );
     await _ensureOwnerStillCurrent(userId);
 
@@ -555,7 +452,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
         localImageId: localImageId,
         localWorkoutId: image.localWorkoutId,
         finalStatus: finalStatus,
-        authHeaders: authHeaders,
       );
       return;
     }
@@ -578,7 +474,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       remoteActivityId: remoteActivityId,
       image: image,
       key: intent.key,
-      authHeaders: authHeaders,
     );
     await _ensureOwnerStillCurrent(userId);
 
@@ -596,14 +491,12 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       localImageId: localImageId,
       localWorkoutId: image.localWorkoutId,
       finalStatus: finalStatus,
-      authHeaders: authHeaders,
     );
   }
 
   Future<void> _syncDelete(
     int userId,
-    ActivityImageEntity image,
-    Map<String, String> authHeaders, {
+    ActivityImageEntity image, {
     bool alreadyClaimed = false,
   }) async {
     final localImageId = _requireLocalImageId(image);
@@ -632,7 +525,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       await _remoteDataSource.deleteRemoteImage(
         remoteActivityId: remoteActivityId,
         remoteImageId: remoteImageId,
-        authHeaders: authHeaders,
       );
     } on NotFoundException {
       // Idempotent success: the remote image is already absent.
@@ -673,7 +565,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     required int localImageId,
     required int localWorkoutId,
     required ActivityImageSyncStatus? finalStatus,
-    required Map<String, String> authHeaders,
   }) async {
     await _ensureOwnerStillCurrent(userId);
     if (finalStatus == ActivityImageSyncStatus.deleteQueued) {
@@ -683,7 +574,7 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       );
       await _ensureOwnerStillCurrent(userId);
       if (latest != null) {
-        await _syncDelete(userId, latest, authHeaders);
+        await _syncDelete(userId, latest);
       }
       return;
     }
@@ -696,11 +587,10 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     }
   }
 
-  Future<void> _refreshRemoteImagesWithHeaders({
+  Future<void> _refreshRemoteImages({
     required int userId,
     required int localWorkoutId,
     required int remoteActivityId,
-    required Map<String, String> authHeaders,
   }) async {
     final localImages = await _localDataSource.getWorkoutImages(
       localWorkoutId,
@@ -709,7 +599,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     await _ensureOwnerStillCurrent(userId);
     final remoteImages = await _remoteDataSource.fetchImages(
       remoteActivityId: remoteActivityId,
-      authHeaders: authHeaders,
     );
     await _ensureOwnerStillCurrent(userId);
 
@@ -847,10 +736,7 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
     }
 
     if (error is HttpStatusException) {
-      return error.statusCode == 400 ||
-          error.statusCode == 401 ||
-          error.statusCode == 403 ||
-          error.statusCode == 404;
+      return error.statusCode == 400 || error.statusCode == 404;
     }
 
     return false;
@@ -965,23 +851,6 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
       return await action(userId);
     } finally {
       operationLease?.release();
-    }
-  }
-
-  Future<Map<String, String>?> _refreshAuthHeaders(int userId) async {
-    try {
-      await _ensureOwnerStillCurrent(userId);
-      await _authRepository.refreshToken();
-      await _ensureOwnerStillCurrent(userId);
-      final authHeaders = await _authLocalDataSource.getAuthHeaders();
-      await _ensureOwnerStillCurrent(userId);
-      return authHeaders;
-    } catch (error) {
-      if (error is _ActivityImageOwnerChangedException) {
-        rethrow;
-      }
-      log('Failed to refresh auth token during image sync: $error');
-      return null;
     }
   }
 }

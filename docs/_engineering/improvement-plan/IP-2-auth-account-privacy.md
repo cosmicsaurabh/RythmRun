@@ -6,11 +6,11 @@ published: false
 
 | Field | Value |
 | --- | --- |
-| Status | Planned |
+| Status | **In progress** |
 | Priority | P1 |
 | Target | 2–4 weeks in independently shippable packages, plus external email/privacy decisions |
 | Owner | Unassigned |
-| Last updated | 2026-07-10 |
+| Last updated | 2026-07-13 |
 | Depends on | IP-0 secret/avatar fix; IP-1 user-scope teardown and minimum CI |
 | External prerequisites | Password-recovery email provider/domain; privacy/deletion retention decision |
 | Exit condition | Auth expiry/rotation/revocation, secure storage, account lifecycle, and route-privacy gates pass |
@@ -149,6 +149,14 @@ An authenticated request verifies signature/type/expiry and confirms that `sid` 
 - Refresh no longer depends on an unexpired access token.
 - Token rotation and replay behavior are transactionally proven.
 
+**Repository implementation state (2026-07-13)**
+
+- The forward migration deliberately drops the legacy plaintext-token table and creates constrained `AuthSession`/`RefreshTokenRecord` tables. Existing JWTs cannot be preserved because they have no `sid`, `jti`, or `typ`; rollout therefore requires a communicated one-time sign-in, a backup/upgrade-copy rehearsal, and a drain window for old backend instances.
+- Access tokens now last at most 15 minutes and are accepted only while their database session is active. Refresh sessions have a fixed seven-day absolute expiry, rotate through SHA-256 digests under a serializable transaction, retain used records for replay detection, and cap each user at five active sessions by revoking the least-recently-used session before issuing another.
+- Registration, login, and refresh return the same flat safe contract. Refresh is no longer access-token-protected; logout revokes the presented session; password change updates the hash and revokes every session in the same transaction; authenticated `GET /api/users/me` returns safe fields only.
+- Repository unit/HTTP suites cover claims, digest-only writes, safe errors, route protection, replay commit ordering, password/logout behavior, and the response contract. The hosted `Backend security` job now provisions PostgreSQL, applies migrations, and enables a two-client concurrency suite. A successful hosted run is still required before claiming transactional proof.
+- `revokeAllUserSessions` is the tested primitive reserved for account deletion. The deletion endpoint, confirmation/retention policy, object-cleanup outbox, and end-to-end deletion proof remain IP-2.4; this package does not add an unsafe partial delete route.
+
 ### IP-2.2 — Add secure mobile token storage and single-flight refresh
 
 **Primary files**
@@ -197,6 +205,17 @@ An authenticated request verifies signature/type/expiry and confirms that `sid` 
 **Acceptance**
 
 - Plain preferences do not contain access or refresh tokens after migration.
+
+**Repository implementation state (2026-07-13)**
+
+- The mobile pair is stored as one versioned, read-back-verified secure envelope using stable `flutter_secure_storage` 10.3.1. Android uses its current encrypted-storage defaults under a dedicated namespace and application backup is disabled; iOS uses a device-only, non-synchronizing Keychain account, but iOS remains outside the promised platform scope under D-008.
+- Migration accepts only a coherent unexpired IP-2.1 pair with matching numeric `sub`, UUID `sid`, distinct UUID `jti` values, correct `typ` claims, compatible issue/expiry times, and the cached user ID. A secure envelope wins over stale preferences. Migration and cleanup share one FIFO, and plaintext keys are removed only after a complete secure write/read-back. A migrated pair cannot enter offline mode until a protected backend response verifies it.
+- Credential revision now identifies pair rotation only; marking server verification does not change it. The authenticated coordinator counts active operations per source revision so both simultaneous and staggered `401` responses share one completed refresh, atomically CAS the pair, and replay each idempotent caller once. Exact backend codes distinguish access expiry, refresh rejection, forbidden access, network loss, and service failure. Mutations default to zero transport retries and require an explicit idempotency/replay policy.
+- A rejected refresh conditionally deletes only its exact secure revision before emitting forced teardown; deletion failure writes the restart-safe cleanup marker. Password change uses the same session-revoking path because the backend revokes every session. The marker is persisted before any forced-loss workout recovery can block cleanup. Cached user/workout state may remain visible only behind the non-dismissible D-011 recovery action while server authority is already absent; process restart cannot restore that pair as authenticated or offline.
+- Refresh response metadata and `/users/me` verification time commit while the shared authentication gate is held, so logout drains them before clearing data. All production HTTP clients are injected and disposed. Repositories no longer receive raw token/header values, and the token-bearing auth model has no serialization/debug enumeration API.
+- Login and registration both normalize to the authenticated root through session state. The production named-route table lazily guards `/home`, `/login`, `/registration`, and `/landing`; checking, unverified, and signed-out states cannot instantiate `HomeScreen` through direct navigation. Refreshing an existing session does not collapse an unrelated route.
+- The repository suite proves migration/cleanup interruption, migration-versus-clear serialization, metadata-versus-refresh CAS, simultaneous and staggered `401` reuse, exact-revision invalidation, newer-login preservation, secure-delete fallback, logout metadata draining, password-change teardown, typed network/invalid outcomes, blocked-teardown restart safety, login/registration root equivalence, unverified-network fail-closed behavior, password-safe request rendering, and the production `/home` guard. The full Flutter suite passes 275/275; analysis reports 10 informational findings and zero warnings/errors, the counted baseline accepts the reduction, locked restore passes, and an Android debug APK builds.
+- Physical secure-store inspection, prior-version in-place upgrade/interruption, Android backup/restore and device-transfer behavior, release-log sentinel review, and staging login/refresh/revocation lifecycle remain pending in MC-2.3. The broader fake-clock/clock-rollback offline policy remains IP-2.3; this package implements only the IP-2.2 admission distinctions needed to prevent invalid or unverified credentials from entering offline mode.
 
 ### IP-2.3 — Define and implement offline-session behavior
 
@@ -429,4 +448,5 @@ The app intentionally retains completed offline history across normal logout. Ex
 
 | Date | Work package | Evidence | Result | Notes |
 | --- | --- | --- | --- | --- |
-| — | — | No implementation evidence yet | Not started | Planning document only |
+| 2026-07-13 | IP-2.1 | Prisma schema/migration validation and generation; auth/session/user/middleware/HTTP Jest suites; production typecheck/build; built runtime smoke | Repository gates pass; hosted PostgreSQL gate pending | Local Jest ran 18/18 executable suites and 279/279 tests; the six-test real-PostgreSQL suite was correctly skipped because no test database is available locally. Production build and the loopback built-ESM smoke passed on the available Node 26.3.0 host; the workflow's exact Node 22.23.1 plus PostgreSQL run remains MC-2.1. Hosted MC-2.1 must apply the migration and pass the enabled concurrency suite before atomicity is claimed. Account deletion remains IP-2.4. |
+| 2026-07-13 | IP-2.2 | Locked Flutter restore; focused migration/refresh/session/navigation race suites; full Flutter suite; analyzer and counted baseline; Android debug APK | Repository gates pass; physical-device/staging gate pending | Flutter passed 275/275 tests. Analyzer reported 10 informational findings and zero warnings/errors, with 10 prior baseline findings removed. The debug APK compiled with the current secure-storage platform integration. No device storage, upgrade interruption, backup/restore, release-log, or staging lifecycle claim is made; those remain MC-2.3. IP-2.3 fake-clock/rollback policy remains separate. |

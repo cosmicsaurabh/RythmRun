@@ -1,42 +1,81 @@
-import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { getJwtSecrets } from '../config/env.js';
+import type { RequestHandler } from 'express';
 
-// Extend Express Request type to include user
-declare global {
-    namespace Express {
-        interface Request {
-            user?: {
-                id: number;
-            }
-        }
-    }
+import { container } from '../config/container.js';
+import { AuthApplicationError } from '../errors/auth.error.js';
+import type {
+  AuthSessionService,
+  AuthenticatedPrincipal,
+} from '../services/auth-session.service.js';
+
+export interface AccessTokenAuthenticator {
+  authenticateAccessToken(token: string): Promise<AuthenticatedPrincipal>;
 }
 
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-                status: 'error',
-                message: 'No token provided'
-            });
-        }
+function sendInvalidAccess(res: Parameters<RequestHandler>[1]): void {
+  res.status(401).json({
+    error: 'AUTH_ACCESS_INVALID',
+    message: 'Authentication is required',
+    statusCode: 401,
+    timestamp: new Date().toISOString(),
+  });
+}
 
-        const token = authHeader.split(' ')[1];
-        
-        // Verify token
-        const decoded = jwt.verify(token, getJwtSecrets().accessSecret) as {
-            userId: number;
-        };
+function sendAuthServiceUnavailable(
+  res: Parameters<RequestHandler>[1],
+): void {
+  res.status(503).json({
+    error: 'AUTH_SERVICE_UNAVAILABLE',
+    message: 'Authentication service is temporarily unavailable',
+    statusCode: 503,
+    retryable: true,
+    timestamp: new Date().toISOString(),
+  });
+}
 
-        // Add user info to request
-        req.user = { id: decoded.userId };
-        next();
-    } catch (error) {
-        return res.status(401).json({
-            status: 'error',
-            message: 'Invalid token'
-        });
+export function createAuthMiddleware(
+  authenticator: AccessTokenAuthenticator,
+): RequestHandler {
+  return async (req, res, next) => {
+    const authorization = req.headers.authorization;
+    const match =
+      typeof authorization === 'string'
+        ? /^Bearer ([^\s]+)$/.exec(authorization)
+        : null;
+    if (match === null) {
+      sendInvalidAccess(res);
+      return;
     }
-};
+
+    let principal: AuthenticatedPrincipal;
+    try {
+      principal = await authenticator.authenticateAccessToken(match[1]);
+    } catch (error: unknown) {
+      if (
+        error instanceof AuthApplicationError &&
+        error.code === 'AUTH_ACCESS_INVALID'
+      ) {
+        sendInvalidAccess(res);
+        return;
+      }
+
+      const category = error instanceof Error ? error.name : 'UnknownError';
+      console.error(`Access session verification failed (${category})`);
+      sendAuthServiceUnavailable(res);
+      return;
+    }
+
+    req.user = {
+      id: principal.userId,
+      sessionId: principal.sessionId,
+      tokenId: principal.tokenId,
+    };
+    next();
+  };
+}
+
+export const authMiddleware = createAuthMiddleware({
+  authenticateAccessToken: (token) =>
+    container
+      .resolve<AuthSessionService>('AuthSessionService')
+      .authenticateAccessToken(token),
+});

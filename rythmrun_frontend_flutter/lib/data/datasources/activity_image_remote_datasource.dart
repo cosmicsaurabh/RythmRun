@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
+import 'package:rythmrun_frontend_flutter/core/network/authenticated_request_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/activity_image_entity.dart';
 
@@ -47,19 +48,27 @@ class RemoteActivityImage {
 
 class ActivityImageRemoteDataSource {
   final AppHttpClient _httpClient;
+  final AuthenticatedRequestExecutor _authenticatedRequests;
 
-  ActivityImageRemoteDataSource({required AppHttpClient httpClient})
-    : _httpClient = httpClient;
+  ActivityImageRemoteDataSource({
+    required AppHttpClient httpClient,
+    required AuthenticatedRequestExecutor authenticatedRequests,
+  }) : _httpClient = httpClient,
+       _authenticatedRequests = authenticatedRequests;
 
   Future<ActivityImageUploadIntent> requestUploadUrl({
     required int remoteActivityId,
     required ActivityImageEntity image,
-    required Map<String, String> authHeaders,
   }) async {
-    final response = await _httpClient.post(
-      AppConfig.getUrl('/activities/$remoteActivityId/images/upload-url'),
-      headers: {'Content-Type': 'application/json', ...authHeaders},
-      body: jsonEncode(_imageRequestBody(image)),
+    final response = await _authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
+      request:
+          (authHeaders) => _httpClient.post(
+            AppConfig.getUrl('/activities/$remoteActivityId/images/upload-url'),
+            headers: {'Content-Type': 'application/json', ...authHeaders},
+            body: jsonEncode(_imageRequestBody(image)),
+            maxRetries: 0,
+          ),
     );
 
     final data = _decodeDataObject(response.body, 'upload URL');
@@ -93,12 +102,16 @@ class ActivityImageRemoteDataSource {
     required int remoteActivityId,
     required ActivityImageEntity image,
     required String key,
-    required Map<String, String> authHeaders,
   }) async {
-    final response = await _httpClient.post(
-      AppConfig.getUrl('/activities/$remoteActivityId/images/confirm'),
-      headers: {'Content-Type': 'application/json', ...authHeaders},
-      body: jsonEncode(_imageRequestBody(image, key: key)),
+    final response = await _authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
+      request:
+          (authHeaders) => _httpClient.post(
+            AppConfig.getUrl('/activities/$remoteActivityId/images/confirm'),
+            headers: {'Content-Type': 'application/json', ...authHeaders},
+            body: jsonEncode(_imageRequestBody(image, key: key)),
+            maxRetries: 0,
+          ),
     );
 
     final data = _decodeDataObject(response.body, 'confirm upload');
@@ -107,11 +120,14 @@ class ActivityImageRemoteDataSource {
 
   Future<List<RemoteActivityImage>> fetchImages({
     required int remoteActivityId,
-    required Map<String, String> authHeaders,
   }) async {
-    final response = await _httpClient.get(
-      AppConfig.getUrl('/activities/$remoteActivityId/images'),
-      headers: authHeaders,
+    final response = await _authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
+      request:
+          (authHeaders) => _httpClient.get(
+            AppConfig.getUrl('/activities/$remoteActivityId/images'),
+            headers: authHeaders,
+          ),
     );
 
     final data = _decodeData(response.body, 'fetch images');
@@ -130,13 +146,18 @@ class ActivityImageRemoteDataSource {
   Future<void> deleteRemoteImage({
     required int remoteActivityId,
     required int remoteImageId,
-    required Map<String, String> authHeaders,
   }) async {
     try {
-      await _httpClient.delete(
-        AppConfig.getUrl('/activities/$remoteActivityId/images/$remoteImageId'),
-        headers: authHeaders,
-        maxRetries: 0,
+      await _authenticatedRequests.execute(
+        replayPolicy: AuthenticatedReplayPolicy.idempotent,
+        request:
+            (authHeaders) => _httpClient.delete(
+              AppConfig.getUrl(
+                '/activities/$remoteActivityId/images/$remoteImageId',
+              ),
+              headers: authHeaders,
+              maxRetries: 0,
+            ),
       );
     } on NotFoundException {
       return;

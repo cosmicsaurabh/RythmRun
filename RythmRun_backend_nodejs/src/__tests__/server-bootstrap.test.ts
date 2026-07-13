@@ -1,8 +1,11 @@
 import { jest } from '@jest/globals';
 
+const originalSetInterval = global.setInterval;
+const originalClearInterval = global.clearInterval;
 const mockEvents: string[] = [];
 const mockRetryPendingDeletes = jest.fn().mockResolvedValue(undefined);
 const mockRetryPendingCleanup = jest.fn().mockResolvedValue(undefined);
+const mockPurgeExpiredSessions = jest.fn().mockResolvedValue(0);
 const mockResolve = jest.fn((token: string) => {
   if (token === 'ActivityImageService') {
     return { retryPendingDeletes: mockRetryPendingDeletes };
@@ -10,6 +13,10 @@ const mockResolve = jest.fn((token: string) => {
 
   if (token === 'AvatarService') {
     return { retryPendingCleanup: mockRetryPendingCleanup };
+  }
+
+  if (token === 'AuthSessionService') {
+    return { purgeExpiredSessions: mockPurgeExpiredSessions };
   }
 
   throw new Error(`Unexpected service token: ${token}`);
@@ -93,15 +100,17 @@ describe('server bootstrap', () => {
     process.env.NODE_ENV = 'production';
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    jest.spyOn(global, 'setInterval').mockImplementation((callback) => {
+    global.setInterval = jest.fn((callback) => {
       mockRetryCallback = callback as () => void;
       return mockRetryTimer as unknown as NodeJS.Timeout;
-    });
-    jest.spyOn(global, 'clearInterval').mockImplementation(() => undefined);
+    }) as typeof setInterval;
+    global.clearInterval = jest.fn(() => undefined) as typeof clearInterval;
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
+    global.setInterval = originalSetInterval;
+    global.clearInterval = originalClearInterval;
     if (originalPort === undefined) {
       delete process.env.PORT;
     } else {
@@ -135,8 +144,10 @@ describe('server bootstrap', () => {
 
     expect(mockResolve).toHaveBeenCalledWith('ActivityImageService');
     expect(mockResolve).toHaveBeenCalledWith('AvatarService');
+    expect(mockResolve).toHaveBeenCalledWith('AuthSessionService');
     expect(mockRetryPendingDeletes).toHaveBeenCalledTimes(1);
     expect(mockRetryPendingCleanup).toHaveBeenCalledTimes(1);
+    expect(mockPurgeExpiredSessions).toHaveBeenCalledTimes(1);
     expect(console.error).toHaveBeenCalledWith(
       'Avatar cleanup retry failed (AvatarCleanupError)',
     );

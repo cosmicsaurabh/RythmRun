@@ -1,4 +1,4 @@
-class LoginRequestEntity{
+class LoginRequestEntity {
   final String email;
   final String password;
 
@@ -17,6 +17,6 @@ class LoginRequestEntity{
 
   @override
   String toString() {
-    return 'LoginRequestEntity{email: $email, password: $password}';
+    return 'LoginRequestEntity{email: $email}';
   }
 }

@@ -31,7 +31,7 @@ class AppHttpClient {
     String url, {
     Map<String, String>? headers,
     Object? body,
-    int maxRetries = 2,
+    int maxRetries = 0,
   }) async {
     return _makeRequest(
       () => _client.post(Uri.parse(url), headers: headers, body: body),
@@ -67,7 +67,7 @@ class AppHttpClient {
     String url, {
     Map<String, String>? headers,
     Object? body,
-    int maxRetries = 2,
+    int maxRetries = 0,
   }) async {
     return _makeRequest(
       () => _client.put(Uri.parse(url), headers: headers, body: body),
@@ -80,7 +80,7 @@ class AppHttpClient {
     String url, {
     Map<String, String>? headers,
     Object? body,
-    int maxRetries = 2,
+    int maxRetries = 0,
   }) async {
     return _makeRequest(
       () => _client.delete(Uri.parse(url), headers: headers, body: body),
@@ -93,6 +93,14 @@ class AppHttpClient {
     Future<http.Response> Function() request, {
     int maxRetries = 2,
   }) async {
+    if (maxRetries < 0) {
+      throw ArgumentError.value(
+        maxRetries,
+        'maxRetries',
+        'must be non-negative',
+      );
+    }
+
     int attempts = 0;
 
     while (attempts <= maxRetries) {
@@ -112,12 +120,19 @@ class AppHttpClient {
         try {
           final decodedBody = json.decode(response.body);
           if (decodedBody is Map<String, dynamic>) {
-            final responseMessage =
-                decodedBody['message'] ?? decodedBody['error'];
+            final responseError = decodedBody['error'];
+            final responseMessage = decodedBody['message'] ?? responseError;
             if (responseMessage is String && responseMessage.isNotEmpty) {
               errorMessage = responseMessage;
             }
-            final responseCode = decodedBody['code'];
+            final explicitCode = decodedBody['code'];
+            final responseCode =
+                explicitCode is String && explicitCode.isNotEmpty
+                    ? explicitCode
+                    : responseError is String &&
+                        _looksLikeStableErrorCode(responseError)
+                    ? responseError
+                    : null;
             if (responseCode is String && responseCode.isNotEmpty) {
               errorCode = responseCode;
             }
@@ -149,9 +164,10 @@ class AppHttpClient {
               code: errorCode,
               retryable: retryable,
             );
-          case 500:
+          case >= 500 && <= 599:
             throw ServerException(
               errorMessage,
+              statusCode: response.statusCode,
               code: errorCode,
               retryable: retryable,
             );
@@ -163,21 +179,41 @@ class AppHttpClient {
               retryable: retryable,
             );
         }
-      } on SocketException catch (e) {
+      } on HandshakeException {
         attempts++;
         if (attempts > maxRetries) {
-          throw NetworkException('Please check your internet connection : $e');
+          throw const NetworkException(
+            'A secure connection could not be established.',
+            kind: NetworkFailureKind.tls,
+          );
         }
-        // Wait before retrying (exponential backoff)
+        await Future.delayed(Duration(milliseconds: 1000 * attempts));
+      } on SocketException {
+        attempts++;
+        if (attempts > maxRetries) {
+          throw const NetworkException(
+            'The service could not be reached. Check your connection.',
+            kind: NetworkFailureKind.offline,
+          );
+        }
         await Future.delayed(Duration(milliseconds: 1000 * attempts));
       } on TimeoutException {
         attempts++;
         if (attempts > maxRetries) {
-          throw NetworkException(
-            'Request timeout after ${_timeout.inSeconds} seconds',
+          throw const NetworkException(
+            'The request timed out. Try again.',
+            kind: NetworkFailureKind.timeout,
           );
         }
-        // Wait before retrying
+        await Future.delayed(Duration(milliseconds: 1000 * attempts));
+      } on http.ClientException {
+        attempts++;
+        if (attempts > maxRetries) {
+          throw const NetworkException(
+            'The network request could not be completed.',
+            kind: NetworkFailureKind.client,
+          );
+        }
         await Future.delayed(Duration(milliseconds: 1000 * attempts));
       } catch (e) {
         // Re-throw other exceptions without retrying
@@ -185,7 +221,11 @@ class AppHttpClient {
       }
     }
 
-    throw NetworkException('Request failed after ${maxRetries + 1} attempts');
+    throw const NetworkException('The network request could not be completed.');
+  }
+
+  static bool _looksLikeStableErrorCode(String value) {
+    return RegExp(r'^[A-Z][A-Z0-9_]+$').hasMatch(value);
   }
 
   /// Close the HTTP client
@@ -212,9 +252,13 @@ class HttpStatusException implements Exception {
   String toString() => 'HttpStatusException($statusCode): $message';
 }
 
+enum NetworkFailureKind { offline, timeout, tls, client }
+
 class NetworkException implements Exception {
   final String message;
-  NetworkException(this.message);
+  final NetworkFailureKind kind;
+
+  const NetworkException(this.message, {this.kind = NetworkFailureKind.client});
 
   @override
   String toString() => 'NetworkException: $message';
@@ -245,8 +289,12 @@ class NotFoundException extends HttpStatusException {
 }
 
 class ServerException extends HttpStatusException {
-  ServerException(String message, {String? code, bool? retryable})
-    : super(500, message, code: code, retryable: retryable);
+  ServerException(
+    String message, {
+    int statusCode = 500,
+    String? code,
+    bool? retryable,
+  }) : super(statusCode, message, code: code, retryable: retryable);
 
   @override
   String toString() => 'ServerException: $message';

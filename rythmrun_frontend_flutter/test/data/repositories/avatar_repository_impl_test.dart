@@ -4,22 +4,26 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:rythmrun_frontend_flutter/core/network/authenticated_request_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
-import 'package:rythmrun_frontend_flutter/data/datasources/auth_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/avatar_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/avatar_repository_impl.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/user_entity.dart';
+import 'package:rythmrun_frontend_flutter/domain/repositories/auth_repository.dart';
 
 void main() {
   group('AvatarRemoteDataSourceImpl', () {
     test('sends the exact MIME type and byte count to the backend', () async {
       final httpClient = _FakeRemoteHttpClient();
-      final dataSource = AvatarRemoteDataSourceImpl(httpClient);
+      final dataSource = AvatarRemoteDataSourceImpl(
+        httpClient,
+        _FakeAuthenticatedRequests(),
+      );
 
       final authorization = await dataSource.getUploadUrl(
         'jpg',
         'image/jpeg',
         321,
-        'access-token',
       );
 
       expect(jsonDecode(httpClient.requestBody! as String), {
@@ -79,15 +83,15 @@ void main() {
 
   group('AvatarRepositoryImpl', () {
     late _FakeAvatarRemoteDataSource remote;
-    late _FakeAuthLocalDataSource local;
+    late _FakeAuthRepository authRepository;
     late _FakeHttpClient httpClient;
     late AvatarRepositoryImpl repository;
 
     setUp(() {
       remote = _FakeAvatarRemoteDataSource();
-      local = _FakeAuthLocalDataSource();
+      authRepository = _FakeAuthRepository();
       httpClient = _FakeHttpClient();
-      repository = AvatarRepositoryImpl(remote, local, httpClient);
+      repository = AvatarRepositoryImpl(remote, authRepository, httpClient);
     });
 
     test(
@@ -195,7 +199,6 @@ class _FakeAvatarRemoteDataSource implements AvatarRemoteDataSource {
     String ext,
     String contentType,
     int sizeBytes,
-    String token,
   ) async {
     requestCount += 1;
     requestedExtension = ext;
@@ -205,18 +208,34 @@ class _FakeAvatarRemoteDataSource implements AvatarRemoteDataSource {
   }
 
   @override
-  Future<void> confirmUpload(
-    String key,
-    String contentType,
-    String token,
-  ) async {
+  Future<void> confirmUpload(String key, String contentType) async {
     confirmedKey = key;
   }
 }
 
-class _FakeAuthLocalDataSource extends AuthLocalDataSource {
+class _FakeAuthRepository implements AuthRepository {
   @override
-  Future<String?> getAccessToken() async => 'access-token';
+  Future<UserEntity?> getCurrentUser() async => const UserEntity(
+    id: '7',
+    firstName: 'Test',
+    lastName: 'Runner',
+    email: 'test@example.com',
+  );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeAuthenticatedRequests implements AuthenticatedRequestExecutor {
+  @override
+  Future<T> execute<T>({
+    required Future<T> Function(Map<String, String> authHeaders) request,
+    AuthenticatedReplayPolicy replayPolicy = AuthenticatedReplayPolicy.never,
+  }) {
+    return request(const <String, String>{
+      'Authorization': 'Bearer access-token',
+    });
+  }
 }
 
 class _FakeHttpClient extends AppHttpClient {
@@ -256,7 +275,7 @@ class _FakeRemoteHttpClient extends AppHttpClient {
     String url, {
     Map<String, String>? headers,
     Object? body,
-    int maxRetries = 2,
+    int maxRetries = 0,
   }) async {
     requestBody = body;
     requestHeaders = headers;

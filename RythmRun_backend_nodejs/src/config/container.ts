@@ -9,6 +9,7 @@ import { CommentService } from '../services/comment.service.js';
 import { LikeService } from '../services/like.service.js';
 import { FriendService } from '../services/friend.service.js';
 import { AvatarService } from '../services/avatar.service.js';
+import { AuthSessionService } from '../services/auth-session.service.js';
 import s3Service from '../services/s3.service.js';
 
 export const container = rootContainer.createChildContainer();
@@ -23,6 +24,7 @@ export function configureContainer(databaseUrl: string): DatabaseRuntime {
   container.registerInstance('PrismaClient', database.client);
   container.registerInstance('S3Service', s3Service);
 
+  container.register('AuthSessionService', { useClass: AuthSessionService });
   container.register('UserService', { useClass: UserService });
   container.register('ActivityService', { useClass: ActivityService });
   container.register('ActivityImageService', {

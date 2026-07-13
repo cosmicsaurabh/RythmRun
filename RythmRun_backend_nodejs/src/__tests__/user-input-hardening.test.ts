@@ -15,16 +15,27 @@ function createMockPrisma() {
     return {
         user: {
             findUnique: jest.fn(),
-            create: jest.fn(),
-            update: jest.fn()
-        },
-        refreshToken: {
-            upsert: jest.fn(),
-            deleteMany: jest.fn(),
-            findFirst: jest.fn(),
-            delete: jest.fn(),
-            update: jest.fn()
+            updateMany: jest.fn()
         }
+    };
+}
+
+function createMockAuthSessions(transaction: unknown) {
+    return {
+        withSerializableTransaction: jest.fn(
+            async (operation: (transaction: unknown) => Promise<unknown>) =>
+                operation(transaction)
+        ),
+        issueSessionInTransaction: jest.fn().mockResolvedValue({
+            id: 7,
+            username: 'ada@example.com',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            profilePicturePath: null,
+            profilePictureType: null,
+            accessToken: 'access-token',
+            refreshToken: 'refresh-token'
+        })
     };
 }
 
@@ -173,9 +184,13 @@ describe('UserService writable-field mapping', () => {
 
     it('maps only declared registration fields into Prisma data', async () => {
         const prisma = createMockPrisma();
-        prisma.user.findUnique.mockResolvedValue(null);
-        prisma.user.create.mockResolvedValue(persistedUser);
-        const service = new UserService(prisma as any);
+        const transaction = {
+            user: {
+                create: jest.fn().mockResolvedValue(persistedUser)
+            }
+        };
+        const authSessions = createMockAuthSessions(transaction);
+        const service = new UserService(prisma as any, authSessions as any);
         const dto = Object.assign(new RegisterUserDto(), {
             username: 'ada@example.com',
             password: 'correct-horse-battery-staple',
@@ -190,7 +205,8 @@ describe('UserService writable-field mapping', () => {
         const result = await service.register(dto);
 
         expect(bcrypt.hash).toHaveBeenCalledWith('correct-horse-battery-staple', 10);
-        expect(prisma.user.create).toHaveBeenCalledWith({
+        expect(authSessions.withSerializableTransaction).toHaveBeenCalledTimes(1);
+        expect(transaction.user.create).toHaveBeenCalledWith({
             data: {
                 username: 'ada@example.com',
                 password: 'hashed-password',
@@ -198,7 +214,11 @@ describe('UserService writable-field mapping', () => {
                 lastname: 'Lovelace'
             }
         });
-        expect(prisma.user.create.mock.calls[0][0].data).not.toBe(dto);
+        expect(transaction.user.create.mock.calls[0][0].data).not.toBe(dto);
+        expect(authSessions.issueSessionInTransaction).toHaveBeenCalledWith(
+            transaction,
+            persistedUser
+        );
         expect(result).toMatchObject({
             id: 7,
             username: 'ada@example.com',
@@ -211,13 +231,9 @@ describe('UserService writable-field mapping', () => {
 
     it('maps only first and last name into Prisma profile updates', async () => {
         const prisma = createMockPrisma();
-        prisma.user.findUnique.mockResolvedValue(persistedUser);
-        prisma.user.update.mockResolvedValue({
-            ...persistedUser,
-            firstname: 'Augusta Ada',
-            lastname: 'King'
-        });
-        const service = new UserService(prisma as any);
+        prisma.user.updateMany.mockResolvedValue({ count: 1 });
+        const authSessions = createMockAuthSessions({});
+        const service = new UserService(prisma as any, authSessions as any);
         const dto = Object.assign(new UpdateProfileDto(), {
             firstname: 'Augusta Ada',
             lastname: 'King',
@@ -231,13 +247,13 @@ describe('UserService writable-field mapping', () => {
 
         await service.updateProfile(7, dto);
 
-        expect(prisma.user.update).toHaveBeenCalledWith({
+        expect(prisma.user.updateMany).toHaveBeenCalledWith({
             where: { id: 7 },
             data: {
                 firstname: 'Augusta Ada',
                 lastname: 'King'
             }
         });
-        expect(prisma.user.update.mock.calls[0][0].data).not.toBe(dto);
+        expect(prisma.user.updateMany.mock.calls[0][0].data).not.toBe(dto);
     });
 });
