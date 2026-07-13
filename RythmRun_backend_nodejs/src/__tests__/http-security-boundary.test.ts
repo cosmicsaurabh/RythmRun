@@ -6,6 +6,7 @@ const mockProductionController = {
   login: jest.fn(),
   logout: jest.fn(),
   refreshToken: jest.fn(),
+  me: jest.fn(),
   updateProfile: jest.fn(),
   changePassword: jest.fn(),
   getUploadUrl: jest.fn(),
@@ -37,6 +38,8 @@ const { createUserRouter } = await import('../routes/user.routes.js');
 const { AvatarServiceError } = await import('../services/avatar.service.js');
 
 const USER_ID = 17;
+const SESSION_ID = '123e4567-e89b-42d3-a456-426614174001';
+const TOKEN_ID = '123e4567-e89b-42d3-a456-426614174002';
 const AUTHORIZATION = 'Bearer boundary-test-token';
 const AVATAR_KEY =
   'avatars/17/123e4567-e89b-42d3-a456-426614174000.jpg';
@@ -111,6 +114,7 @@ describe('HTTP security boundaries', () => {
     login: jest.fn(),
     logout: jest.fn(),
     refreshToken: jest.fn(),
+    getMe: jest.fn(),
     updateProfile: jest.fn(),
     changePassword: jest.fn(),
   };
@@ -128,7 +132,11 @@ describe('HTTP security boundaries', () => {
         return;
       }
 
-      req.user = { id: USER_ID };
+      req.user = {
+        id: USER_ID,
+        sessionId: SESSION_ID,
+        tokenId: TOKEN_ID,
+      };
       next();
     },
   );
@@ -216,6 +224,89 @@ describe('HTTP security boundaries', () => {
     });
     expect(authenticate).toHaveBeenCalledTimes(1);
     expect(userService.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('refreshes a token without requiring an access-token session', async () => {
+    const authResponse = {
+      id: USER_ID,
+      username: 'runner@example.com',
+      firstname: 'Safe',
+      lastname: 'Runner',
+      profilePicturePath: null,
+      profilePictureType: null,
+      accessToken: 'rotated-access-token',
+      refreshToken: 'rotated-refresh-token',
+    };
+    userService.refreshToken.mockResolvedValueOnce(authResponse);
+
+    const response = await requestJson(
+      server,
+      'POST',
+      '/api/users/refresh-token',
+      { refreshToken: 'presented-refresh-token' },
+      { authorization: 'Bearer expired-access-token' },
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: authResponse });
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(userService.refreshToken).toHaveBeenCalledWith(
+      'presented-refresh-token',
+    );
+  });
+
+  it('returns one safe refresh error for a malformed refresh request', async () => {
+    const response = await requestJson(
+      server,
+      'POST',
+      '/api/users/refresh-token',
+      {},
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toMatchObject({
+      error: 'AUTH_REFRESH_INVALID',
+      message: 'Refresh session is invalid',
+      statusCode: 401,
+    });
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(userService.refreshToken).not.toHaveBeenCalled();
+  });
+
+  it('returns the safe current-user profile through the protected route', async () => {
+    const safeUser = {
+      id: USER_ID,
+      username: 'runner@example.com',
+      firstname: 'Safe',
+      lastname: 'Runner',
+      profilePicturePath: null,
+      profilePictureType: null,
+    };
+    userService.getMe.mockResolvedValueOnce(safeUser);
+
+    const response = await requestJson(
+      server,
+      'GET',
+      '/api/users/me',
+      undefined,
+      { authorization: AUTHORIZATION },
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: safeUser });
+    expect(authenticate).toHaveBeenCalledTimes(1);
+    expect(userService.getMe).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it('rejects an unauthenticated current-user request before dispatch', async () => {
+    const response = await requestJson(server, 'GET', '/api/users/me');
+
+    expect(response).toEqual({
+      statusCode: 401,
+      body: {
+        status: 'error',
+        message: 'No token provided',
+      },
+    });
+    expect(userService.getMe).not.toHaveBeenCalled();
   });
 
   it.each([

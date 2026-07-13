@@ -48,6 +48,8 @@ Repository commits and local test results cannot change a manual check to `Verif
 | MC-1.12 | Prisma 7.8 on real PostgreSQL | Database, infrastructure, backend, and QA owners | Pending | Restricted staging run covering full migrations, adapter query/transaction behavior, TLS, schema selection, pool limits/timeouts, and connection counts | — | — | The repository built smoke deliberately does not connect to a database. Use synthetic data and never commit URLs, certificates, snapshots, rows, or raw logs. |
 | MC-1.13 | Backend artifact order and deployed shutdown | Deployment, database, backend, and on-call owners | Pending | Artifact provenance plus install/build/migrate/prune/start and bounded SIGTERM run records | — | — | Prove one migration owner, the promoted artifact, listener drain, timer stop, Prisma pool closure, and deadline behavior on the actual host. |
 | MC-1.14 | Android ad configuration and durable-completion gate | Mobile, release, monetization, and QA owners | Pending | Reviewed build matrix, merged-manifest classification, intentional configuration-failure record, and supported-device save/recovery run with ad-attempt counts | — | — | Use synthetic workouts and counts only. Do not record production IDs, routes, timestamps, database rows, or raw SDK logs. Consent and live production enablement remain IP-5.5. |
+| MC-2.1 | Hosted PostgreSQL auth-session transaction gate | Repository maintainer and backend reviewer | Pending | Successful `Backend security` run URL for the reviewed SHA showing migration deploy and enabled auth PostgreSQL suite | — | — | Confirm the six database tests execute rather than skip and the two-client same-token race passes. Use only the disposable synthetic CI database; never record tokens or rows. |
+| MC-2.2 | Auth-session destructive cutover and forced-login staging rehearsal | Database, deployment, backend, mobile, and QA owners | Pending | Restricted backup/upgrade-copy reference, old-instance drain, migration/artifact provenance, synthetic old-token rejection, new login/refresh/logout canary, rollback decision, and one-time-sign-in communication | — | — | Legacy JWTs cannot be backfilled. Never restore plaintext refresh rows or revoked sessions. Keep production rollout blocked until the matching artifact and migration order are rehearsed. |
 
 ## Hosted CI procedure
 
@@ -149,6 +151,27 @@ Pass condition: the actual host demonstrates deterministic build/migrate/start o
 8. Review sanitized device telemetry and the QA counter. It may record build mode, environment class, finalization status category, recovery category, and aggregate ad-attempt count only. It must not contain IDs, account values, coordinates, timestamps, route payloads, local paths/rows, or SDK request/response bodies.
 
 Pass condition: safe debug/profile/ads-disabled release packages contain only the official sample application ID, delay native measurement startup, omit ad/privacy permissions, and run the no-op provider; an intentionally enabled but incomplete/invalid production configuration cannot package through direct or aggregate/custom tasks; and supported-device Finish behavior proves no ad attempt occurs before a newly committed local workout or during save/cleanup recovery. This gate does not enable live ads or satisfy IP-5.5 consent, privacy-choice, placement, iOS, or production-rollout requirements.
+
+## Authentication session procedure
+
+### MC-2.1 — Run the hosted PostgreSQL transaction gate
+
+1. Push the reviewed IP-2.1 commit through the ordinary pull-request workflow. Confirm `Backend security` resolves that SHA, provisions its disposable `rythmrun_ci` PostgreSQL service, and applies the complete migration chain before tests.
+2. Inspect the Jest summary and confirm all six `auth-session.postgres.test.ts` cases execute; a skipped database suite is a failed gate even when the job is otherwise green.
+3. Confirm the run covers two independent Prisma clients racing one refresh token, committed replay-family revocation, digest-only registration/login rows, logout/password revocation, stale-login rejection during a password-change race, the five-session bound, and safe `/me` data. Do not expose raw tokens, connection strings, or database rows in logs/artifacts.
+4. Record the run URL, reviewed commit, PostgreSQL image tag, and independent reviewer. Keep broader provider TLS/custom-schema/pool/deployment evidence under MC-1.12/MC-1.13.
+
+Pass condition: the reviewed hosted SHA applies every migration and runs—not skips—the real-PostgreSQL auth suite with exactly one refresh winner at most and committed family revocation.
+
+### MC-2.2 — Rehearse the destructive session cutover
+
+1. Use an isolated staging upgrade copy and synthetic accounts. Verify a restorable backup and record only restricted references, never database contents, JWTs, or connection details.
+2. Build and identify the session-aware artifact first. Drain every old backend instance before applying `20260713000000_rebuild_auth_sessions`; do not allow an old process to continue accepting legacy plaintext refresh rows during cutover.
+3. Apply the migration once, confirm the legacy table is absent and the new constraints/indexes exist, then promote the already-reviewed matching artifact. Prove legacy access/refresh JWTs fail and a communicated one-time sign-in creates only digest records.
+4. Run synthetic register, login, refresh, concurrent refresh, `/me`, logout, and password-change canaries. Verify logs contain only safe categories and no token/digest/profile body.
+5. Exercise the rollback decision. Prefer roll-forward; never recreate plaintext refresh rows, restore revoked session state, or promote a backend that does not understand `sid`/`jti`/`typ`.
+
+Pass condition: backup, drain, migration, matching-artifact promotion, forced-login communication, auth canaries, and safe roll-forward response have dated owner/reviewer evidence.
 
 ## Dependency advisory procedure
 

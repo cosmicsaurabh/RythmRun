@@ -6,7 +6,7 @@ published: false
 
 | Field | Value |
 | --- | --- |
-| Status | Planned |
+| Status | **In progress** |
 | Priority | P1 |
 | Target | 2–4 weeks in independently shippable packages, plus external email/privacy decisions |
 | Owner | Unassigned |
@@ -148,6 +148,14 @@ An authenticated request verifies signature/type/expiry and confirms that `sid` 
 
 - Refresh no longer depends on an unexpired access token.
 - Token rotation and replay behavior are transactionally proven.
+
+**Repository implementation state (2026-07-13)**
+
+- The forward migration deliberately drops the legacy plaintext-token table and creates constrained `AuthSession`/`RefreshTokenRecord` tables. Existing JWTs cannot be preserved because they have no `sid`, `jti`, or `typ`; rollout therefore requires a communicated one-time sign-in, a backup/upgrade-copy rehearsal, and a drain window for old backend instances.
+- Access tokens now last at most 15 minutes and are accepted only while their database session is active. Refresh sessions have a fixed seven-day absolute expiry, rotate through SHA-256 digests under a serializable transaction, retain used records for replay detection, and cap each user at five active sessions by revoking the least-recently-used session before issuing another.
+- Registration, login, and refresh return the same flat safe contract. Refresh is no longer access-token-protected; logout revokes the presented session; password change updates the hash and revokes every session in the same transaction; authenticated `GET /api/users/me` returns safe fields only.
+- Repository unit/HTTP suites cover claims, digest-only writes, safe errors, route protection, replay commit ordering, password/logout behavior, and the response contract. The hosted `Backend security` job now provisions PostgreSQL, applies migrations, and enables a two-client concurrency suite. A successful hosted run is still required before claiming transactional proof.
+- `revokeAllUserSessions` is the tested primitive reserved for account deletion. The deletion endpoint, confirmation/retention policy, object-cleanup outbox, and end-to-end deletion proof remain IP-2.4; this package does not add an unsafe partial delete route.
 
 ### IP-2.2 — Add secure mobile token storage and single-flight refresh
 
@@ -429,4 +437,4 @@ The app intentionally retains completed offline history across normal logout. Ex
 
 | Date | Work package | Evidence | Result | Notes |
 | --- | --- | --- | --- | --- |
-| — | — | No implementation evidence yet | Not started | Planning document only |
+| 2026-07-13 | IP-2.1 | Prisma schema/migration validation and generation; auth/session/user/middleware/HTTP Jest suites; production typecheck/build; built runtime smoke | Repository gates pass; hosted PostgreSQL gate pending | Local Jest ran 18/18 executable suites and 279/279 tests; the six-test real-PostgreSQL suite was correctly skipped because no test database is available locally. Production build and the loopback built-ESM smoke passed on the available Node 26.3.0 host; the workflow's exact Node 22.23.1 plus PostgreSQL run remains MC-2.1. Hosted MC-2.1 must apply the migration and pass the enabled concurrency suite before atomicity is claimed. Account deletion remains IP-2.4. |

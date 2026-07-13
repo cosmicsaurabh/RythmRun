@@ -1,122 +1,168 @@
 import type { Request, Response } from 'express';
+import { inject, injectable } from 'tsyringe';
+
+import {
+  AuthApplicationError,
+  invalidRefreshError,
+} from '../errors/auth.error.js';
+import {
+  DtoValidationError,
+  validateDto,
+} from '../middleware/validation.middleware.js';
+import {
+  ChangePasswordDto,
+  LoginUserDto,
+  RefreshTokenDto,
+  RegisterUserDto,
+  UpdateProfileDto,
+} from '../models/dto/user.dto.js';
 import { UserService } from '../services/user.service.js';
-import { RegisterUserDto, LoginUserDto, ChangePasswordDto, UpdateProfileDto } from '../models/dto/user.dto.js';
-import { injectable, inject } from "tsyringe";
-import { validateDto } from '../middleware/validation.middleware.js';
+
+interface ErrorResponseOptions {
+  validationCode: string;
+  unexpectedOperation: string;
+}
+
+function sendError(
+  res: Response,
+  error: unknown,
+  options: ErrorResponseOptions,
+): Response {
+  if (error instanceof AuthApplicationError) {
+    return res.status(error.statusCode).json({
+      error: error.code,
+      message: error.message,
+      statusCode: error.statusCode,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  if (error instanceof DtoValidationError) {
+    return res.status(400).json({
+      error: options.validationCode,
+      message: 'Validation failed',
+      statusCode: 400,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  const category = error instanceof Error ? error.name : 'UnknownError';
+  console.error(`${options.unexpectedOperation} failed (${category})`);
+  return res.status(500).json({
+    error: 'INTERNAL_ERROR',
+    message: 'Internal server error',
+    statusCode: 500,
+    timestamp: new Date().toISOString(),
+  });
+}
 
 @injectable()
 export class UserController {
-    constructor(
-        @inject("UserService") private userService: UserService
-    ) {}
+  constructor(
+    @inject('UserService') private readonly userService: UserService,
+  ) {}
 
-    register = async (req: Request, res: Response) => {
-        try {
-            const registerDto = await validateDto(RegisterUserDto, req.body);
-            const result = await this.userService.register(registerDto);
-            res.status(201).json(result);
-        } catch (error: any) {
-            res.status(400).json({
-                error: 'REGISTRATION_FAILED',
-                message: error.message,
-                statusCode: 400,
-                timestamp: new Date().toISOString()
-            });
+  register = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const registerDto = await validateDto(RegisterUserDto, req.body);
+      res.status(201).json(await this.userService.register(registerDto));
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'REGISTRATION_FAILED',
+        unexpectedOperation: 'Registration',
+      });
+    }
+  };
+
+  login = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const loginDto = await validateDto(LoginUserDto, req.body);
+      res.status(200).json(await this.userService.login(loginDto));
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'LOGIN_FAILED',
+        unexpectedOperation: 'Login',
+      });
+    }
+  };
+
+  refreshToken = async (req: Request, res: Response): Promise<void> => {
+    try {
+      let refreshDto: RefreshTokenDto;
+      try {
+        refreshDto = await validateDto(RefreshTokenDto, req.body);
+      } catch (error: unknown) {
+        if (error instanceof DtoValidationError) {
+          throw invalidRefreshError();
         }
-    };
+        throw error;
+      }
+      res
+        .status(200)
+        .json(await this.userService.refreshToken(refreshDto.refreshToken));
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'AUTH_REFRESH_INVALID',
+        unexpectedOperation: 'Token refresh',
+      });
+    }
+  };
 
-    login = async (req: Request, res: Response) => {
-        try {
-            const loginDto = await validateDto(LoginUserDto, req.body);
-            const result = await this.userService.login(loginDto);
-            res.status(200).json(result);
-        } catch (error: any) {
-            res.status(401).json({
-                error: 'LOGIN_FAILED',
-                message: error.message,
-                statusCode: 401,
-                timestamp: new Date().toISOString()
-            });
-        }
-    };
+  logout = async (req: Request, res: Response): Promise<void> => {
+    try {
+      await this.userService.logout(req.user!.id, req.user!.sessionId);
+      res.status(200).json({
+        status: 'success',
+        message: 'Successfully logged out',
+      });
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'LOGOUT_FAILED',
+        unexpectedOperation: 'Logout',
+      });
+    }
+  };
 
-    logout = async (req: Request, res: Response) => {
-        try {
-            await this.userService.logout(req.user!.id);
-            return res.status(200).json({
-                status: 'success',
-                message: 'Successfully logged out'
-            });
-        } catch (error) {
-            console.error('Logout error:', error);
-            return res.status(500).json({
-                status: 'error',
-                message: 'Internal server error'
-            });
-        }
-    };
+  me = async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.status(200).json(await this.userService.getMe(req.user!.id));
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'PROFILE_FAILED',
+        unexpectedOperation: 'Profile read',
+      });
+    }
+  };
 
-    refreshToken = async (req: Request, res: Response) => {
-        try {
-            const result = await this.userService.refreshToken(
-                req.user!.id,
-                req.body.refreshToken
-            );
+  changePassword = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const changePasswordDto = await validateDto(
+        ChangePasswordDto,
+        req.body,
+      );
+      await this.userService.changePassword(req.user!.id, changePasswordDto);
+      res.status(200).json({
+        message: 'Password changed successfully',
+        statusCode: 200,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'PASSWORD_CHANGE_FAILED',
+        unexpectedOperation: 'Password change',
+      });
+    }
+  };
 
-            return res.status(200).json({
-                status: 'success',
-                data: result
-            });
-        } catch (error: any) {
-            if (error?.message === 'Invalid refresh token') {
-                return res.status(401).json({
-                    status: 'error',
-                    message: error.message
-                });
-            }
-
-            console.error('Token refresh error:', error);
-            return res.status(500).json({
-                status: 'error',
-                message: 'Internal server error'
-            });
-        }
-    };
-
-    changePassword = async (req: Request, res: Response) => {
-        try {
-            const userId = req.user!.id;
-            const changePasswordDto = await validateDto(ChangePasswordDto, req.body);
-            await this.userService.changePassword(userId, changePasswordDto);
-            res.status(200).json({ 
-                message: 'Password changed successfully',
-                statusCode: 200,
-                timestamp: new Date().toISOString()
-            });
-        } catch (error: any) {
-            console.error('Password change error:', error);
-            res.status(400).json({
-                error: 'PASSWORD_CHANGE_FAILED',
-                message: error.message,
-                statusCode: 400,
-                timestamp: new Date().toISOString()
-            });
-        }
-    };
-
-    updateProfile = async (req: Request, res: Response) => {
-        try {
-            const userId = req.user!.id;
-            const updateProfileDto = await validateDto(UpdateProfileDto, req.body);
-            await this.userService.updateProfile(userId, updateProfileDto);
-            res.status(200).json({ message: 'Profile updated successfully' });
-        } catch (error: any) {
-            res.status(400).json({
-                error: 'PROFILE_UPDATE_FAILED',
-                message: error.message,
-                statusCode: 400,
-                timestamp: new Date().toISOString()
-            });
-        }
-    };
+  updateProfile = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const updateProfileDto = await validateDto(UpdateProfileDto, req.body);
+      await this.userService.updateProfile(req.user!.id, updateProfileDto);
+      res.status(200).json({ message: 'Profile updated successfully' });
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'PROFILE_UPDATE_FAILED',
+        unexpectedOperation: 'Profile update',
+      });
+    }
+  };
 }
