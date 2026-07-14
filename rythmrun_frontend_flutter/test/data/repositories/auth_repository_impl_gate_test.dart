@@ -223,6 +223,55 @@ void main() {
       expect(local.snapshot, isNull);
     },
   );
+
+  test(
+    'offline mode denies profile update before it reaches the network',
+    () async {
+      final gate = AuthenticationAttemptGate();
+      final httpClient = _testHttpClient();
+      addTearDown(httpClient.close);
+      final remote = _DelayedAuthRemoteDataSource(httpClient);
+      final local = _MemoryAuthLocalDataSource();
+      final invalidation = SessionInvalidationSignal();
+      addTearDown(invalidation.dispose);
+      final guard = OnlineOperationGuard();
+      final repository = AuthRepositoryImpl(
+        remote,
+        local,
+        authenticatedRequests: _coordinator(
+          gate: gate,
+          remote: remote,
+          local: local,
+          invalidation: invalidation,
+        ),
+        authenticationAttemptGate: gate,
+        onlineOperationGuard: guard,
+      );
+
+      await expectLater(
+        repository.updateProfile(firstName: 'Renamed', lastName: 'Runner'),
+        throwsA(
+          isA<AuthSessionUnavailable>().having(
+            (error) => error.reason,
+            'reason',
+            AuthSessionUnavailableReason.offlineMode,
+          ),
+        ),
+      );
+      expect(remote.updateProfileCalls, 0);
+
+      // Online, the same call returns the server's updated safe user.
+      guard.setOnline(true);
+      final updated = await repository.updateProfile(
+        firstName: 'Renamed',
+        lastName: 'Runner',
+      );
+      expect(remote.updateProfileCalls, 1);
+      expect(updated.firstName, 'Renamed');
+      expect(updated.lastName, 'Runner');
+      expect(updated.id, '7');
+    },
+  );
 }
 
 AppHttpClient _testHttpClient() {
@@ -269,6 +318,7 @@ class _DelayedAuthRemoteDataSource extends AuthRemoteDataSource {
   final Completer<AuthResponseModel> refreshCompleter =
       Completer<AuthResponseModel>();
   int loginCalls = 0;
+  int updateProfileCalls = 0;
 
   @override
   Future<bool> verifySession(Map<String, String> authHeaders) async => true;
@@ -294,6 +344,21 @@ class _DelayedAuthRemoteDataSource extends AuthRemoteDataSource {
   Future<AuthResponseModel> loginUser(String email, String password) async {
     loginCalls += 1;
     return _response;
+  }
+
+  @override
+  Future<UserModel> updateProfile(
+    String firstName,
+    String lastName,
+    Map<String, String> authHeaders,
+  ) async {
+    updateProfileCalls += 1;
+    return UserModel(
+      id: '7',
+      firstName: firstName,
+      lastName: lastName,
+      email: 'a@example.com',
+    );
   }
 }
 

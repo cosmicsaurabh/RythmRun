@@ -388,8 +388,56 @@ class SessionNotifier extends StateNotifier<SessionData> {
       profilePictureType: type,
     );
     await _authRepository.updateCurrentUser(updatedUser);
-    if (state.user?.id != ownerUserId) return;
-    state = state.copyWith(user: updatedUser);
+    // Re-merge only the owned avatar fields onto the latest session user. A
+    // name edit that committed during the persist above must be preserved, not
+    // clobbered by this pre-await snapshot.
+    final latestUser = state.user;
+    if (latestUser == null || latestUser.id != ownerUserId) return;
+    final committedUser = latestUser.copyWith(
+      profilePicturePath: path,
+      profilePictureType: type,
+    );
+    state = state.copyWith(user: committedUser);
+    if (committedUser != updatedUser) {
+      await _authRepository.updateCurrentUser(committedUser);
+    }
+  }
+
+  /// Commits a server-confirmed profile edit into session and cached state.
+  ///
+  /// Only the fields this operation owns (first/last name) are merged; avatar
+  /// fields belong to the dedicated upload pipeline, and cached email/creation
+  /// metadata stays local. A response for a different or stale owner is
+  /// discarded rather than applied across accounts.
+  Future<void> applyProfileUpdate({
+    required String ownerUserId,
+    required UserEntity updatedUser,
+  }) async {
+    final currentUser = state.user;
+    if (currentUser == null ||
+        currentUser.id != ownerUserId ||
+        updatedUser.id != ownerUserId) {
+      return;
+    }
+
+    final mergedUser = currentUser.copyWith(
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+    );
+    await _authRepository.updateCurrentUser(mergedUser);
+    // Re-merge only the owned name fields onto the latest session user so a
+    // concurrent avatar commit during the persist above is preserved rather
+    // than clobbered by this pre-await snapshot.
+    final latestUser = state.user;
+    if (latestUser == null || latestUser.id != ownerUserId) return;
+    final committedUser = latestUser.copyWith(
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+    );
+    state = state.copyWith(user: committedUser);
+    if (committedUser != mergedUser) {
+      await _authRepository.updateCurrentUser(committedUser);
+    }
   }
 
   /// Called to logout user. An active or unsaved workout requires an explicit
