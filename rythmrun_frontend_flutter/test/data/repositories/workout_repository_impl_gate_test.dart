@@ -622,6 +622,14 @@ class _FakeAuthRepository implements AuthRepository {
   Future<UserEntity?> getCurrentUser() async => _user;
 
   @override
+  Future<UserEntity> updateProfile({
+    required String firstName,
+    required String lastName,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<void> updateCurrentUser(UserEntity user) async {
     currentUserId = int.parse(user.id);
   }

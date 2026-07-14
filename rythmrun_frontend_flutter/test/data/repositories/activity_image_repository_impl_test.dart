@@ -1530,6 +1530,14 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<UserEntity> updateProfile({
+    required String firstName,
+    required String lastName,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<UserEntity> refreshToken() async {
     onRefresh?.call();
     final error = refreshError;

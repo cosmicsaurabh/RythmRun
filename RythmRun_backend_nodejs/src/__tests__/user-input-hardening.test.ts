@@ -15,6 +15,7 @@ function createMockPrisma() {
     return {
         user: {
             findUnique: jest.fn(),
+            update: jest.fn(),
             updateMany: jest.fn()
         }
     };
@@ -229,9 +230,13 @@ describe('UserService writable-field mapping', () => {
         });
     });
 
-    it('maps only first and last name into Prisma profile updates', async () => {
+    it('maps only first and last name into Prisma profile updates and returns safe fields', async () => {
         const prisma = createMockPrisma();
-        prisma.user.updateMany.mockResolvedValue({ count: 1 });
+        prisma.user.update.mockResolvedValue({
+            ...persistedUser,
+            firstname: 'Augusta Ada',
+            lastname: 'King'
+        });
         const authSessions = createMockAuthSessions({});
         const service = new UserService(prisma as any, authSessions as any);
         const dto = Object.assign(new UpdateProfileDto(), {
@@ -245,15 +250,49 @@ describe('UserService writable-field mapping', () => {
             role: 'admin'
         });
 
-        await service.updateProfile(7, dto);
+        const result = await service.updateProfile(7, dto);
 
-        expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        expect(prisma.user.update).toHaveBeenCalledWith({
             where: { id: 7 },
             data: {
                 firstname: 'Augusta Ada',
                 lastname: 'King'
             }
         });
-        expect(prisma.user.updateMany.mock.calls[0][0].data).not.toBe(dto);
+        expect(prisma.user.update.mock.calls[0][0].data).not.toBe(dto);
+        // The response is exactly the safe /me contract: no password hash,
+        // timestamps, or client-influenced avatar/role values leak through.
+        expect(result).toEqual({
+            id: 7,
+            username: 'ada@example.com',
+            firstname: 'Augusta Ada',
+            lastname: 'King',
+            profilePicturePath: null,
+            profilePictureType: null
+        });
+    });
+
+    it('maps a missing profile row to the safe not-found error', async () => {
+        const prisma = createMockPrisma();
+        prisma.user.update.mockRejectedValue(
+            Object.assign(new Error('No record found'), { code: 'P2025' })
+        );
+        const service = new UserService(
+            prisma as any,
+            createMockAuthSessions({}) as any
+        );
+
+        await expect(
+            service.updateProfile(
+                7,
+                Object.assign(new UpdateProfileDto(), {
+                    firstname: 'Augusta Ada',
+                    lastname: 'King'
+                })
+            )
+        ).rejects.toMatchObject({
+            code: 'AUTH_USER_NOT_FOUND',
+            statusCode: 404
+        });
     });
 });

@@ -156,8 +156,13 @@ export class UserController {
   updateProfile = async (req: Request, res: Response): Promise<void> => {
     try {
       const updateProfileDto = await validateDto(UpdateProfileDto, req.body);
-      await this.userService.updateProfile(req.user!.id, updateProfileDto);
-      res.status(200).json({ message: 'Profile updated successfully' });
+      // Return the updated safe user (same shape as /me) so the client can
+      // commit visible and cached profile state from one authoritative source.
+      res
+        .status(200)
+        .json(
+          await this.userService.updateProfile(req.user!.id, updateProfileDto),
+        );
     } catch (error: unknown) {
       sendError(res, error, {
         validationCode: 'PROFILE_UPDATE_FAILED',

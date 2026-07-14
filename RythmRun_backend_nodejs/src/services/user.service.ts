@@ -30,6 +30,15 @@ function isUniqueConstraintFailure(error: unknown): boolean {
   );
 }
 
+function isRecordNotFoundFailure(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'P2025'
+  );
+}
+
 @injectable()
 export class UserService {
   constructor(
@@ -169,20 +178,27 @@ export class UserService {
   async updateProfile(
     userId: number,
     updateProfileDto: UpdateProfileDto,
-  ): Promise<void> {
-    const updated = await this.prisma.user.updateMany({
-      where: { id: userId },
-      data: {
-        firstname: updateProfileDto.firstname,
-        lastname: updateProfileDto.lastname,
-      },
-    });
-    if (updated.count !== 1) {
-      throw new AuthApplicationError(
-        'AUTH_USER_NOT_FOUND',
-        404,
-        'User account was not found',
-      );
+  ): Promise<SafeUserResponse> {
+    // Only the two declared profile fields are ever mapped into the update;
+    // avatar fields stay owned by the dedicated upload pipeline (IP-0).
+    try {
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          firstname: updateProfileDto.firstname,
+          lastname: updateProfileDto.lastname,
+        },
+      });
+      return toSafeUserResponse(user);
+    } catch (error: unknown) {
+      if (isRecordNotFoundFailure(error)) {
+        throw new AuthApplicationError(
+          'AUTH_USER_NOT_FOUND',
+          404,
+          'User account was not found',
+        );
+      }
+      throw error;
     }
   }
 

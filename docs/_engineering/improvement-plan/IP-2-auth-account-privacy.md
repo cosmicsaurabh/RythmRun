@@ -10,7 +10,7 @@ published: false
 | Priority | P1 |
 | Target | 2–4 weeks in independently shippable packages, plus external email/privacy decisions |
 | Owner | Unassigned |
-| Last updated | 2026-07-13 |
+| Last updated | 2026-07-14 |
 | Depends on | IP-0 secret/avatar fix; IP-1 user-scope teardown and minimum CI |
 | External prerequisites | Password-recovery email provider/domain; privacy/deletion retention decision |
 | Exit condition | Auth expiry/rotation/revocation, secure storage, account lifecycle, and route-privacy gates pass |
@@ -361,6 +361,39 @@ The last verified user may access only that user's local completed history while
 - Repeated cleanup is harmless.
 - Deleted account cannot refresh/login unless product policy allows new registration, and old local data/files are gone.
 
+**Repository implementation state (2026-07-14) — profile slice only**
+
+- The maintainer selected the profile-edit slice as its own package increment;
+  password recovery (blocked on the email-provider decision) and account
+  deletion (outbox/runner design) remain undelivered and unclaimed.
+- `PUT /api/users/profile` now returns the updated safe user in exactly the
+  `/me` contract instead of a message-only body. Only the two declared name
+  fields are mapped into the Prisma update, a missing row maps to the safe
+  `AUTH_USER_NOT_FOUND` error, and the mass-assignment rejection of undeclared
+  fields is unchanged and still tested.
+- The mobile app gains its first real name-edit flow: the profile screen's
+  previous "Coming Soon" stub opens an edit dialog, the repository sends the
+  trimmed names through the authenticated coordinator (online-guard denied in
+  offline mode with the typed `AUTH_OFFLINE_MODE` message; one post-refresh
+  replay allowed because the PUT payload is fixed), and the session coordinator
+  commits the server-confirmed result. The commit merges only the fields the
+  operation owns — first/last name — so avatar fields and cached
+  email/creation metadata cannot be clobbered by a concurrent avatar upload,
+  and a response for a foreign or stale owner is discarded rather than applied
+  across accounts. Both the name commit and the avatar commit re-merge only
+  their owned fields onto the latest session user after persisting, so an avatar
+  upload and a name edit that overlap compose instead of clobbering each other.
+- Backend suites cover the safe response shape, undeclared-field rejection,
+  the not-found mapping, and the protected-route wire contract; Flutter suites
+  cover the wire body/parse, transport no-retry, offline denial before the
+  network, owner/gate/disposal checks in the view model, same-owner-only
+  session merges, and the concurrent avatar/name commit. An independent
+  adversarial multi-agent review confirmed one medium concurrent-commit clobber
+  defect, which is fixed above and covered by a regression test. Full backend
+  (281 executable Jest tests) and Flutter (302 tests) suites, analyzer/baseline,
+  formatting, production build, built runtime smoke, and the Android debug APK
+  pass locally.
+
 ### IP-2.5 — Make exact routes private and disable unfinished social paths
 
 **Primary files**
@@ -519,3 +552,4 @@ The app intentionally retains completed offline history across normal logout. Ex
 | 2026-07-13 | IP-2.1 | Prisma schema/migration validation and generation; auth/session/user/middleware/HTTP Jest suites; production typecheck/build; built runtime smoke | Repository gates pass; hosted PostgreSQL gate pending | Local Jest ran 18/18 executable suites and 279/279 tests; the six-test real-PostgreSQL suite was correctly skipped because no test database is available locally. Production build and the loopback built-ESM smoke passed on the available Node 26.3.0 host; the workflow's exact Node 22.23.1 plus PostgreSQL run remains MC-2.1. Hosted MC-2.1 must apply the migration and pass the enabled concurrency suite before atomicity is claimed. Account deletion remains IP-2.4. |
 | 2026-07-13 | IP-2.2 | Locked Flutter restore; focused migration/refresh/session/navigation race suites; full Flutter suite; analyzer and counted baseline; Android debug APK | Repository gates pass; physical-device/staging gate pending | Flutter passed 275/275 tests. Analyzer reported 10 informational findings and zero warnings/errors, with 10 prior baseline findings removed. The debug APK compiled with the current secure-storage platform integration. No device storage, upgrade interruption, backup/restore, release-log, or staging lifecycle claim is made; those remain MC-2.3. IP-2.3 fake-clock/rollback policy remains separate. |
 | 2026-07-13 | IP-2.3 | Locked Flutter restore; fake-clock offline-window/rollback/recovery suite; online-guard, session-transition, and mutation-denial suites; full Flutter suite; analyzer and counted baseline; formatting/`git diff --check`; Android debug APK; independent adversarial multi-agent review | Repository gates pass; physical-device/staging gate pending | Flutter passed 291/291 tests (16 new). Analyzer reported 10 informational findings and zero warnings/errors, and the counted baseline accepted 10 findings with 10 prior findings removed. The seven-day boundary, clock rollback, future-timestamp, restart-surviving tripwire, forward-excursion recovery, best-effort observed-advance, cleared-secure-storage fail-closed, network-vs-`401` divergence, guard-mirroring, and offline password/avatar/sync denial are proven under fake clocks and injected fakes. The adversarial review confirmed two medium-severity clock-observation defects, both fixed and retested. The debug APK built. No physical-device offline/rollback, airplane-mode-vs-revocation, backup, or release-log claim is made; those remain MC-2.3. Defeating a fully attacker-controlled device clock is noted as future platform-monotonic/server hardening. |
+| 2026-07-14 | IP-2.4 (profile slice) | Backend Prisma validate/generate, typecheck, full Jest suite, production build, built runtime smoke; Flutter locked restore, full suite, analyzer and counted baseline, formatting/`git diff --check`, Android debug APK; independent adversarial multi-agent review | Repository gates pass; recovery/deletion undelivered; hosted/staging gates pending | `PUT /profile` returns the updated safe `/me`-shaped user and the mobile app gains the name-edit flow committing only server-confirmed, same-owner first/last name, composing safely with concurrent avatar uploads. Backend passed 281 executable Jest tests (6 PostgreSQL tests correctly skipped locally; 2 new) and the built-ESM smoke; Flutter passed 302/302 (11 new). The adversarial review confirmed one medium concurrent-commit clobber defect, fixed and retested. Analyzer reported 10 informational findings, zero warnings/errors, baseline accepted. Password recovery remains blocked on the email-provider decision and account deletion remains undelivered; no claim is made for either. Hosted CI remains MC-0.7/MC-1.9; staging auth lifecycle remains MC-2.2/MC-2.3. |

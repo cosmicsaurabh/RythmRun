@@ -141,6 +141,23 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<UserEntity> updateProfile({
+    required String firstName,
+    required String lastName,
+  }) async {
+    // Profile edit is an online-only mutation (IP-2.3 guard). The PUT payload
+    // is fixed, so one post-refresh replay is safe.
+    _onlineOperationGuard?.requireOnline();
+    final updated = await _authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
+      request:
+          (authHeaders) =>
+              _remoteDataSource.updateProfile(firstName, lastName, authHeaders),
+    );
+    return updated.toEntity();
+  }
+
+  @override
   Future<bool> needsTokenRefresh() async {
     return await _localDataSource.needsTokenRefresh();
   }

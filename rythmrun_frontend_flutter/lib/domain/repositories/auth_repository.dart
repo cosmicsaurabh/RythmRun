@@ -34,6 +34,13 @@ abstract class AuthRepository {
   /// Persist non-secret cached profile metadata for the active user.
   Future<void> updateCurrentUser(UserEntity user);
 
+  /// Update first/last name on the server and return the updated safe user.
+  /// Remote-only: the session coordinator commits visible and cached state.
+  Future<UserEntity> updateProfile({
+    required String firstName,
+    required String lastName,
+  });
+
   /// Check if session needs token refresh
   Future<bool> needsTokenRefresh();
 

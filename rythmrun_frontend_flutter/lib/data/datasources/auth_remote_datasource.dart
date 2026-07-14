@@ -6,6 +6,7 @@ import '../../core/config/api_endpoints.dart';
 import '../../core/network/http_client.dart';
 import '../models/auth_response_model.dart';
 import '../models/registration_request_model.dart';
+import '../models/user_model.dart';
 
 class AuthRemoteDataSource {
   final AppHttpClient _httpClient;
@@ -102,5 +103,27 @@ class AuthRemoteDataSource {
     );
 
     return response.statusCode == 200;
+  }
+
+  /// Update first/last name and return the server's updated safe user.
+  Future<UserModel> updateProfile(
+    String firstName,
+    String lastName,
+    Map<String, String> authHeaders,
+  ) async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    };
+
+    final response = await _httpClient.put(
+      AppConfig.getUrl(ApiEndpoints.profile),
+      headers: headers,
+      body: json.encode({'firstname': firstName, 'lastname': lastName}),
+      maxRetries: 0,
+    );
+
+    final Map<String, dynamic> jsonResponse = json.decode(response.body);
+    return UserModel.fromJson(jsonResponse);
   }
 }

@@ -687,6 +687,137 @@ void main() {
       },
     );
 
+    test('applyProfileUpdate merges only names for the same owner', () async {
+      final events = <String>[];
+      final repository = _FakeAuthRepository(events: events);
+      final notifier = SessionNotifier(
+        repository,
+        _FakeUserScopeTeardown(events: events),
+        autoInitialize: false,
+      );
+      addTearDown(notifier.dispose);
+      notifier.onLoginSuccess(
+        userA.copyWith(
+          profilePicturePath: 'avatars/7/current.jpg',
+          profilePictureType: 'image/jpeg',
+        ),
+      );
+
+      await notifier.applyProfileUpdate(
+        ownerUserId: '7',
+        updatedUser: const UserEntity(
+          id: '7',
+          firstName: 'Renamed',
+          lastName: 'Runner',
+          email: 'server-username@example.com',
+        ),
+      );
+
+      final user = notifier.state.user!;
+      expect(user.firstName, 'Renamed');
+      expect(user.lastName, 'Runner');
+      // Cached email and avatar fields stay owned by their own pipelines.
+      expect(user.email, 'a@example.com');
+      expect(user.profilePicturePath, 'avatars/7/current.jpg');
+      expect(user.profilePictureType, 'image/jpeg');
+      expect(repository.currentUser?.firstName, 'Renamed');
+      expect(
+        repository.currentUser?.profilePicturePath,
+        'avatars/7/current.jpg',
+      );
+    });
+
+    test(
+      'a concurrent avatar and name commit preserve both owned fields',
+      () async {
+        final events = <String>[];
+        final gate = Completer<void>();
+        final repository = _FakeAuthRepository(
+          events: events,
+          gateFirstUserWrite: gate,
+        );
+        final notifier = SessionNotifier(
+          repository,
+          _FakeUserScopeTeardown(events: events),
+          autoInitialize: false,
+        );
+        addTearDown(notifier.dispose);
+        notifier.onLoginSuccess(
+          userA.copyWith(
+            profilePicturePath: 'avatars/7/old.jpg',
+            profilePictureType: 'image/jpeg',
+          ),
+        );
+
+        // The name commit blocks on its first persist.
+        final nameFuture = notifier.applyProfileUpdate(
+          ownerUserId: '7',
+          updatedUser: const UserEntity(
+            id: '7',
+            firstName: 'Renamed',
+            lastName: 'Runner',
+            email: 'ignored@example.com',
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        // An avatar commit lands while the name persist is still in flight.
+        await notifier.updateProfilePicture(
+          ownerUserId: '7',
+          path: 'avatars/7/new.jpg',
+          type: 'image/png',
+        );
+        expect(notifier.state.user?.profilePicturePath, 'avatars/7/new.jpg');
+
+        gate.complete();
+        await nameFuture;
+
+        // Neither commit clobbers the other's field.
+        final user = notifier.state.user!;
+        expect(user.firstName, 'Renamed');
+        expect(user.profilePicturePath, 'avatars/7/new.jpg');
+        expect(user.profilePictureType, 'image/png');
+        expect(repository.currentUser?.firstName, 'Renamed');
+        expect(repository.currentUser?.profilePicturePath, 'avatars/7/new.jpg');
+      },
+    );
+
+    test('applyProfileUpdate discards a foreign or stale owner', () async {
+      final events = <String>[];
+      final repository = _FakeAuthRepository(events: events);
+      final notifier = SessionNotifier(
+        repository,
+        _FakeUserScopeTeardown(events: events),
+        autoInitialize: false,
+      );
+      addTearDown(notifier.dispose);
+      notifier.onLoginSuccess(userA);
+
+      // A server user that is not the requesting owner must never be applied.
+      await notifier.applyProfileUpdate(
+        ownerUserId: '7',
+        updatedUser: const UserEntity(
+          id: '8',
+          firstName: 'Foreign',
+          lastName: 'User',
+          email: 'b@example.com',
+        ),
+      );
+      // A stale owner (no longer the signed-in user) is discarded too.
+      await notifier.applyProfileUpdate(
+        ownerUserId: '8',
+        updatedUser: const UserEntity(
+          id: '8',
+          firstName: 'Foreign',
+          lastName: 'User',
+          email: 'b@example.com',
+        ),
+      );
+
+      expect(notifier.state.user, userA);
+      expect(repository.currentUser, isNull);
+    });
+
     test('password-change invalidation enters forced teardown', () async {
       final events = <String>[];
       final signal = SessionInvalidationSignal();
@@ -733,12 +864,14 @@ class _FakeAuthRepository implements AuthRepository {
   final Completer<UserEntity>? refreshCompleter;
   final Object? refreshError;
   final AuthenticationAttemptGate? mutationGate;
+  final Completer<void>? gateFirstUserWrite;
   UserEntity? currentUser;
   bool shouldRefresh;
   final bool canStayOffline;
   bool authCleanupPending;
   SessionValidationStatus validationStatus;
   int clearCalls = 0;
+  int userWrites = 0;
 
   _FakeAuthRepository({
     required this.events,
@@ -748,6 +881,7 @@ class _FakeAuthRepository implements AuthRepository {
     this.refreshCompleter,
     this.refreshError,
     this.mutationGate,
+    this.gateFirstUserWrite,
     this.currentUser,
     this.shouldRefresh = false,
     this.canStayOffline = true,
@@ -790,6 +924,10 @@ class _FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> updateCurrentUser(UserEntity user) async {
+    userWrites += 1;
+    if (userWrites == 1 && gateFirstUserWrite != null) {
+      await gateFirstUserWrite!.future;
+    }
     currentUser = user;
   }
 

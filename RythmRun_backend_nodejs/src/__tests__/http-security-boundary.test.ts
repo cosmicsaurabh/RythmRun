@@ -226,6 +226,33 @@ describe('HTTP security boundaries', () => {
     expect(userService.updateProfile).not.toHaveBeenCalled();
   });
 
+  it('returns the updated safe user through the protected profile route', async () => {
+    const safeUser = {
+      id: USER_ID,
+      username: 'runner@example.com',
+      firstname: 'Renamed',
+      lastname: 'Runner',
+      profilePicturePath: null,
+      profilePictureType: null,
+    };
+    userService.updateProfile.mockResolvedValueOnce(safeUser);
+
+    const response = await requestJson(
+      server,
+      'PUT',
+      '/api/users/profile',
+      { firstname: 'Renamed', lastname: 'Runner' },
+      { authorization: AUTHORIZATION },
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: safeUser });
+    expect(authenticate).toHaveBeenCalledTimes(1);
+    expect(userService.updateProfile).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ firstname: 'Renamed', lastname: 'Runner' }),
+    );
+  });
+
   it('refreshes a token without requiring an access-token session', async () => {
     const authResponse = {
       id: USER_ID,

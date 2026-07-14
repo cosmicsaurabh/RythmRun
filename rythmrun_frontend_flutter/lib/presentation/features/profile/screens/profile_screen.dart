@@ -578,7 +578,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 icon: personOutlineIcon,
                 title: 'Edit Profile',
                 subtitle: 'Update your personal information',
-                onTap: () => _editProfile(context),
+                onTap: _editProfile,
               ),
               const Divider(height: 1),
               ProfileMenuItem(
@@ -712,14 +712,71 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
   }
 
-  void _editProfile(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Edit Profile - Coming Soon!'),
-        backgroundColor: CustomAppColors.statusError,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  Future<void> _editProfile() async {
+    final user = ref.read(sessionProvider).user;
+    if (user == null) return;
+
+    final firstNameController = TextEditingController(text: user.firstName);
+    final lastNameController = TextEditingController(text: user.lastName);
+    try {
+      final shouldSave = await showDialog<bool>(
+        context: context,
+        builder:
+            (dialogContext) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(radiusLg),
+              ),
+              title: const Text('Edit Profile'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: firstNameController,
+                    textCapitalization: TextCapitalization.words,
+                    maxLength: 50,
+                    decoration: const InputDecoration(labelText: 'First name'),
+                  ),
+                  const SizedBox(height: spacingSm),
+                  TextField(
+                    controller: lastNameController,
+                    textCapitalization: TextCapitalization.words,
+                    maxLength: 50,
+                    decoration: const InputDecoration(labelText: 'Last name'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+      );
+      if (!mounted || shouldSave != true) return;
+
+      final didUpdate = await ref
+          .read(profileViewModelProvider.notifier)
+          .updateProfileName(
+            firstName: firstNameController.text,
+            lastName: lastNameController.text,
+          );
+      if (!mounted || !didUpdate) return;
+      // Failures surface through the existing ProfileState error listener.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile updated'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      firstNameController.dispose();
+      lastNameController.dispose();
+    }
   }
 
   void _openSettings(BuildContext context) {
