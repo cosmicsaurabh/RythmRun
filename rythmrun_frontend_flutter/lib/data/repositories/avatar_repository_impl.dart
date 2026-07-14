@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
+import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
 import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/ensure_type_helper.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/avatar_repository.dart';
@@ -20,17 +21,24 @@ class AvatarRepositoryImpl implements AvatarRepository {
   final AuthRepository authRepository;
   final AppHttpClient httpClient;
   final UserScopeOperationGate? operationGate;
+  final OnlineOperationGuard? onlineOperationGuard;
 
   AvatarRepositoryImpl(
     this.remoteDataSource,
     this.authRepository,
     this.httpClient, {
     this.operationGate,
+    this.onlineOperationGuard,
   });
 
   @override
   Future<AvatarUploadResult> uploadAvatar(XFile image) async {
     developer.log('[pfp] Starting avatar upload', name: 'AvatarRepository');
+
+    // An avatar upload is an online-only mutation. Refuse it up front while
+    // offline instead of surfacing a generic network failure (IP-2.3). This is
+    // outside the try/catch below so the typed offline message is preserved.
+    onlineOperationGuard?.requireOnline();
 
     final owner = await authRepository.getCurrentUser();
     if (owner == null) {

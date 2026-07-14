@@ -5,6 +5,7 @@ import 'package:rythmrun_frontend_flutter/core/services/auth_persistence_service
 import 'package:rythmrun_frontend_flutter/core/services/auth_token_store.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
+import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
 import 'package:rythmrun_frontend_flutter/core/services/sync_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
 import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
@@ -65,6 +66,10 @@ final _localDbServiceProvider = Provider<LocalDbService>((ref) {
 
 final userScopeOperationGateProvider = Provider<UserScopeOperationGate>((ref) {
   return UserScopeOperationGate();
+});
+
+final onlineOperationGuardProvider = Provider<OnlineOperationGuard>((ref) {
+  return OnlineOperationGuard();
 });
 
 final authenticationAttemptGateProvider = Provider<AuthenticationAttemptGate>((
@@ -153,6 +158,7 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
     localDataSource,
     authenticatedRequests: ref.watch(authenticatedRequestCoordinatorProvider),
     authenticationAttemptGate: ref.watch(authenticationAttemptGateProvider),
+    onlineOperationGuard: ref.watch(onlineOperationGuardProvider),
   );
 });
 
@@ -165,6 +171,7 @@ final avatarRepositoryProvider = Provider<AvatarRepository>((ref) {
     authRepository,
     httpClient,
     operationGate: ref.watch(userScopeOperationGateProvider),
+    onlineOperationGuard: ref.watch(onlineOperationGuardProvider),
   );
 });
 
@@ -199,6 +206,7 @@ final syncCoordinatorProvider = Provider<SyncCoordinator>((ref) {
     activityImageRepository: ref.watch(activityImageRepositoryProvider),
     authRepository: ref.watch(authRepositoryProvider),
     operationGate: ref.watch(userScopeOperationGateProvider),
+    onlineOperationGuard: ref.watch(onlineOperationGuardProvider),
   );
 });
 

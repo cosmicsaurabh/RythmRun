@@ -4,6 +4,7 @@ import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
 import 'package:rythmrun_frontend_flutter/core/network/authenticated_request_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
+import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
 import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
 import 'package:rythmrun_frontend_flutter/data/models/change_password_response_model.dart';
 
@@ -22,14 +23,17 @@ class AuthRepositoryImpl implements AuthRepository {
   final AuthLocalDataSource _localDataSource;
   final AuthenticatedRequestCoordinator _authenticatedRequests;
   final AuthenticationAttemptGate? _authenticationAttemptGate;
+  final OnlineOperationGuard? _onlineOperationGuard;
 
   AuthRepositoryImpl(
     this._remoteDataSource,
     this._localDataSource, {
     required AuthenticatedRequestCoordinator authenticatedRequests,
     AuthenticationAttemptGate? authenticationAttemptGate,
+    OnlineOperationGuard? onlineOperationGuard,
   }) : _authenticatedRequests = authenticatedRequests,
-       _authenticationAttemptGate = authenticationAttemptGate;
+       _authenticationAttemptGate = authenticationAttemptGate,
+       _onlineOperationGuard = onlineOperationGuard;
 
   Future<T> _runAuthenticationMutation<T>(Future<T> Function() action) async {
     final lease = _authenticationAttemptGate?.tryAcquire();
@@ -96,6 +100,9 @@ class AuthRepositoryImpl implements AuthRepository {
     String currentPassword,
     String newPassword,
   ) async {
+    // Deny an account mutation in offline mode with a clear message instead of
+    // letting it reach the network and fail generically (IP-2.3).
+    _onlineOperationGuard?.requireOnline();
     return _authenticatedRequests.executeSessionRevoking(
       reason: SessionInvalidationReason.passwordChanged,
       request:

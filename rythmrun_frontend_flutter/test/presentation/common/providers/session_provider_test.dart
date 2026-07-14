@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
+import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
 import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/user_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/auth_repository.dart';
@@ -616,6 +617,73 @@ void main() {
           'teardown',
           'clear',
         ]);
+      },
+    );
+
+    test(
+      'server rejection and network loss diverge from the same cached user',
+      () async {
+        // A backend 401/invalid session forces teardown to the guest root.
+        final invalidEvents = <String>[];
+        final invalidNotifier = SessionNotifier(
+          _FakeAuthRepository(
+            events: invalidEvents,
+            currentUser: userA,
+            validationStatus: SessionValidationStatus.invalid,
+          ),
+          _FakeUserScopeTeardown(events: invalidEvents),
+        );
+        addTearDown(invalidNotifier.dispose);
+        await _flushAsyncWork();
+        expect(invalidNotifier.state.state, SessionState.unauthenticated);
+        expect(invalidNotifier.state.user, isNull);
+
+        // Transient network loss keeps the same eligible user bounded-offline.
+        final offlineEvents = <String>[];
+        final offlineNotifier = SessionNotifier(
+          _FakeAuthRepository(
+            events: offlineEvents,
+            currentUser: userA,
+            validationStatus: SessionValidationStatus.unavailable,
+          ),
+          _FakeUserScopeTeardown(events: offlineEvents),
+        );
+        addTearDown(offlineNotifier.dispose);
+        await _flushAsyncWork();
+        expect(offlineNotifier.state.state, SessionState.authenticatedOffline);
+        expect(offlineNotifier.state.user, userA);
+      },
+    );
+
+    test(
+      'the online operation guard mirrors full-online session state',
+      () async {
+        final events = <String>[];
+        final repository = _FakeAuthRepository(
+          events: events,
+          validationStatus: SessionValidationStatus.unavailable,
+        );
+        final guard = OnlineOperationGuard();
+        final notifier = SessionNotifier(
+          repository,
+          _FakeUserScopeTeardown(events: events),
+          onlineOperationGuard: guard,
+          autoInitialize: false,
+        );
+        addTearDown(notifier.dispose);
+
+        notifier.onLoginSuccess(userA);
+        expect(notifier.state.state, SessionState.authenticated);
+        expect(guard.isOnline, isTrue);
+
+        // Dropping to bounded offline mode revokes online-mutation admission.
+        await notifier.validateSession();
+        expect(notifier.state.state, SessionState.authenticatedOffline);
+        expect(guard.isOnline, isFalse);
+
+        await notifier.logout();
+        expect(notifier.state.state, SessionState.unauthenticated);
+        expect(guard.isOnline, isFalse);
       },
     );
 

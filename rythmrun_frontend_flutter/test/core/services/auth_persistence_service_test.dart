@@ -16,7 +16,9 @@ void main() {
     required _MemoryPreferences preferences,
   }) {
     return AuthPersistenceService(
-      tokenStore: SecureAuthTokenStore(storage: secure),
+      // The store shares the service clock so its stamped verified/observed
+      // timestamps and the offline-window policy agree under the fake clock.
+      tokenStore: SecureAuthTokenStore(storage: secure, now: () => now),
       preferencesFactory: () async => preferences,
       now: () => now,
     );
@@ -101,7 +103,7 @@ void main() {
 
   test('existing secure credentials win over stale preferences', () async {
     final secure = _MemorySecureValueStore();
-    final tokenStore = SecureAuthTokenStore(storage: secure);
+    final tokenStore = SecureAuthTokenStore(storage: secure, now: () => now);
     final securePair = AuthTokenPair(
       accessToken: 'secure-access',
       refreshToken: 'secure-refresh',
@@ -294,7 +296,10 @@ void main() {
         'last_backend_sync': offlineNow.toIso8601String(),
       });
       final persistence = AuthPersistenceService(
-        tokenStore: SecureAuthTokenStore(storage: secure),
+        tokenStore: SecureAuthTokenStore(
+          storage: secure,
+          now: () => offlineNow,
+        ),
         preferencesFactory: () async => preferences,
         now: () => offlineNow,
       );
@@ -468,6 +473,9 @@ final class _BlockingAuthTokenStore implements AuthTokenStore {
     );
     return current;
   }
+
+  @override
+  Future<AuthCredentialSnapshot?> advanceObservedClock() async => current;
 
   @override
   Future<void> delete() async {

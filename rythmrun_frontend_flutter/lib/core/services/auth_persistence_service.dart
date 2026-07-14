@@ -65,7 +65,13 @@ class AuthPersistenceService {
     AuthTokenStore? tokenStore,
     AuthPreferencesFactory? preferencesFactory,
     DateTime Function()? now,
-  }) : _tokenStore = tokenStore ?? SecureAuthTokenStore(),
+  }) : _tokenStore =
+           // The token store and this service must share one clock so the
+           // verified/observed timestamps it stamps and the offline-window
+           // policy evaluated here agree. When an external store is injected,
+           // the caller owns that consistency (production and tests inject the
+           // same clock into both).
+           tokenStore ?? SecureAuthTokenStore(now: now ?? DateTime.now),
        _preferencesFactory =
            preferencesFactory ??
            (() async => SharedPreferencesAuthPreferences(
@@ -78,6 +84,14 @@ class AuthPersistenceService {
   static const String userDataKey = 'user_data';
   static const String lastBackendSyncKey = 'last_backend_sync';
   static const String authCleanupPendingKey = 'auth_cleanup_pending';
+
+  /// Maximum offline access after a successful server verification (D-009).
+  static const Duration offlineWindow = Duration(days: 7);
+
+  /// Small tolerance so benign NTP corrections do not force re-verification,
+  /// while a meaningful clock rollback or future-dated verification still
+  /// fails offline admission closed. Negligible against [offlineWindow].
+  static const Duration clockSkewTolerance = Duration(minutes: 2);
 
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
@@ -305,6 +319,17 @@ class AuthPersistenceService {
     );
   }
 
+  /// Whether the cached identity may enter bounded offline mode.
+  ///
+  /// Offline admission requires a present, server-verified credential pair with
+  /// a non-expired refresh token, a stored user, and a verification that is
+  /// within the [offlineWindow] measured against an integrity-sensitive,
+  /// tamper-checked wall clock. A rolled-back or future-dated clock fails
+  /// closed and requires fresh online verification (IP-2.3 / D-009).
+  ///
+  /// As a deliberate side effect, this advances the secure observed-clock
+  /// high-water mark *after* the eligibility decision has read the previous
+  /// value, so a subsequent clock rollback below it is detectable.
   Future<bool> canStayLoggedInOffline() async {
     final snapshot = await readCredentialSnapshot();
     if (snapshot == null || snapshot.requiresServerVerification) return false;
@@ -314,7 +339,42 @@ class AuthPersistenceService {
     } catch (_) {
       return false;
     }
-    return !await needsBackendSync();
+
+    final eligible = _isWithinVerifiedOfflineWindow(snapshot);
+    // Recording the observed high-water mark is best effort. A transient secure
+    // write failure (e.g. keychain busy) must never discard an already-earned
+    // eligibility decision or escape into session startup. A skipped advance
+    // only fails to raise the mark; it can never lower it, so it cannot weaken
+    // rollback detection.
+    try {
+      await _tokenStore.advanceObservedClock();
+    } catch (_) {}
+    return eligible;
+  }
+
+  bool _isWithinVerifiedOfflineWindow(AuthCredentialSnapshot snapshot) {
+    final verifiedAtMs = snapshot.lastVerifiedAtMs;
+    // A pair with no integrity-sensitive verification anchor (a pre-IP-2.3
+    // envelope or a never-verified migration) cannot enter offline mode until
+    // one online verification stamps it. Completed local data is not deleted.
+    if (verifiedAtMs == null) return false;
+
+    final nowMs = _now().millisecondsSinceEpoch;
+    final toleranceMs = clockSkewTolerance.inMilliseconds;
+
+    // Clock rollback: a current time below the highest wall clock this device
+    // has ever observed cannot be trusted to bound the offline window.
+    final observedMaxMs = snapshot.maxObservedAtMs;
+    if (observedMaxMs != null && nowMs < observedMaxMs - toleranceMs) {
+      return false;
+    }
+
+    // A verification timestamp in the future is impossible for a legitimate
+    // clock and must not grant an unbounded window.
+    if (verifiedAtMs > nowMs + toleranceMs) return false;
+
+    // Bounded seven-day window from the last integrity-checked verification.
+    return nowMs - verifiedAtMs <= offlineWindow.inMilliseconds;
   }
 
   Future<AuthCredentialSnapshot?> _ensureLegacyMigration() {
