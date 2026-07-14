@@ -4,8 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
 import 'package:rythmrun_frontend_flutter/core/network/authenticated_request_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
+import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/avatar_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/avatar_repository_impl.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/user_entity.dart';
@@ -172,6 +174,49 @@ void main() {
           expect(error.toString(), isNot(contains(sensitiveKey)));
           expect(error.toString(), isNot(contains(sensitiveSignature)));
         }
+      },
+    );
+
+    test(
+      'offline mode refuses an avatar upload before authorization',
+      () async {
+        final guard = OnlineOperationGuard();
+        final offlineRepository = AvatarRepositoryImpl(
+          remote,
+          authRepository,
+          httpClient,
+          onlineOperationGuard: guard,
+        );
+
+        await expectLater(
+          offlineRepository.uploadAvatar(
+            XFile.fromData(
+              Uint8List.fromList(<int>[1, 2, 3]),
+              mimeType: 'image/jpeg',
+              name: 'picked.jpeg',
+            ),
+          ),
+          throwsA(
+            isA<AuthSessionUnavailable>().having(
+              (error) => error.reason,
+              'reason',
+              AuthSessionUnavailableReason.offlineMode,
+            ),
+          ),
+        );
+        expect(remote.requestCount, 0);
+        expect(httpClient.uploadCount, 0);
+
+        // Once the session is online the same upload proceeds and confirms.
+        guard.setOnline(true);
+        final result = await offlineRepository.uploadAvatar(
+          XFile.fromData(
+            Uint8List.fromList(<int>[1, 2, 3]),
+            mimeType: 'image/jpeg',
+            name: 'picked.jpeg',
+          ),
+        );
+        expect(result.key, remote.authorization.key);
       },
     );
   });

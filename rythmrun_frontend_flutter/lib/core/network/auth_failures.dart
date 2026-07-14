@@ -19,6 +19,7 @@ enum AuthSessionUnavailableReason {
   credentialStoreUnavailable,
   requestNotReplayed,
   unexpectedRefreshResponse,
+  offlineMode,
 }
 
 final class AuthSessionUnavailable extends AuthSessionFailure {
@@ -41,6 +42,7 @@ final class AuthSessionUnavailable extends AuthSessionFailure {
       'AUTH_REQUEST_NOT_REPLAYED',
     AuthSessionUnavailableReason.unexpectedRefreshResponse =>
       'AUTH_REFRESH_RESPONSE_INVALID',
+    AuthSessionUnavailableReason.offlineMode => 'AUTH_OFFLINE_MODE',
   };
 
   @override
@@ -59,6 +61,8 @@ final class AuthSessionUnavailable extends AuthSessionFailure {
       'The session was refreshed, but this request must be submitted again.',
     AuthSessionUnavailableReason.unexpectedRefreshResponse =>
       'The authentication service returned an unexpected response.',
+    AuthSessionUnavailableReason.offlineMode =>
+      'This action needs an internet connection.',
   };
 
   @override

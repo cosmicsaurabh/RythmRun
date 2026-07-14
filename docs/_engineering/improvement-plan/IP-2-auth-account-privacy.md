@@ -243,6 +243,74 @@ The last verified user may access only that user's local completed history while
 - User A cached state never authorizes user B's rows.
 - Reinstall/cleared secure storage cannot infer authorization from an unencrypted SQLite row alone.
 
+**Repository implementation state (2026-07-13)**
+
+- Offline admission is now measured against an integrity-sensitive
+  `lastVerifiedAtMs` stamped inside the secure credential envelope, separate
+  from the plaintext `last_backend_sync` freshness heuristic that still governs
+  proactive online re-verification. The envelope also carries a `maxObservedAtMs`
+  wall-clock high-water mark. Both fields are optional and back-compatible: a
+  pre-IP-2.3 or migrated-but-unverified envelope reads them as null and fails
+  offline admission closed until one online verification stamps them. Completed
+  local data is never deleted on a closed admission.
+- The verified timestamp advances on every real server verification — login,
+  registration, refresh rotation, and the first successful authenticated
+  request/`/me` for a migrated pair — through the store's existing write,
+  compare-and-set, and `markServerVerified` paths. A metadata-only verification
+  write keeps the credential revision stable so it cannot make an in-flight
+  refresh compare-and-set look stale. Because access tokens expire within 15
+  minutes, any actively online session re-anchors well inside the window.
+- `canStayLoggedInOffline` requires a present, server-verified, non-expired
+  refresh pair with cached user data, and then bounds access to seven days from
+  `lastVerifiedAtMs` under a tamper-checked clock: a current time below the
+  observed high-water mark (rollback), a future-dated verification, or elapsed
+  time beyond the window all deny offline mode. The high-water mark advances
+  only after the eligibility decision has read the previous value, and is
+  written back through a revision-stable secure update, so the rollback tripwire
+  survives process restart. A trusted server verification (login, refresh, or
+  `/me`) re-anchors the high-water mark to the current time, so a benign forward
+  clock excursion cannot permanently poison offline mode — the next online
+  verification restores it — while the advance write is best effort and never
+  discards an already-earned admission on a transient secure-store failure. The
+  store and persistence service share one injected clock so stamping and policy
+  never disagree.
+- The startup state machine keeps the five documented branches: valid access →
+  authenticated; expired access + valid refresh + network → refresh; network
+  unavailable + eligible cached identity → authenticated-offline; server
+  invalid/revoked → cleared and unauthenticated; window exceeded or unverified →
+  `checking` with a non-alarming "online verification required" message and no
+  data deletion. Owner-scoped IP-1.4 local queries are reused unchanged; offline
+  admission requires the secure credential, so a reinstall or cleared secure
+  store cannot infer authorization from cached preferences or SQLite rows alone.
+- A data-layer `OnlineOperationGuard` denies server mutations in offline mode
+  with a typed `AUTH_OFFLINE_MODE` failure and a clear message, as defense in
+  depth beneath the presentation `FeatureGate`. The session coordinator flips it
+  on every state transition through an overridden state setter (online only in
+  the fully authenticated state). Password change and avatar upload refuse up
+  front while offline; background sync short-circuits. The guard is optional in
+  every constructor, so an unwired path never blocks.
+- The repository suite proves the seven-day boundary before/at/after under a
+  fake clock, rollback and future-timestamp fail-closed behaviour (including a
+  restart-surviving tripwire), a migrated pair becoming eligible only after
+  verification and then expiring, cleared-secure-storage fail-closed with cached
+  prefs present, server-rejection-versus-network-loss divergence from one cached
+  user, the guard mirroring session state, offline denial of password change,
+  avatar upload, and coordinated sync, forward-excursion recovery via online
+  re-verification, and best-effort observed-clock advancement. The full Flutter
+  suite passes 291/291; analysis reports 10 informational findings and zero
+  warnings/errors with the counted baseline accepting the reduction; locked
+  restore, formatting, and `git diff --check` pass; and an Android debug APK
+  builds. An independent adversarial multi-agent review confirmed two
+  medium-severity clock-observation defects (forward-excursion poisoning with no
+  online recovery, and a transient observed-clock write failure discarding an
+  earned admission); both are fixed above and covered by new tests.
+- Physical-device offline/rollback lifecycle, airplane-mode versus explicit
+  revocation separation, and release-log inspection remain device work under
+  MC-2.3, which now also names a device clock-rollback check. IP-2.3 implements
+  only the repository-testable policy; defeating a fully attacker-controlled
+  device clock ultimately requires a platform monotonic source or a server
+  round-trip and is noted as future hardening.
+
 ### IP-2.4 — Complete profile, password recovery, and account deletion
 
 **Primary backend areas**
@@ -450,3 +518,4 @@ The app intentionally retains completed offline history across normal logout. Ex
 | --- | --- | --- | --- | --- |
 | 2026-07-13 | IP-2.1 | Prisma schema/migration validation and generation; auth/session/user/middleware/HTTP Jest suites; production typecheck/build; built runtime smoke | Repository gates pass; hosted PostgreSQL gate pending | Local Jest ran 18/18 executable suites and 279/279 tests; the six-test real-PostgreSQL suite was correctly skipped because no test database is available locally. Production build and the loopback built-ESM smoke passed on the available Node 26.3.0 host; the workflow's exact Node 22.23.1 plus PostgreSQL run remains MC-2.1. Hosted MC-2.1 must apply the migration and pass the enabled concurrency suite before atomicity is claimed. Account deletion remains IP-2.4. |
 | 2026-07-13 | IP-2.2 | Locked Flutter restore; focused migration/refresh/session/navigation race suites; full Flutter suite; analyzer and counted baseline; Android debug APK | Repository gates pass; physical-device/staging gate pending | Flutter passed 275/275 tests. Analyzer reported 10 informational findings and zero warnings/errors, with 10 prior baseline findings removed. The debug APK compiled with the current secure-storage platform integration. No device storage, upgrade interruption, backup/restore, release-log, or staging lifecycle claim is made; those remain MC-2.3. IP-2.3 fake-clock/rollback policy remains separate. |
+| 2026-07-13 | IP-2.3 | Locked Flutter restore; fake-clock offline-window/rollback/recovery suite; online-guard, session-transition, and mutation-denial suites; full Flutter suite; analyzer and counted baseline; formatting/`git diff --check`; Android debug APK; independent adversarial multi-agent review | Repository gates pass; physical-device/staging gate pending | Flutter passed 291/291 tests (16 new). Analyzer reported 10 informational findings and zero warnings/errors, and the counted baseline accepted 10 findings with 10 prior findings removed. The seven-day boundary, clock rollback, future-timestamp, restart-surviving tripwire, forward-excursion recovery, best-effort observed-advance, cleared-secure-storage fail-closed, network-vs-`401` divergence, guard-mirroring, and offline password/avatar/sync denial are proven under fake clocks and injected fakes. The adversarial review confirmed two medium-severity clock-observation defects, both fixed and retested. The debug APK built. No physical-device offline/rollback, airplane-mode-vs-revocation, backup, or release-log claim is made; those remain MC-2.3. Defeating a fully attacker-controlled device clock is noted as future platform-monotonic/server hardening. |

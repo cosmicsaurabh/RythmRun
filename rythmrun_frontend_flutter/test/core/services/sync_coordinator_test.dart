@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
 import 'package:rythmrun_frontend_flutter/core/services/sync_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/user_entity.dart';
@@ -81,6 +82,29 @@ void main() {
 
     expect(workoutRepository.syncCalls, 0);
     expect(imageRepository.syncCalls, 0);
+  });
+
+  test('offline mode short-circuits sync before any remote push', () async {
+    final workoutRepository = _FakeWorkoutRepository();
+    final imageRepository = _FakeActivityImageRepository();
+    final guard = OnlineOperationGuard(); // default offline
+    final coordinator = SyncCoordinator(
+      workoutRepository: workoutRepository,
+      activityImageRepository: imageRepository,
+      authRepository: _MutableAuthRepository(7),
+      operationGate: UserScopeOperationGate()..activate(7),
+      onlineOperationGuard: guard,
+    );
+
+    await coordinator.syncAll();
+    expect(workoutRepository.syncCalls, 0);
+    expect(imageRepository.syncCalls, 0);
+
+    // Once the session is online, coordinated sync proceeds normally.
+    guard.setOnline(true);
+    await coordinator.syncAll();
+    expect(workoutRepository.syncCalls, 1);
+    expect(imageRepository.syncCalls, 1);
   });
 }
 

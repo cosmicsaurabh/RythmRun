@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
 import 'package:rythmrun_frontend_flutter/core/network/authenticated_request_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/auth_token_store.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
+import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
 import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/auth_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/auth_remote_datasource.dart';
@@ -166,6 +168,59 @@ void main() {
       expect(local.snapshot, isNull);
       final event = await eventFuture;
       expect(event.reason, SessionInvalidationReason.passwordChanged);
+    },
+  );
+
+  test(
+    'offline mode denies password change before revoking the session',
+    () async {
+      final gate = AuthenticationAttemptGate();
+      final httpClient = _testHttpClient();
+      addTearDown(httpClient.close);
+      final remote = _DelayedAuthRemoteDataSource(httpClient);
+      final local = _MemoryAuthLocalDataSource();
+      final invalidation = SessionInvalidationSignal();
+      addTearDown(invalidation.dispose);
+      final coordinator = _coordinator(
+        gate: gate,
+        remote: remote,
+        local: local,
+        invalidation: invalidation,
+      );
+      final guard = OnlineOperationGuard();
+      final repository = AuthRepositoryImpl(
+        remote,
+        local,
+        authenticatedRequests: coordinator,
+        authenticationAttemptGate: gate,
+        onlineOperationGuard: guard,
+      );
+
+      await expectLater(
+        repository.changePassword('old-password', 'new-password'),
+        throwsA(
+          isA<AuthSessionUnavailable>().having(
+            (error) => error.reason,
+            'reason',
+            AuthSessionUnavailableReason.offlineMode,
+          ),
+        ),
+      );
+      // The offline mutation was rejected before the session was revoked and
+      // without consuming the authentication attempt gate.
+      expect(local.snapshot, isNotNull);
+      final lease = gate.tryAcquire();
+      expect(lease, isNotNull);
+      lease!.release();
+
+      // When online, the same call proceeds and revokes the session.
+      guard.setOnline(true);
+      final response = await repository.changePassword(
+        'old-password',
+        'new-password',
+      );
+      expect(response.success, isTrue);
+      expect(local.snapshot, isNull);
     },
   );
 }

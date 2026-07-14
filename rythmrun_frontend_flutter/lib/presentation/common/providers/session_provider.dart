@@ -7,6 +7,7 @@ import '../../../domain/repositories/auth_repository.dart';
 import '../../../domain/entities/user_entity.dart';
 import '../../../core/di/injection_container.dart';
 import '../../../core/services/authentication_attempt_gate.dart';
+import '../../../core/services/online_operation_guard.dart';
 import '../../../core/services/session_invalidation_signal.dart';
 import '../session/user_scope_teardown.dart';
 import 'user_scope_teardown_provider.dart';
@@ -65,6 +66,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
   final AuthRepository _authRepository;
   final UserScopeTeardown _userScopeTeardown;
   final AuthenticationAttemptGate _authenticationAttemptGate;
+  final OnlineOperationGuard? _onlineOperationGuard;
   StreamSubscription<SessionInvalidationEvent>? _invalidationSubscription;
   bool _isSessionExitInProgress = false;
   int _sessionOperationGeneration = 0;
@@ -74,9 +76,11 @@ class SessionNotifier extends StateNotifier<SessionData> {
     this._userScopeTeardown, {
     AuthenticationAttemptGate? authenticationAttemptGate,
     SessionInvalidationSignal? sessionInvalidationSignal,
+    OnlineOperationGuard? onlineOperationGuard,
     bool autoInitialize = true,
   }) : _authenticationAttemptGate =
            authenticationAttemptGate ?? AuthenticationAttemptGate(),
+       _onlineOperationGuard = onlineOperationGuard,
        super(const SessionData(state: SessionState.initial)) {
     _invalidationSubscription = sessionInvalidationSignal?.events.listen((_) {
       if (state.state == SessionState.unauthenticated ||
@@ -89,6 +93,16 @@ class SessionNotifier extends StateNotifier<SessionData> {
     if (autoInitialize) {
       _initializeSession();
     }
+  }
+
+  /// Every state change funnels through this setter, so the data-layer online
+  /// guard mirrors session state exactly. Only a fully online session admits
+  /// server mutations; offline, checking, refreshing, and signed-out states
+  /// deny them.
+  @override
+  set state(SessionData value) {
+    super.state = value;
+    _onlineOperationGuard?.setOnline(value.state == SessionState.authenticated);
   }
 
   @override
@@ -705,6 +719,7 @@ final StateNotifierProvider<SessionNotifier, SessionData> sessionProvider =
         teardown,
         authenticationAttemptGate: ref.watch(authenticationAttemptGateProvider),
         sessionInvalidationSignal: ref.watch(sessionInvalidationSignalProvider),
+        onlineOperationGuard: ref.watch(onlineOperationGuardProvider),
       );
     });
 
