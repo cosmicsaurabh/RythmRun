@@ -11,6 +11,7 @@ import {
 } from '../middleware/validation.middleware.js';
 import {
   ChangePasswordDto,
+  GoogleAuthDto,
   LoginUserDto,
   RefreshTokenDto,
   RegisterUserDto,
@@ -32,6 +33,7 @@ function sendError(
     return res.status(error.statusCode).json({
       error: error.code,
       message: error.message,
+      retryable: error.retryable,
       statusCode: error.statusCode,
       timestamp: new Date().toISOString(),
     });
@@ -81,6 +83,18 @@ export class UserController {
       sendError(res, error, {
         validationCode: 'LOGIN_FAILED',
         unexpectedOperation: 'Login',
+      });
+    }
+  };
+
+  googleAuth = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const googleAuthDto = await validateDto(GoogleAuthDto, req.body);
+      res.status(200).json(await this.userService.googleLogin(googleAuthDto));
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'GOOGLE_AUTH_FAILED',
+        unexpectedOperation: 'Google authentication',
       });
     }
   };

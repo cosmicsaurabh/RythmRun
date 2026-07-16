@@ -4,6 +4,7 @@ import { jest } from '@jest/globals';
 const mockProductionController = {
   register: jest.fn(),
   login: jest.fn(),
+  googleAuth: jest.fn(),
   logout: jest.fn(),
   refreshToken: jest.fn(),
   me: jest.fn(),
@@ -35,6 +36,7 @@ const { AvatarController } = await import('../controllers/avatar.controller.js')
 const { UserController } = await import('../controllers/user.controller.js');
 const { createAvatarRouter } = await import('../routes/avatar.routes.js');
 const { createUserRouter } = await import('../routes/user.routes.js');
+const { googleAuthUnavailableError } = await import('../errors/auth.error.js');
 const { AvatarServiceError } = await import('../services/avatar.service.js');
 
 const USER_ID = 17;
@@ -112,6 +114,7 @@ describe('HTTP security boundaries', () => {
   const userService = {
     register: jest.fn(),
     login: jest.fn(),
+    googleLogin: jest.fn(),
     logout: jest.fn(),
     refreshToken: jest.fn(),
     getMe: jest.fn(),
@@ -234,6 +237,7 @@ describe('HTTP security boundaries', () => {
       lastname: 'Runner',
       profilePicturePath: null,
       profilePictureType: null,
+      hasPassword: true,
     };
     userService.updateProfile.mockResolvedValueOnce(safeUser);
 
@@ -261,6 +265,7 @@ describe('HTTP security boundaries', () => {
       lastname: 'Runner',
       profilePicturePath: null,
       profilePictureType: null,
+      hasPassword: true,
       accessToken: 'rotated-access-token',
       refreshToken: 'rotated-refresh-token',
     };
@@ -279,6 +284,79 @@ describe('HTTP security boundaries', () => {
     expect(userService.refreshToken).toHaveBeenCalledWith(
       'presented-refresh-token',
     );
+  });
+
+  it('exchanges only a validated Google ID-token payload on the public route', async () => {
+    const authResponse = {
+      id: USER_ID,
+      username: 'runner@example.com',
+      firstname: 'Safe',
+      lastname: 'Runner',
+      profilePicturePath: null,
+      profilePictureType: null,
+      hasPassword: false,
+      accessToken: 'google-access-token',
+      refreshToken: 'google-refresh-token',
+    };
+    userService.googleLogin.mockResolvedValueOnce(authResponse);
+
+    const response = await requestJson(
+      server,
+      'POST',
+      '/api/users/auth/google',
+      { idToken: 'verified-by-service-layer' },
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: authResponse });
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(userService.googleLogin).toHaveBeenCalledWith(
+      expect.objectContaining({ idToken: 'verified-by-service-layer' }),
+    );
+  });
+
+  it('returns a safe 503 when Google verification is unavailable', async () => {
+    userService.googleLogin.mockRejectedValueOnce(
+      googleAuthUnavailableError(),
+    );
+
+    const response = await requestJson(
+      server,
+      'POST',
+      '/api/users/auth/google',
+      { idToken: 'provider-id-token-must-not-leak' },
+    );
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toMatchObject({
+      error: 'AUTH_GOOGLE_UNAVAILABLE',
+      message: 'Google authentication is temporarily unavailable',
+      retryable: true,
+      statusCode: 503,
+    });
+    expect(JSON.stringify(response.body)).not.toContain(
+      'provider-id-token-must-not-leak',
+    );
+  });
+
+  it('rejects client-supplied Google identity claims before verification', async () => {
+    const response = await requestJson(
+      server,
+      'POST',
+      '/api/users/auth/google',
+      {
+        idToken: 'provider-id-token',
+        email: 'attacker-selected@example.com',
+        subject: 'attacker-selected-subject',
+      },
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({
+      error: 'GOOGLE_AUTH_FAILED',
+      message: 'Validation failed',
+      statusCode: 400,
+    });
+    expect(userService.googleLogin).not.toHaveBeenCalled();
   });
 
   it('returns one safe refresh error for a malformed refresh request', async () => {
@@ -307,6 +385,7 @@ describe('HTTP security boundaries', () => {
       lastname: 'Runner',
       profilePicturePath: null,
       profilePictureType: null,
+      hasPassword: true,
     };
     userService.getMe.mockResolvedValueOnce(safeUser);
 

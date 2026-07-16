@@ -7,6 +7,7 @@ const watchdog = setTimeout(() => {
 
 Object.assign(process.env, {
   DATABASE_URL: 'postgresql://ci:ci@127.0.0.1:1/rythmrun_ci?schema=public',
+  GOOGLE_SERVER_CLIENT_ID: 'runtime-smoke.apps.googleusercontent.com',
   JWT_SECRET: 'runtime-smoke-access-secret-0000000000000001',
   REFRESH_TOKEN_SECRET: 'runtime-smoke-refresh-secret-000000000000001',
   R2_ACCOUNT_ID: 'runtime-smoke-account',

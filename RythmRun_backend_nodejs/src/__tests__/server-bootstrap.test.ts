@@ -51,7 +51,10 @@ const mockRouteModule = (name: string) => {
 jest.unstable_mockModule('../config/env.js', () => ({
   loadAndValidateEnvironment: jest.fn(() => {
     mockEvents.push('validate');
-    return { DATABASE_URL: 'postgresql://ci:ci@127.0.0.1:5432/ci' };
+    return {
+      DATABASE_URL: 'postgresql://ci:ci@127.0.0.1:5432/ci',
+      GOOGLE_SERVER_CLIENT_ID: 'test.apps.googleusercontent.com',
+    };
   }),
 }));
 

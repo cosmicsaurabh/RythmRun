@@ -208,7 +208,7 @@ The image design explicitly favored R2 object metadata over database blobs or AP
 | Backend dependency graph | TSyringe | One process-owned Prisma client plus injectable services and infrastructure adapters |
 | Database | PostgreSQL, Prisma 7.8, `@prisma/adapter-pg` | Canonical relational state, migrations, constraints, transactions, and explicit pool lifecycle |
 | Binary storage and delivery | Cloudflare R2 | Direct uploads and signed image reads |
-| Authentication and validation | JWT, bcrypt, Helmet, class-validator | Identity, password hashing, headers, DTO allowlists |
+| Authentication and validation | Google Sign-In, JWT, bcrypt, Helmet, class-validator | Verified Google identity exchange, first-party sessions, password hashing, headers, DTO allowlists |
 | Verification | Flutter Test, native-ESM Jest, TypeScript, Prisma CLI, built-runtime smoke | Unit, repository, HTTP, type, schema, generated-client, and built-artifact checks |
 
 ## Performance and reliability
@@ -302,6 +302,7 @@ The API listens on port `8080` by default. The development command regenerates a
 | Responsibility | Variables |
 | --- | --- |
 | Database | `DATABASE_URL` |
+| Google authentication | `GOOGLE_SERVER_CLIENT_ID` |
 | JWT | `JWT_SECRET`, `REFRESH_TOKEN_SECRET` |
 | R2 account/credentials | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` |
 | R2 buckets | `R2_BUCKET_AVATARS`, `R2_BUCKET_ACTIVITY_IMAGES` |
@@ -320,7 +321,7 @@ flutter pub get --enforce-lockfile
 flutter run
 ```
 
-The checked-in development URL is a LAN address and will not work on another machine unchanged. The staging API URL is unset and its R2 configuration is a placeholder. Android is the primary exercised target; iOS contains project scaffolding but is not documented as release-ready.
+The checked-in development URL is a LAN address and will not work on another machine unchanged. Google sign-in requires the same web OAuth client ID in the backend and Flutter build, and its ID-token exchange refuses cleartext HTTP; use an HTTPS development endpoint or tunnel. Android and iOS OAuth registration, build defines, and the iOS callback scheme are documented in [`CONFIGURATION.md`](rythmrun_frontend_flutter/CONFIGURATION.md#google-sign-in-configuration). The staging API URL is unset and its R2 configuration is a placeholder. Android is the primary exercised target; iOS contains project scaffolding but is not documented as release-ready.
 
 ### Run the verification suite
 

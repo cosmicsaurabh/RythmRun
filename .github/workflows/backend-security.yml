@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 15
     env:
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/rythmrun_ci?schema=public
+      GOOGLE_SERVER_CLIENT_ID: ci.apps.googleusercontent.com
       JWT_SECRET: ci-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz
       NODE_ENV: test
       REFRESH_TOKEN_SECRET: ci-refresh-secret-0123456789-abcdefghijklmnopqrstuv

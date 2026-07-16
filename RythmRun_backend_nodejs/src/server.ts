@@ -114,7 +114,10 @@ export async function startServer(
     const { configureContainer, container } = await import(
       './config/container.js'
     );
-    database = configureContainer(environment.DATABASE_URL);
+    database = configureContainer(
+      environment.DATABASE_URL,
+      environment.GOOGLE_SERVER_CLIENT_ID,
+    );
 
     const [
       { createApp },

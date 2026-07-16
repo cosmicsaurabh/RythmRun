@@ -4,6 +4,7 @@ import { jest } from '@jest/globals';
 const mockUserController = {
   register: jest.fn(),
   login: jest.fn(),
+  googleAuth: jest.fn(),
   logout: jest.fn(),
   refreshToken: jest.fn(),
   me: jest.fn(),
@@ -38,6 +39,7 @@ describe('user routes', () => {
     expect(routePaths).toEqual([
       '/register',
       '/login',
+      '/auth/google',
       '/logout',
       '/me',
       '/refresh-token',
@@ -48,7 +50,7 @@ describe('user routes', () => {
     expect(routePaths).not.toContain('/profile-picture/:id');
   });
 
-  it('keeps refresh public while protecting the current-user route', () => {
+  it('keeps Google auth and refresh public while protecting the current-user route', () => {
     const authenticate = jest.fn();
     const router = createUserRouter({
       controller: mockUserController,
@@ -58,12 +60,18 @@ describe('user routes', () => {
     const refreshRoute = routeLayers.find(
       (layer) => layer.route?.path === '/refresh-token',
     )?.route;
+    const googleRoute = routeLayers.find(
+      (layer) => layer.route?.path === '/auth/google',
+    )?.route;
     const meRoute = routeLayers.find(
       (layer) => layer.route?.path === '/me',
     )?.route;
 
     expect(refreshRoute?.stack.map((layer) => layer.handle)).toEqual([
       mockUserController.refreshToken,
+    ]);
+    expect(googleRoute?.stack.map((layer) => layer.handle)).toEqual([
+      mockUserController.googleAuth,
     ]);
     expect(meRoute?.stack.map((layer) => layer.handle)).toEqual([
       authenticate,

@@ -10,6 +10,7 @@ RythmRun's backend is a Node.js 22, Express, and strict-TypeScript modular monol
 - `src/config/database.ts` owns `PrismaPg` and `PrismaClient` construction. The application container injects one client into its services and server shutdown disconnects it.
 - Access JWTs are short-lived session credentials. Every protected request validates standard token claims and confirms the referenced PostgreSQL `AuthSession` is still active; middleware never constructs its own database client.
 - Refresh JWTs rotate through digest-only `RefreshTokenRecord` rows. The server retains used records through the absolute session lifetime so exact replay can revoke the family without storing a raw refresh token.
+- Google sign-in accepts a Google ID token only at the public exchange endpoint. The backend verifies its signature, issuer, expiry, and `GOOGLE_SERVER_CLIENT_ID` audience with `google-auth-library`, then keys the account by Google's stable `sub` claim and issues the same RythmRun access/refresh session used by password login. A matching email on an existing account is rejected rather than implicitly linked.
 - The PostgreSQL adapter uses a maximum pool size of 10, a five-second connection timeout, and a five-minute idle timeout. Provider-specific TLS remains part of deployment configuration and staging proof.
 - `src/main.ts` is the production entry point; `npm run build` emits it as `dist/main.js` and `npm start` runs that built file.
 - Cloudflare R2 stores media through its S3-compatible API. The backend issues user-scoped signed upload operations and signed delivery URLs; media bytes do not pass through PostgreSQL.
@@ -20,7 +21,7 @@ Generated Prisma source and `dist/` are build outputs and are not hand-edited or
 
 Registration, login, refresh, and liveness are public HTTP routes. Refresh authenticates the presented refresh JWT itself; all other application routes require an active access-token session.
 
-- Users: `POST /api/users/register`, `POST /api/users/login`, `POST /api/users/refresh-token`, `POST /api/users/logout`, `GET /api/users/me`, `PUT /api/users/profile`, and `PUT /api/users/change-password`.
+- Users: `POST /api/users/register`, `POST /api/users/login`, `POST /api/users/auth/google`, `POST /api/users/refresh-token`, `POST /api/users/logout`, `GET /api/users/me`, `PUT /api/users/profile`, and `PUT /api/users/change-password`.
 - Avatars: `POST /api/avatar/upload-url` and `POST /api/avatar/confirm`.
 - Activities: `GET/POST /api/activities` and `GET/PATCH/DELETE /api/activities/:activityId`.
 - Activity images: list, request upload, confirm, and delete below `/api/activities/:activityId/images`.
@@ -58,6 +59,19 @@ cp .env.example .env
 ```
 
 Replace every placeholder in `.env`; startup validates the database, JWT, and R2 values before constructing infrastructure clients. `DATABASE_URL` is shared by `prisma.config.ts` and the runtime adapter.
+
+Set `GOOGLE_SERVER_CLIENT_ID` to the OAuth 2.0 web/server client ID from Google Cloud. The Flutter app must receive that exact same value as its `GOOGLE_SERVER_CLIENT_ID` build define so Google puts the expected audience in the ID token. The exchange contract is:
+
+```http
+POST /api/users/auth/google
+Content-Type: application/json
+
+{"idToken":"<google-id-token>"}
+```
+
+A successful exchange returns the existing flat auth response (`id`, `username`, optional profile fields, `hasPassword`, `accessToken`, and `refreshToken`). `hasPassword` is a non-sensitive capability flag included consistently in auth, refresh, `/me`, and profile-update responses; clients can use it to hide password change for Google-only accounts. Google-only accounts have no password and cannot use password login or password change. The API never accepts a client-supplied Google subject, email, or profile as proof of identity.
+
+Usernames are stored as trimmed lowercase email addresses for both password and Google authentication. Invalid Google tokens return `AUTH_GOOGLE_INVALID` with HTTP 401; an identifiable Google certificate/network outage returns `AUTH_GOOGLE_UNAVAILABLE` with HTTP 503 and `retryable: true`.
 
 For a disposable local PostgreSQL database only:
 
@@ -103,6 +117,8 @@ npm start
 ```
 
 `migrate:deploy` must have a real target `DATABASE_URL`, a verified backup/rollback procedure, and exactly one migration owner. Run it against an isolated staging database and a representative upgrade copy before production. Start or promote the already-built artifact only after the migration step succeeds; do not rebuild different source for production.
+
+The Google-auth migration is intentionally **not rolling-compatible** with older backend instances. It canonicalizes every existing username, aborting before writes if canonicalization would merge case/whitespace variants, and then permits `User.password` to be null for Google-only accounts. Old code assumes every password is non-null and can fail if it observes a newly created Google account. Drain and stop all old instances before applying this migration, keep traffic drained while it runs, and atomically promote only the matching Google-aware artifact after migration success. Do not run old and new versions concurrently across this schema boundary.
 
 The auth-session migration intentionally drops the legacy plaintext refresh table because old JWTs have no `sid`/`jti` and cannot be backfilled safely. It therefore forces a one-time sign-in. Drain old backend instances before applying this cutover, promote only the matching session-aware artifact, and never roll back by recreating plaintext token rows or resurrecting revoked sessions.
 
