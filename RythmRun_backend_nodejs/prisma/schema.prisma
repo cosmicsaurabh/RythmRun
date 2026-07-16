@@ -16,7 +16,8 @@ model User {
   firstname           String?
   lastname            String?
   username            String               @unique
-  password            String
+  password            String?
+  googleSubject       String?              @unique @db.VarChar(255)
   profilePicturePath  String?
   profilePictureType  String?
   createdAt           DateTime             @default(now())
