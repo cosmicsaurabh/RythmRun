@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rythmrun_frontend_flutter/core/services/google_identity_service.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/login_request_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/registration_request_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/user_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/auth_repository.dart';
 import 'package:rythmrun_frontend_flutter/domain/usecases/login_user_usecase.dart';
+import 'package:rythmrun_frontend_flutter/domain/usecases/login_with_google_usecase.dart';
 import 'package:rythmrun_frontend_flutter/domain/usecases/register_user_usecase.dart';
 import 'package:rythmrun_frontend_flutter/main.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
@@ -262,6 +264,39 @@ void main() {
   });
 
   group('authentication screen success ownership', () {
+    testWidgets('Google action follows the build availability provider', (
+      tester,
+    ) async {
+      for (final available in <bool>[false, true]) {
+        final repository = _SuccessfulAuthRepository();
+        final notifier = LoginNotifier(
+          LoginUserUsecase(repository),
+          loginWithGoogleUsecase: LoginWithGoogleUsecase(repository),
+          googleIdentityService: _NoopGoogleIdentityService(),
+          beginAuthentication: () => 0,
+          completeAuthentication: (_, _) => true,
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              loginProvider.overrideWith((ref) => notifier),
+              googleSignInAvailabilityProvider.overrideWithValue(available),
+            ],
+            child: const MaterialApp(home: LoginScreen()),
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          find.byKey(const Key('googleSignInButton')),
+          available ? findsOneWidget : findsNothing,
+        );
+        expect(find.text('or'), available ? findsOneWidget : findsNothing);
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
     testWidgets(
       'login and registration both normalize to the authenticated root',
       (tester) async {
@@ -274,6 +309,8 @@ void main() {
               );
           final loginNotifier = LoginNotifier(
             LoginUserUsecase(repository),
+            loginWithGoogleUsecase: LoginWithGoogleUsecase(repository),
+            googleIdentityService: _NoopGoogleIdentityService(),
             beginAuthentication: () => 0,
             completeAuthentication: (user, _) {
               session.setState(SessionState.authenticated);
@@ -342,6 +379,8 @@ void main() {
       final repository = _SuccessfulAuthRepository();
       final notifier = LoginNotifier(
         LoginUserUsecase(repository),
+        loginWithGoogleUsecase: LoginWithGoogleUsecase(repository),
+        googleIdentityService: _NoopGoogleIdentityService(),
         beginAuthentication: () => 0,
         completeAuthentication: (_, _) => true,
       );
@@ -435,6 +474,14 @@ class _SuccessfulAuthRepository implements AuthRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopGoogleIdentityService implements GoogleIdentityService {
+  @override
+  Future<String?> authenticate() async => null;
+
+  @override
+  Future<void> signOut() async {}
 }
 
 class _UnavailableUnverifiedAuthRepository implements AuthRepository {
