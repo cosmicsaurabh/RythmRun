@@ -176,6 +176,7 @@ class AuthPersistenceService {
         firstName: decoded['firstName'] as String,
         lastName: decoded['lastName'] as String,
         email: decoded['email'] as String,
+        hasPassword: decoded['hasPassword'] as bool? ?? true,
         profilePicturePath: decoded['profilePicturePath'] as String?,
         profilePictureType: decoded['profilePictureType'] as String?,
         createdAt:
@@ -283,6 +284,7 @@ class AuthPersistenceService {
         'firstName': user.firstName,
         'lastName': user.lastName,
         'email': user.email,
+        'hasPassword': user.hasPassword,
         'profilePicturePath': user.profilePicturePath,
         'profilePictureType': user.profilePictureType,
         'createdAt': user.createdAt?.toIso8601String(),

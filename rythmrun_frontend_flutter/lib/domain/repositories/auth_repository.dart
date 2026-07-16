@@ -12,6 +12,10 @@ abstract class AuthRepository {
   /// Login user with email and password
   Future<UserEntity> login(LoginRequestEntity request);
 
+  /// Authenticate with Google and exchange its ID token for the app's normal
+  /// backend session. Null means the user canceled account selection.
+  Future<UserEntity?> loginWithGoogle();
+
   /// Register new user
   Future<UserEntity> register(RegistrationRequestEntity request);
 

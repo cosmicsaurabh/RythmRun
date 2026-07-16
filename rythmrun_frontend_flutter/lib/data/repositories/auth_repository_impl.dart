@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 
 import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
@@ -6,7 +7,9 @@ import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
 import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
 import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
+import 'package:rythmrun_frontend_flutter/core/services/google_identity_service.dart';
 import 'package:rythmrun_frontend_flutter/data/models/change_password_response_model.dart';
+import 'package:rythmrun_frontend_flutter/data/models/auth_response_model.dart';
 
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/entities/user_entity.dart';
@@ -24,6 +27,7 @@ class AuthRepositoryImpl implements AuthRepository {
   final AuthenticatedRequestCoordinator _authenticatedRequests;
   final AuthenticationAttemptGate? _authenticationAttemptGate;
   final OnlineOperationGuard? _onlineOperationGuard;
+  final GoogleIdentityService? _googleIdentityService;
 
   AuthRepositoryImpl(
     this._remoteDataSource,
@@ -31,9 +35,11 @@ class AuthRepositoryImpl implements AuthRepository {
     required AuthenticatedRequestCoordinator authenticatedRequests,
     AuthenticationAttemptGate? authenticationAttemptGate,
     OnlineOperationGuard? onlineOperationGuard,
+    GoogleIdentityService? googleIdentityService,
   }) : _authenticatedRequests = authenticatedRequests,
        _authenticationAttemptGate = authenticationAttemptGate,
-       _onlineOperationGuard = onlineOperationGuard;
+       _onlineOperationGuard = onlineOperationGuard,
+       _googleIdentityService = googleIdentityService;
 
   Future<T> _runAuthenticationMutation<T>(Future<T> Function() action) async {
     final lease = _authenticationAttemptGate?.tryAcquire();
@@ -56,14 +62,39 @@ class AuthRepositoryImpl implements AuthRepository {
         request.email,
         request.password,
       );
+      await _commitAuthentication(authResponse);
+      return authResponse.toUserEntity();
+    });
+  }
+
+  @override
+  Future<UserEntity?> loginWithGoogle() async {
+    final googleIdentityService = _googleIdentityService;
+    if (googleIdentityService == null) {
+      throw const GoogleIdentityException(
+        'Google sign-in is not available in this build.',
+      );
+    }
+
+    return _runAuthenticationMutation(() async {
+      var nativeAuthenticationCompleted = false;
       try {
-        await _localDataSource.saveAuthData(authResponse);
+        // Keep the native chooser, backend exchange, and local credential
+        // commit under one authentication lease. Account teardown drains this
+        // whole operation before clearing user-scoped data.
+        final idToken = await googleIdentityService.authenticate();
+        if (idToken == null) return null;
+        nativeAuthenticationCompleted = true;
+
+        final authResponse = await _remoteDataSource.loginWithGoogle(idToken);
+        await _commitAuthentication(authResponse);
+        return authResponse.toUserEntity();
       } catch (_) {
-        // A failed local commit must not leave an orphan credential pair.
-        await _localDataSource.clearAuthData();
+        if (nativeAuthenticationCompleted) {
+          await _bestEffortGoogleSignOut(googleIdentityService);
+        }
         rethrow;
       }
-      return authResponse.toUserEntity();
     });
   }
 
@@ -72,18 +103,31 @@ class AuthRepositoryImpl implements AuthRepository {
     return _runAuthenticationMutation(() async {
       final requestModel = RegistrationRequestModel.fromEntity(request);
       final authResponse = await _remoteDataSource.registerUser(requestModel);
-      try {
-        await _localDataSource.saveAuthData(authResponse);
-      } catch (_) {
-        await _localDataSource.clearAuthData();
-        rethrow;
-      }
+      await _commitAuthentication(authResponse);
       return authResponse.toUserEntity();
     });
   }
 
+  Future<void> _commitAuthentication(AuthResponseModel authResponse) async {
+    try {
+      await _localDataSource.saveAuthData(authResponse);
+    } catch (_) {
+      // A failed local commit must not leave an orphan credential pair.
+      await _localDataSource.clearAuthData();
+      rethrow;
+    }
+  }
+
   @override
   Future<void> logout() async {
+    final googleIdentityService = _googleIdentityService;
+    if (googleIdentityService != null) {
+      unawaited(
+        googleIdentityService.signOut().catchError((_) {
+          log('Native Google sign-out could not be completed.');
+        }),
+      );
+    }
     try {
       await _authenticatedRequests.execute(
         replayPolicy: AuthenticatedReplayPolicy.idempotent,
@@ -92,6 +136,16 @@ class AuthRepositoryImpl implements AuthRepository {
     } catch (_) {
       // Remote revocation is best effort; SessionNotifier owns local cleanup.
       log('Remote logout could not be completed.');
+    }
+  }
+
+  Future<void> _bestEffortGoogleSignOut(
+    GoogleIdentityService googleIdentityService,
+  ) async {
+    try {
+      await googleIdentityService.signOut();
+    } catch (_) {
+      log('Native Google sign-out could not be completed.');
     }
   }
 

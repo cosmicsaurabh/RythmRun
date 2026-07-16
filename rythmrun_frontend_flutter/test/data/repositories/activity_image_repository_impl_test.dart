@@ -1553,6 +1553,11 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<UserEntity?> loginWithGoogle() async {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<UserEntity> register(RegistrationRequestEntity request) async {
     throw UnimplementedError();
   }

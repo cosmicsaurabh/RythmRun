@@ -643,6 +643,11 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<UserEntity?> loginWithGoogle() {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<UserEntity> register(RegistrationRequestEntity request) {
     throw UnimplementedError();
   }
