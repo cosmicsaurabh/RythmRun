@@ -2,6 +2,7 @@
 class ApiEndpoints {
   // User endpoints
   static const String login = '/users/login';
+  static const String googleAuth = '/users/auth/google';
   static const String register = '/users/register';
   static const String logout = '/users/logout';
   static const String refreshToken = '/users/refresh-token';

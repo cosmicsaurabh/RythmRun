@@ -174,6 +174,68 @@ static const Map<String, int> _timeouts = {
 - **Error Classification**: Different exception types for different error scenarios
 - **Connection Pooling**: Efficient HTTP client reuse
 
+## Google sign-in configuration
+
+Google sign-in exchanges a Google ID token at
+`POST /api/users/auth/google`; the backend returns the same RythmRun
+access/refresh-token response used by password login. The Google web OAuth
+client ID configured in the app must match the audience configured on the
+backend.
+
+Google authentication is disabled unless `GOOGLE_SERVER_CLIENT_ID` is supplied
+at build time, and it fails closed when the selected API base URL is not HTTPS.
+The current local development URL in `AppConfig` is plain HTTP, so use an HTTPS
+development endpoint or tunnel before testing Google sign-in. Never send a
+Google ID token to a cleartext endpoint. The login screen hides the Google
+action when these requirements are not met; on iOS it also requires a non-empty
+`GOOGLE_CLIENT_ID`.
+
+> **Release caveat:** App Store rules may require an equivalent Sign in with
+> Apple option when a third-party identity provider is offered. Sign in with
+> Apple is outside the scope of this Google-authentication change; evaluate and
+> implement it, if required, before submitting the iOS app for review.
+
+> **Production branding TODO:** The current plain `G` in the login button is a
+> temporary placeholder. Replace it with Google-approved branding assets and
+> button treatment before production release.
+
+### Android
+
+1. Register an Android OAuth client for package
+   `com.github.cosmicsaurabh.rythmrun` and every signing certificate SHA used by
+   the build (debug, internal, and release as applicable).
+2. Create a web OAuth client for the backend token audience.
+3. Build with the web client ID:
+
+```bash
+flutter run \
+  --dart-define='GOOGLE_SERVER_CLIENT_ID=<web-client-id>.apps.googleusercontent.com'
+```
+
+No client secret or `google-services.json` is required by this direct
+`google_sign_in` setup.
+
+### iOS
+
+1. Register an iOS OAuth client for bundle ID
+   `com.github.cosmicsaurabh.rythmrun`.
+2. Copy `ios/Flutter/GoogleAuth.xcconfig.example` to
+   `ios/Flutter/GoogleAuth.xcconfig` and replace the iOS client ID and reversed
+   client ID placeholders. The local file is git-ignored and feeds the URL
+   scheme declared in `Info.plist`.
+3. Supply the same iOS application client ID to Dart and the web/backend client
+   ID as the server audience:
+
+```bash
+flutter run \
+  --dart-define='GOOGLE_CLIENT_ID=<ios-client-id>.apps.googleusercontent.com' \
+  --dart-define='GOOGLE_SERVER_CLIENT_ID=<web-client-id>.apps.googleusercontent.com'
+```
+
+OAuth client IDs are identifiers and will be present in the built app. Never
+put an OAuth client secret in Flutter source, Dart defines, xcconfig files, or
+mobile release configuration.
+
 ### Adding New Endpoints
 
 1. Add the endpoint to `lib/core/config/api_endpoints.dart`

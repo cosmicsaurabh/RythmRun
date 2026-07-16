@@ -5,6 +5,13 @@ import 'package:flutter/foundation.dart';
 /// Centralized application configuration
 /// Supports different environments (dev, staging, prod)
 class AppConfig {
+  static const String _googleClientId = String.fromEnvironment(
+    'GOOGLE_CLIENT_ID',
+  );
+  static const String _googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+  );
+
   // Environment-specific configurations
   static const Map<String, String> _baseUrls = {
     'dev': 'http://192.168.1.47:8080/api', // local (UPDATE THIS IP ADDRESS)
@@ -80,9 +87,54 @@ class AppConfig {
   /// Check if running in profile mode
   static bool get isProfile => !kDebugMode && !kReleaseMode;
 
+  /// OAuth client used by platforms that require an application client ID
+  /// (notably iOS). Android can leave this empty when only a web/server client
+  /// ID is required.
+  static String? get googleClientId => _nonEmpty(_googleClientId);
+
+  /// Web OAuth client ID whose audience is verified by the RythmRun backend.
+  static String? get googleServerClientId => _nonEmpty(_googleServerClientId);
+
+  static bool get googleAuthUsesSecureTransport =>
+      Uri.tryParse(baseUrl)?.scheme.toLowerCase() == 'https';
+
+  static bool get isGoogleSignInAvailable => isGoogleSignInConfigurationUsable(
+    platform: defaultTargetPlatform,
+    isWeb: kIsWeb,
+    baseUrl: baseUrl,
+    serverClientId: googleServerClientId,
+    clientId: googleClientId,
+  );
+
+  /// Pure availability policy shared by the login UI and configuration tests.
+  /// Runtime checks in the native adapter remain authoritative.
+  static bool isGoogleSignInConfigurationUsable({
+    required TargetPlatform platform,
+    required bool isWeb,
+    required String baseUrl,
+    required String? serverClientId,
+    required String? clientId,
+  }) {
+    if (isWeb || Uri.tryParse(baseUrl)?.scheme.toLowerCase() != 'https') {
+      return false;
+    }
+    if (_nonEmpty(serverClientId ?? '') == null) return false;
+
+    return switch (platform) {
+      TargetPlatform.android => true,
+      TargetPlatform.iOS => _nonEmpty(clientId ?? '') != null,
+      _ => false,
+    };
+  }
+
   /// Get full URL for an endpoint
   static String getUrl(String endpoint) {
     return '$baseUrl$endpoint';
+  }
+
+  static String? _nonEmpty(String value) {
+    final normalized = value.trim();
+    return normalized.isEmpty ? null : normalized;
   }
 
   /// Print current configuration (useful for debugging)

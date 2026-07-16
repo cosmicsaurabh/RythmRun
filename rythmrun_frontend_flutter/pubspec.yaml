@@ -45,6 +45,9 @@ dependencies:
   # HTTP Client
   http: ^1.5.0
 
+  # Authentication
+  google_sign_in: ^7.2.0
+
   # Validation
   email_validator: ^3.0.0
 
