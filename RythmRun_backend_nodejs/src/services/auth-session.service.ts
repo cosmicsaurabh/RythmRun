@@ -42,6 +42,7 @@ export interface SafeUserResponse {
   lastname: string | null;
   profilePicturePath: string | null;
   profilePictureType: string | null;
+  hasPassword: boolean;
 }
 
 export interface AuthResponse extends SafeUserResponse {
@@ -91,6 +92,7 @@ export function toSafeUserResponse(user: User): SafeUserResponse {
     lastname: user.lastname,
     profilePicturePath: user.profilePicturePath,
     profilePictureType: user.profilePictureType,
+    hasPassword: user.password !== null,
   };
 }
 

@@ -10,12 +10,16 @@ import { LikeService } from '../services/like.service.js';
 import { FriendService } from '../services/friend.service.js';
 import { AvatarService } from '../services/avatar.service.js';
 import { AuthSessionService } from '../services/auth-session.service.js';
+import { GoogleAuthService } from '../services/google-auth.service.js';
 import s3Service from '../services/s3.service.js';
 
 export const container = rootContainer.createChildContainer();
 let configured = false;
 
-export function configureContainer(databaseUrl: string): DatabaseRuntime {
+export function configureContainer(
+  databaseUrl: string,
+  googleServerClientId: string,
+): DatabaseRuntime {
   if (configured) {
     throw new Error('Dependency container is already configured');
   }
@@ -23,6 +27,10 @@ export function configureContainer(databaseUrl: string): DatabaseRuntime {
   const database = createDatabase(databaseUrl);
   container.registerInstance('PrismaClient', database.client);
   container.registerInstance('S3Service', s3Service);
+  container.registerInstance(
+    'GoogleIdentityVerifier',
+    new GoogleAuthService(googleServerClientId),
+  );
 
   container.register('AuthSessionService', { useClass: AuthSessionService });
   container.register('UserService', { useClass: UserService });

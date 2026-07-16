@@ -7,7 +7,11 @@ jest.unstable_mockModule('bcrypt', () => ({
 }));
 
 import { DtoValidationError, validateDto } from '../middleware/validation.middleware.js';
-import { RegisterUserDto, UpdateProfileDto } from '../models/dto/user.dto.js';
+import {
+    LoginUserDto,
+    RegisterUserDto,
+    UpdateProfileDto
+} from '../models/dto/user.dto.js';
 const bcrypt = await import('bcrypt');
 const { UserService } = await import('../services/user.service.js');
 
@@ -34,6 +38,7 @@ function createMockAuthSessions(transaction: unknown) {
             lastname: 'Lovelace',
             profilePicturePath: null,
             profilePictureType: null,
+            hasPassword: true,
             accessToken: 'access-token',
             refreshToken: 'refresh-token'
         })
@@ -55,7 +60,7 @@ const persistedUser = {
 describe('user DTO input hardening', () => {
     it('keeps valid registration and profile payloads working', async () => {
         const registration = await validateDto(RegisterUserDto, {
-            username: 'ada@example.com',
+            username: ' Ada@Example.COM ',
             password: 'correct-horse-battery-staple',
             firstname: 'Ada',
             lastname: 'Lovelace'
@@ -63,6 +68,10 @@ describe('user DTO input hardening', () => {
         const profile = await validateDto(UpdateProfileDto, {
             firstname: 'Augusta Ada',
             lastname: 'King'
+        });
+        const login = await validateDto(LoginUserDto, {
+            username: ' Ada@Example.COM ',
+            password: 'correct-horse-battery-staple'
         });
 
         expect(registration).toBeInstanceOf(RegisterUserDto);
@@ -76,6 +85,7 @@ describe('user DTO input hardening', () => {
             firstname: 'Augusta Ada',
             lastname: 'King'
         });
+        expect(login).toMatchObject({ username: 'ada@example.com' });
     });
 
     it.each([
@@ -268,7 +278,8 @@ describe('UserService writable-field mapping', () => {
             firstname: 'Augusta Ada',
             lastname: 'King',
             profilePicturePath: null,
-            profilePictureType: null
+            profilePictureType: null,
+            hasPassword: true
         });
     });
 

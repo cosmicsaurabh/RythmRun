@@ -1,6 +1,12 @@
 import { IsString, IsOptional, MinLength, MaxLength, IsEmail } from 'class-validator';
+import { Transform } from 'class-transformer';
+
+function canonicalUsername(value: unknown): unknown {
+    return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
 
 export class RegisterUserDto {
+    @Transform(({ value }) => canonicalUsername(value))
     @IsString()
     @IsEmail()
     @MinLength(3)
@@ -24,6 +30,7 @@ export class RegisterUserDto {
 }
 
 export class LoginUserDto {
+    @Transform(({ value }) => canonicalUsername(value))
     @IsString()
     @IsEmail()
     // @MinLength(3)
@@ -34,6 +41,13 @@ export class LoginUserDto {
     // @MinLength(8)
     // @MaxLength(50)
     password!: string;
+}
+
+export class GoogleAuthDto {
+    @IsString()
+    @MinLength(1)
+    @MaxLength(8192)
+    idToken!: string;
 }
 
 export class RefreshTokenDto {

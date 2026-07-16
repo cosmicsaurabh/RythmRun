@@ -107,12 +107,13 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
   it('persists register/login sessions as digests and returns one flat contract', async () => {
     const registered = await register();
     const loggedIn = await usersB.login({
-      username: registered.username,
+      username: ' Runner@Example.COM ',
       password: PASSWORD,
     });
     const expectedKeys = [
       'accessToken',
       'firstname',
+      'hasPassword',
       'id',
       'lastname',
       'profilePicturePath',
@@ -123,6 +124,8 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
 
     expect(Object.keys(registered).sort()).toEqual(expectedKeys);
     expect(Object.keys(loggedIn).sort()).toEqual(expectedKeys);
+    expect(registered.hasPassword).toBe(true);
+    expect(loggedIn.hasPassword).toBe(true);
     expect(claims(registered.accessToken)).toMatchObject({
       sub: String(registered.id),
       sid: claims(registered.refreshToken).sid,
@@ -157,6 +160,90 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
       Array<{ column_name: string }>
     >`SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'RefreshToken'`;
     expect(legacyColumns).toEqual([]);
+  });
+
+  it('persists Google subject identity without a password and rejects email auto-linking', async () => {
+    const googleIdentity = {
+      subject: 'google-integration-subject',
+      email: 'google.runner@example.com',
+      firstname: 'Grace',
+      lastname: 'Runner',
+    };
+    const googleUsers = new UserService(databaseA.client, sessionsA, {
+      verifyIdToken: async () => googleIdentity,
+    });
+
+    const authenticated = await googleUsers.googleLogin({
+      idToken: 'test-verifier-token',
+    });
+    expect(Object.keys(authenticated).sort()).toEqual([
+      'accessToken',
+      'firstname',
+      'hasPassword',
+      'id',
+      'lastname',
+      'profilePicturePath',
+      'profilePictureType',
+      'refreshToken',
+      'username',
+    ]);
+    expect(authenticated.hasPassword).toBe(false);
+    await expect(
+      databaseA.client.user.findUniqueOrThrow({
+        where: { id: authenticated.id },
+        select: { googleSubject: true, password: true },
+      }),
+    ).resolves.toEqual({
+      googleSubject: googleIdentity.subject,
+      password: null,
+    });
+    await expect(
+      googleUsers.login({
+        username: authenticated.username,
+        password: PASSWORD,
+      }),
+    ).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
+    await expect(
+      googleUsers.changePassword(authenticated.id, {
+        currentPassword: PASSWORD,
+        newPassword: 'replacement-password-123',
+      }),
+    ).rejects.toMatchObject({ code: 'AUTH_PASSWORD_UNAVAILABLE' });
+    await expect(
+      usersA.register({
+        username: ' Google.Runner@Example.COM ',
+        password: PASSWORD,
+      }),
+    ).rejects.toMatchObject({
+      code: 'AUTH_USERNAME_TAKEN',
+      statusCode: 409,
+    });
+    await expect(
+      databaseA.client.$executeRaw`
+        UPDATE "User"
+        SET "username" = 'Google.Runner@Example.com'
+        WHERE "id" = ${authenticated.id}
+      `,
+    ).rejects.toThrow();
+
+    await register('collision@example.com');
+    const conflictingGoogleUsers = new UserService(
+      databaseA.client,
+      sessionsA,
+      {
+        verifyIdToken: async () => ({
+          ...googleIdentity,
+          subject: 'different-google-subject',
+          email: 'collision@example.com',
+        }),
+      },
+    );
+    await expect(
+      conflictingGoogleUsers.googleLogin({ idToken: 'test-verifier-token' }),
+    ).rejects.toMatchObject({
+      code: 'AUTH_GOOGLE_ACCOUNT_CONFLICT',
+      statusCode: 409,
+    });
   });
 
   it('allows at most one concurrent rotation and commits replay revocation', async () => {
@@ -330,6 +417,7 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
       lastname: 'Runner',
       profilePicturePath: null,
       profilePictureType: null,
+      hasPassword: true,
     });
     expect(JSON.stringify(me)).not.toContain('password');
     expect(JSON.stringify(me)).not.toContain('session');

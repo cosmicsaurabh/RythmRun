@@ -9,6 +9,7 @@ export interface JwtSecrets {
 
 export interface ServerEnvironment {
   DATABASE_URL: string;
+  GOOGLE_SERVER_CLIENT_ID: string;
   JWT_SECRET: string;
   REFRESH_TOKEN_SECRET: string;
   R2_ACCOUNT_ID: string;
@@ -23,6 +24,7 @@ export const MINIMUM_JWT_SECRET_LENGTH = 32;
 
 export const REQUIRED_SERVER_ENVIRONMENT_VARIABLES = [
   'DATABASE_URL',
+  'GOOGLE_SERVER_CLIENT_ID',
   'JWT_SECRET',
   'REFRESH_TOKEN_SECRET',
   'R2_ACCOUNT_ID',
@@ -107,6 +109,26 @@ function requireJwtSecret(
   return value;
 }
 
+function requireGoogleServerClientId(source: EnvironmentSource): string {
+  const value = requireConfiguredEnvironmentVariable(
+    source,
+    'GOOGLE_SERVER_CLIENT_ID',
+  );
+
+  if (value !== value.trim()) {
+    throw new EnvironmentValidationError(
+      'GOOGLE_SERVER_CLIENT_ID must not have leading or trailing whitespace',
+    );
+  }
+  if (!/^[^\s,]+\.apps\.googleusercontent\.com$/.test(value)) {
+    throw new EnvironmentValidationError(
+      'GOOGLE_SERVER_CLIENT_ID must be a Google OAuth client ID ending in .apps.googleusercontent.com',
+    );
+  }
+
+  return value;
+}
+
 /**
  * Validates only JWT configuration. This is intentionally pure so token unit
  * tests do not need to provide database or R2 configuration.
@@ -141,6 +163,7 @@ export function validateServerEnvironment(
 
   return {
     DATABASE_URL: requireConfiguredEnvironmentVariable(source, 'DATABASE_URL'),
+    GOOGLE_SERVER_CLIENT_ID: requireGoogleServerClientId(source),
     JWT_SECRET: jwtSecrets.accessSecret,
     REFRESH_TOKEN_SECRET: jwtSecrets.refreshSecret,
     R2_ACCOUNT_ID: requireConfiguredEnvironmentVariable(

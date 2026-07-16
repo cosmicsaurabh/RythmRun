@@ -13,6 +13,7 @@ const user = {
   id: 7,
   username: 'runner@example.com',
   password: 'stored-hash',
+  googleSubject: null,
   firstname: 'Ada',
   lastname: 'Runner',
   profilePicturePath: null,
@@ -28,8 +29,33 @@ const authResponse = {
   lastname: user.lastname,
   profilePicturePath: null,
   profilePictureType: null,
+  hasPassword: true,
   accessToken: 'access-token',
   refreshToken: 'refresh-token',
+};
+
+const googleIdentity = {
+  subject: 'google-subject-123',
+  email: 'google.runner@example.com',
+  firstname: 'Grace',
+  lastname: 'Runner',
+};
+
+const googleUser = {
+  ...user,
+  username: googleIdentity.email,
+  password: null,
+  googleSubject: googleIdentity.subject,
+  firstname: googleIdentity.firstname,
+  lastname: googleIdentity.lastname,
+};
+
+const googleAuthResponse = {
+  ...authResponse,
+  username: googleUser.username,
+  firstname: googleUser.firstname,
+  lastname: googleUser.lastname,
+  hasPassword: false,
 };
 
 function harness() {
@@ -37,6 +63,7 @@ function harness() {
     user: {
       create: jest.fn().mockResolvedValue(user),
       findUnique: jest.fn().mockResolvedValue(user),
+      findFirst: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
   };
@@ -57,11 +84,19 @@ function harness() {
     revokeSession: jest.fn(),
     revokeAllUserSessionsInTransaction: jest.fn().mockResolvedValue(undefined),
   };
+  const googleIdentityVerifier = {
+    verifyIdToken: jest.fn().mockResolvedValue(googleIdentity),
+  };
   return {
     transaction,
     prisma,
     authSessions,
-    service: new UserService(prisma as never, authSessions as never),
+    googleIdentityVerifier,
+    service: new UserService(
+      prisma as never,
+      authSessions as never,
+      googleIdentityVerifier,
+    ),
   };
 }
 
@@ -75,7 +110,7 @@ describe('UserService authentication lifecycle', () => {
     jest.mocked(bcrypt.hash).mockResolvedValue('new-hash' as never);
 
     const result = await service.register({
-      username: user.username,
+      username: ' Runner@Example.COM ',
       password: 'correct-horse-battery-staple',
       firstname: user.firstname ?? undefined,
       lastname: user.lastname ?? undefined,
@@ -102,9 +137,15 @@ describe('UserService authentication lifecycle', () => {
     jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
 
     await expect(
-      service.login({ username: user.username, password: 'valid-password' }),
+      service.login({
+        username: ' Runner@Example.COM ',
+        password: 'valid-password',
+      }),
     ).resolves.toEqual(authResponse);
 
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { username: user.username },
+    });
     expect(authSessions.issueSessionInTransaction).toHaveBeenCalledWith(
       transaction,
       user,
@@ -145,6 +186,146 @@ describe('UserService authentication lifecycle', () => {
     expect(authSessions.issueSessionInTransaction).not.toHaveBeenCalled();
   });
 
+  it('creates a Google-only account and its first session atomically', async () => {
+    const {
+      service,
+      transaction,
+      authSessions,
+      googleIdentityVerifier,
+    } = harness();
+    transaction.user.findUnique.mockResolvedValueOnce(null);
+    transaction.user.create.mockResolvedValueOnce(googleUser);
+    authSessions.issueSessionInTransaction.mockResolvedValueOnce(
+      googleAuthResponse,
+    );
+
+    await expect(
+      service.googleLogin({ idToken: 'google-id-token' }),
+    ).resolves.toEqual(googleAuthResponse);
+
+    expect(googleIdentityVerifier.verifyIdToken).toHaveBeenCalledWith(
+      'google-id-token',
+    );
+    expect(transaction.user.create).toHaveBeenCalledWith({
+      data: {
+        username: googleIdentity.email,
+        password: null,
+        googleSubject: googleIdentity.subject,
+        firstname: googleIdentity.firstname,
+        lastname: googleIdentity.lastname,
+      },
+    });
+    expect(authSessions.issueSessionInTransaction).toHaveBeenCalledWith(
+      transaction,
+      googleUser,
+    );
+  });
+
+  it('signs in the account bound to the verified Google subject', async () => {
+    const { service, transaction, authSessions } = harness();
+    transaction.user.findUnique.mockResolvedValueOnce(googleUser);
+    authSessions.issueSessionInTransaction.mockResolvedValueOnce(
+      googleAuthResponse,
+    );
+
+    await expect(
+      service.googleLogin({ idToken: 'google-id-token' }),
+    ).resolves.toEqual(googleAuthResponse);
+
+    expect(transaction.user.findUnique).toHaveBeenCalledWith({
+      where: { googleSubject: googleIdentity.subject },
+    });
+    expect(transaction.user.create).not.toHaveBeenCalled();
+    expect(authSessions.issueSessionInTransaction).toHaveBeenCalledWith(
+      transaction,
+      googleUser,
+    );
+  });
+
+  it('does not auto-link a Google identity to an existing email account', async () => {
+    const { service, transaction, authSessions } = harness();
+    transaction.user.findUnique.mockResolvedValueOnce(null);
+    transaction.user.findFirst.mockResolvedValueOnce({
+      ...user,
+      username: 'Google.Runner@Example.com',
+    });
+
+    await expect(
+      service.googleLogin({ idToken: 'google-id-token' }),
+    ).rejects.toMatchObject({
+      code: 'AUTH_GOOGLE_ACCOUNT_CONFLICT',
+      statusCode: 409,
+    });
+
+    expect(transaction.user.create).not.toHaveBeenCalled();
+    expect(transaction.user.findFirst).toHaveBeenCalledWith({
+      where: {
+        username: {
+          equals: googleIdentity.email,
+          mode: 'insensitive',
+        },
+      },
+    });
+    expect(authSessions.issueSessionInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('recovers a concurrent first sign-in only by exact Google subject', async () => {
+    const { service, prisma, authSessions } = harness();
+    authSessions.withSerializableTransaction.mockRejectedValueOnce({
+      code: 'P2002',
+    });
+    prisma.user.findUnique.mockResolvedValueOnce(googleUser);
+    authSessions.issueSession.mockResolvedValueOnce(googleAuthResponse);
+
+    await expect(
+      service.googleLogin({ idToken: 'google-id-token' }),
+    ).resolves.toEqual(googleAuthResponse);
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { googleSubject: googleIdentity.subject },
+    });
+    expect(authSessions.issueSession).toHaveBeenCalledWith(googleUser);
+  });
+
+  it('rejects a case-variant password registration after Google sign-in', async () => {
+    const { service, prisma, transaction } = harness();
+    jest.mocked(bcrypt.hash).mockResolvedValue('new-hash' as never);
+    transaction.user.create.mockRejectedValueOnce({ code: 'P2002' });
+    prisma.user.findUnique.mockResolvedValueOnce(googleUser);
+
+    await expect(
+      service.register({
+        username: ' Google.Runner@Example.COM ',
+        password: 'correct-horse-battery-staple',
+      }),
+    ).rejects.toMatchObject({
+      code: 'AUTH_USERNAME_TAKEN',
+      statusCode: 409,
+    });
+
+    expect(transaction.user.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ username: googleIdentity.email }),
+    });
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { username: googleIdentity.email },
+      select: { id: true },
+    });
+  });
+
+  it('rejects password authentication for a Google-only account', async () => {
+    const { service, prisma } = harness();
+    prisma.user.findUnique.mockResolvedValue(googleUser);
+
+    await expect(
+      service.login({
+        username: googleUser.username,
+        password: 'not-a-provider-password',
+      }),
+    ).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
+
+    expect(bcrypt.compare).not.toHaveBeenCalled();
+  });
+
   it('updates the password and revokes every session in one transaction', async () => {
     const { service, prisma, transaction, authSessions } = harness();
     prisma.user.findUnique.mockResolvedValue(user);
@@ -182,5 +363,23 @@ describe('UserService authentication lifecycle', () => {
     expect(
       authSessions.revokeAllUserSessionsInTransaction,
     ).not.toHaveBeenCalled();
+  });
+
+  it('rejects password changes for a Google-only account', async () => {
+    const { service, prisma, authSessions } = harness();
+    prisma.user.findUnique.mockResolvedValue(googleUser);
+
+    await expect(
+      service.changePassword(googleUser.id, {
+        currentPassword: 'not-a-provider-password',
+        newPassword: 'new-password',
+      }),
+    ).rejects.toMatchObject({
+      code: 'AUTH_PASSWORD_UNAVAILABLE',
+      statusCode: 409,
+    });
+
+    expect(bcrypt.compare).not.toHaveBeenCalled();
+    expect(authSessions.withSerializableTransaction).not.toHaveBeenCalled();
   });
 });
