@@ -9,6 +9,7 @@ import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/services/auth_token_store.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
 import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
+import 'package:rythmrun_frontend_flutter/core/services/google_identity_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/auth_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/auth_remote_datasource.dart';
@@ -272,6 +273,164 @@ void main() {
       expect(updated.id, '7');
     },
   );
+
+  test(
+    'Google chooser and exchange hold the auth gate against account cleanup',
+    () async {
+      final gate = AuthenticationAttemptGate();
+      final httpClient = _testHttpClient();
+      addTearDown(httpClient.close);
+      final remote = _DelayedAuthRemoteDataSource(httpClient);
+      final local = _MemoryAuthLocalDataSource();
+      final invalidation = SessionInvalidationSignal();
+      addTearDown(invalidation.dispose);
+      final tokenCompleter = Completer<String?>();
+      final google = _FakeGoogleIdentityService(
+        authenticationCompleter: tokenCompleter,
+      );
+      final repository = AuthRepositoryImpl(
+        remote,
+        local,
+        authenticatedRequests: _coordinator(
+          gate: gate,
+          remote: remote,
+          local: local,
+          invalidation: invalidation,
+        ),
+        authenticationAttemptGate: gate,
+        googleIdentityService: google,
+      );
+
+      final pendingLogin = repository.loginWithGoogle();
+      await Future<void>.delayed(Duration.zero);
+      expect(gate.isActive, isTrue);
+      expect(google.authenticateCalls, 1);
+
+      var didDrain = false;
+      final drain = gate.suspendAndDrain().then((_) => didDrain = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(didDrain, isFalse);
+
+      await expectLater(
+        repository.login(
+          LoginRequestEntity(email: 'other@example.com', password: 'password'),
+        ),
+        throwsStateError,
+      );
+      expect(remote.loginCalls, 0);
+
+      tokenCompleter.complete('short-lived-google-id-token');
+      expect(await pendingLogin, _response.toUserEntity());
+      await drain;
+
+      expect(remote.googleLoginCalls, 1);
+      expect(remote.lastGoogleIdToken, 'short-lived-google-id-token');
+      expect(local.user, _response.toUserEntity());
+      expect(local.snapshot?.pair.accessToken, _response.accessToken);
+
+      // Session teardown runs only after the full leased operation drains, so
+      // its final clear cannot be repopulated by a late chooser result.
+      await local.clearAuthData();
+      expect(local.snapshot, isNull);
+      expect(local.user, isNull);
+    },
+  );
+
+  test('Google cancellation skips backend exchange and local writes', () async {
+    final gate = AuthenticationAttemptGate();
+    final httpClient = _testHttpClient();
+    addTearDown(httpClient.close);
+    final remote = _DelayedAuthRemoteDataSource(httpClient);
+    final local = _MemoryAuthLocalDataSource();
+    final invalidation = SessionInvalidationSignal();
+    addTearDown(invalidation.dispose);
+    final google = _FakeGoogleIdentityService(idToken: null);
+    final repository = AuthRepositoryImpl(
+      remote,
+      local,
+      authenticatedRequests: _coordinator(
+        gate: gate,
+        remote: remote,
+        local: local,
+        invalidation: invalidation,
+      ),
+      authenticationAttemptGate: gate,
+      googleIdentityService: google,
+    );
+    final originalSnapshot = local.snapshot;
+
+    final user = await repository.loginWithGoogle();
+
+    expect(user, isNull);
+    expect(remote.googleLoginCalls, 0);
+    expect(local.snapshot, originalSnapshot);
+    expect(google.signOutCalls, 0);
+    expect(gate.isActive, isFalse);
+  });
+
+  test('failed Google backend exchange signs out the native account', () async {
+    final gate = AuthenticationAttemptGate();
+    final httpClient = _testHttpClient();
+    addTearDown(httpClient.close);
+    final remote = _DelayedAuthRemoteDataSource(httpClient)
+      ..googleFailure = StateError('exchange failed');
+    final local = _MemoryAuthLocalDataSource();
+    final invalidation = SessionInvalidationSignal();
+    addTearDown(invalidation.dispose);
+    final google = _FakeGoogleIdentityService(idToken: 'google-id-token');
+    final repository = AuthRepositoryImpl(
+      remote,
+      local,
+      authenticatedRequests: _coordinator(
+        gate: gate,
+        remote: remote,
+        local: local,
+        invalidation: invalidation,
+      ),
+      authenticationAttemptGate: gate,
+      googleIdentityService: google,
+    );
+
+    await expectLater(repository.loginWithGoogle(), throwsStateError);
+
+    expect(google.signOutCalls, 1);
+    expect(gate.isActive, isFalse);
+  });
+
+  test('logout does not wait for native Google sign-out', () async {
+    final gate = AuthenticationAttemptGate();
+    final httpClient = _testHttpClient();
+    addTearDown(httpClient.close);
+    final remote = _DelayedAuthRemoteDataSource(httpClient);
+    final local = _MemoryAuthLocalDataSource();
+    final invalidation = SessionInvalidationSignal();
+    addTearDown(invalidation.dispose);
+    final signOutCompleter = Completer<void>();
+    addTearDown(() {
+      if (!signOutCompleter.isCompleted) signOutCompleter.complete();
+    });
+    final google = _FakeGoogleIdentityService(
+      signOutCompleter: signOutCompleter,
+    );
+    final repository = AuthRepositoryImpl(
+      remote,
+      local,
+      authenticatedRequests: _coordinator(
+        gate: gate,
+        remote: remote,
+        local: local,
+        invalidation: invalidation,
+      ),
+      authenticationAttemptGate: gate,
+      googleIdentityService: google,
+    );
+
+    await repository.logout();
+
+    expect(google.signOutCalls, 1);
+    expect(signOutCompleter.isCompleted, isFalse);
+    expect(remote.logoutCalls, 1);
+  });
 }
 
 AppHttpClient _testHttpClient() {
@@ -318,7 +477,11 @@ class _DelayedAuthRemoteDataSource extends AuthRemoteDataSource {
   final Completer<AuthResponseModel> refreshCompleter =
       Completer<AuthResponseModel>();
   int loginCalls = 0;
+  int googleLoginCalls = 0;
+  int logoutCalls = 0;
   int updateProfileCalls = 0;
+  String? lastGoogleIdToken;
+  Object? googleFailure;
 
   @override
   Future<bool> verifySession(Map<String, String> authHeaders) async => true;
@@ -344,6 +507,20 @@ class _DelayedAuthRemoteDataSource extends AuthRemoteDataSource {
   Future<AuthResponseModel> loginUser(String email, String password) async {
     loginCalls += 1;
     return _response;
+  }
+
+  @override
+  Future<AuthResponseModel> loginWithGoogle(String idToken) async {
+    googleLoginCalls += 1;
+    lastGoogleIdToken = idToken;
+    final failure = googleFailure;
+    if (failure != null) throw failure;
+    return _response;
+  }
+
+  @override
+  Future<void> logoutUser(Map<String, String>? authHeaders) async {
+    logoutCalls += 1;
   }
 
   @override
@@ -385,6 +562,20 @@ class _MemoryAuthLocalDataSource extends AuthLocalDataSource {
   UserEntity? user;
   bool hasLastBackendSync = false;
   bool cleanupPending = false;
+
+  @override
+  Future<void> saveAuthData(AuthResponseModel authResponse) async {
+    snapshot = AuthCredentialSnapshot(
+      pair: AuthTokenPair(
+        accessToken: authResponse.accessToken,
+        refreshToken: authResponse.refreshToken,
+      ),
+      revision: (snapshot?.revision ?? 0) + 1,
+      requiresServerVerification: false,
+    );
+    user = authResponse.toUserEntity();
+    hasLastBackendSync = true;
+  }
 
   @override
   Future<AuthCredentialSnapshot?> readCredentialSnapshot() async => snapshot;
@@ -448,5 +639,31 @@ class _MemoryAuthLocalDataSource extends AuthLocalDataSource {
     user = null;
     hasLastBackendSync = false;
     cleanupPending = false;
+  }
+}
+
+class _FakeGoogleIdentityService implements GoogleIdentityService {
+  _FakeGoogleIdentityService({
+    this.idToken = 'google-id-token',
+    this.authenticationCompleter,
+    this.signOutCompleter,
+  });
+
+  final String? idToken;
+  final Completer<String?>? authenticationCompleter;
+  final Completer<void>? signOutCompleter;
+  int authenticateCalls = 0;
+  int signOutCalls = 0;
+
+  @override
+  Future<String?> authenticate() async {
+    authenticateCalls += 1;
+    return authenticationCompleter?.future ?? idToken;
+  }
+
+  @override
+  Future<void> signOut() async {
+    signOutCalls += 1;
+    await signOutCompleter?.future;
   }
 }

@@ -214,6 +214,7 @@ void main() {
             firstName: 'Test',
             lastName: 'Runner',
             email: 'runner@example.test',
+            hasPassword: false,
           ),
           accessToken: 'new-access',
           refreshToken: 'new-refresh',
@@ -228,8 +229,20 @@ void main() {
         (await persistence.readCredentialSnapshot())?.pair.accessToken,
         'new-access',
       );
+      expect((await persistence.getUserData())?.hasPassword, isFalse);
     },
   );
+
+  test('older cached users default to password-capable', () async {
+    final persistence = service(
+      secure: _MemorySecureValueStore(),
+      preferences: _MemoryPreferences(<String, Object>{
+        AuthPersistenceService.userDataKey: _encodedUser,
+      }),
+    );
+
+    expect((await persistence.getUserData())?.hasPassword, isTrue);
+  });
 
   test('cleanup marker remains until every account value is absent', () async {
     final secure = _MemorySecureValueStore();

@@ -4,21 +4,26 @@ import 'package:rythmrun_frontend_flutter/data/models/change_password_response_m
 import '../../core/config/app_config.dart';
 import '../../core/config/api_endpoints.dart';
 import '../../core/network/http_client.dart';
+import '../../core/services/google_identity_service.dart';
 import '../models/auth_response_model.dart';
 import '../models/registration_request_model.dart';
 import '../models/user_model.dart';
 
 class AuthRemoteDataSource {
   final AppHttpClient _httpClient;
+  final String Function(String endpoint) _resolveEndpoint;
 
-  AuthRemoteDataSource({required AppHttpClient httpClient})
-    : _httpClient = httpClient;
+  AuthRemoteDataSource({
+    required AppHttpClient httpClient,
+    String Function(String endpoint)? resolveEndpoint,
+  }) : _httpClient = httpClient,
+       _resolveEndpoint = resolveEndpoint ?? AppConfig.getUrl;
 
   Future<AuthResponseModel> registerUser(
     RegistrationRequestModel request,
   ) async {
     final response = await _httpClient.post(
-      AppConfig.getUrl(ApiEndpoints.register),
+      _resolveEndpoint(ApiEndpoints.register),
       headers: {'Content-Type': 'application/json'},
       body: json.encode(request.toJson()),
       maxRetries: 0,
@@ -30,9 +35,30 @@ class AuthRemoteDataSource {
 
   Future<AuthResponseModel> loginUser(String email, String password) async {
     final response = await _httpClient.post(
-      AppConfig.getUrl(ApiEndpoints.login),
+      _resolveEndpoint(ApiEndpoints.login),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'username': email, 'password': password}),
+      maxRetries: 0,
+    );
+
+    final Map<String, dynamic> jsonResponse = json.decode(response.body);
+    return AuthResponseModel.fromJson(jsonResponse);
+  }
+
+  /// Exchanges a short-lived Google ID token for the app's normal backend
+  /// access/refresh token pair. Identity tokens are never sent over cleartext.
+  Future<AuthResponseModel> loginWithGoogle(String idToken) async {
+    final endpoint = _resolveEndpoint(ApiEndpoints.googleAuth);
+    if (Uri.tryParse(endpoint)?.scheme.toLowerCase() != 'https') {
+      throw const GoogleIdentityException(
+        'Google sign-in requires a secure HTTPS backend connection.',
+      );
+    }
+
+    final response = await _httpClient.post(
+      endpoint,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'idToken': idToken}),
       maxRetries: 0,
     );
 
@@ -47,7 +73,7 @@ class AuthRemoteDataSource {
     };
 
     await _httpClient.post(
-      AppConfig.getUrl(ApiEndpoints.logout),
+      _resolveEndpoint(ApiEndpoints.logout),
       headers: headers,
       maxRetries: 0,
     );
@@ -56,7 +82,7 @@ class AuthRemoteDataSource {
   /// Refresh access token using the provided refresh token
   Future<AuthResponseModel> refreshToken(String refreshToken) async {
     final response = await _httpClient.post(
-      AppConfig.getUrl(ApiEndpoints.refreshToken),
+      _resolveEndpoint(ApiEndpoints.refreshToken),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'refreshToken': refreshToken}),
       maxRetries: 0,
@@ -77,7 +103,7 @@ class AuthRemoteDataSource {
     };
 
     final response = await _httpClient.put(
-      AppConfig.getUrl(ApiEndpoints.changePassword),
+      _resolveEndpoint(ApiEndpoints.changePassword),
       headers: headers,
       body: json.encode({
         'currentPassword': currentPassword,
@@ -98,7 +124,7 @@ class AuthRemoteDataSource {
     };
 
     final response = await _httpClient.get(
-      AppConfig.getUrl(ApiEndpoints.me),
+      _resolveEndpoint(ApiEndpoints.me),
       headers: headers,
     );
 
@@ -117,7 +143,7 @@ class AuthRemoteDataSource {
     };
 
     final response = await _httpClient.put(
-      AppConfig.getUrl(ApiEndpoints.profile),
+      _resolveEndpoint(ApiEndpoints.profile),
       headers: headers,
       body: json.encode({'firstname': firstName, 'lastname': lastName}),
       maxRetries: 0,

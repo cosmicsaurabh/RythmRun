@@ -9,6 +9,15 @@ class ErrorHandler {
   static String getErrorMessage(dynamic exception) {
     String message = exception.toString().replaceAll('Exception: ', '');
 
+    if (exception is HttpStatusException) {
+      switch (exception.code) {
+        case 'AUTH_GOOGLE_INVALID':
+          return 'Google sign-in could not be verified. Please choose your account and try again.';
+        case 'AUTH_GOOGLE_ACCOUNT_CONFLICT':
+          return 'A RythmRun account already exists for this email. Sign in with its original method.';
+      }
+    }
+
     // Handle custom HTTP client exceptions first
     if (exception is UnauthorizedException) {
       // If it's a specific login error message, show that

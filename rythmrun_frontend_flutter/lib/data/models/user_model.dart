@@ -6,6 +6,7 @@ class UserModel extends UserEntity {
     required super.firstName,
     required super.lastName,
     required super.email,
+    super.hasPassword,
     super.profilePicturePath,
     super.profilePictureType,
     super.createdAt,
@@ -17,6 +18,7 @@ class UserModel extends UserEntity {
       firstName: json['firstname'] ?? '', // Backend uses lowercase
       lastName: json['lastname'] ?? '', // Backend uses lowercase
       email: json['username'] ?? '', // Backend uses username field for email
+      hasPassword: json['hasPassword'] as bool? ?? true,
       profilePicturePath:
           json['profilePicturePath'] as String?, // Profile picture S3 key
       profilePictureType:
@@ -31,6 +33,7 @@ class UserModel extends UserEntity {
       'firstName': firstName,
       'lastName': lastName,
       'email': email,
+      'hasPassword': hasPassword,
       'profilePicturePath': profilePicturePath,
       'profilePictureType': profilePictureType,
       'createdAt': createdAt?.toIso8601String(),
@@ -43,6 +46,7 @@ class UserModel extends UserEntity {
       firstName: entity.firstName,
       lastName: entity.lastName,
       email: entity.email,
+      hasPassword: entity.hasPassword,
       profilePicturePath: entity.profilePicturePath,
       profilePictureType: entity.profilePictureType,
       createdAt: entity.createdAt,
@@ -55,6 +59,7 @@ class UserModel extends UserEntity {
       firstName: firstName,
       lastName: lastName,
       email: email,
+      hasPassword: hasPassword,
       profilePicturePath: profilePicturePath,
       profilePictureType: profilePictureType,
       createdAt: createdAt,

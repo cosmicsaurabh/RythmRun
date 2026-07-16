@@ -5,6 +5,7 @@ class UserEntity {
   final String firstName;
   final String lastName;
   final String email;
+  final bool hasPassword;
   final String? profilePicturePath; // Keep for backward compatibility
   final String? profilePictureType;
   final DateTime? createdAt;
@@ -14,6 +15,7 @@ class UserEntity {
     required this.firstName,
     required this.lastName,
     required this.email,
+    this.hasPassword = true,
     this.profilePicturePath,
     this.profilePictureType,
     this.createdAt,
@@ -24,6 +26,7 @@ class UserEntity {
     String? firstName,
     String? lastName,
     String? email,
+    bool? hasPassword,
     Object? profilePicturePath = _unset,
     Object? profilePictureType = _unset,
     Object? createdAt = _unset,
@@ -33,6 +36,7 @@ class UserEntity {
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,
       email: email ?? this.email,
+      hasPassword: hasPassword ?? this.hasPassword,
       profilePicturePath:
           identical(profilePicturePath, _unset)
               ? this.profilePicturePath
@@ -59,6 +63,7 @@ class UserEntity {
           firstName == other.firstName &&
           lastName == other.lastName &&
           email == other.email &&
+          hasPassword == other.hasPassword &&
           profilePicturePath == other.profilePicturePath &&
           profilePictureType == other.profilePictureType;
 
@@ -68,11 +73,12 @@ class UserEntity {
       firstName.hashCode ^
       lastName.hashCode ^
       email.hashCode ^
+      hasPassword.hashCode ^
       profilePicturePath.hashCode ^
       profilePictureType.hashCode;
 
   @override
   String toString() {
-    return 'UserEntity{id: $id, hasProfilePicture: ${profilePicturePath != null}, createdAt: $createdAt}';
+    return 'UserEntity{id: $id, hasPassword: $hasPassword, hasProfilePicture: ${profilePicturePath != null}, createdAt: $createdAt}';
   }
 }
