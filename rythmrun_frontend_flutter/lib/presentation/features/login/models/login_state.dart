@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+enum LoginMethod { password, google }
+
 @immutable
 class LoginState {
   static const Object _unset = Object();
@@ -11,6 +13,7 @@ class LoginState {
   final String? errorMessage;
   final bool isSuccess;
   final bool obscurePassword;
+  final LoginMethod? method;
 
   const LoginState({
     this.email = '',
@@ -20,6 +23,7 @@ class LoginState {
     this.errorMessage,
     this.isSuccess = false,
     this.obscurePassword = true,
+    this.method,
   });
 
   LoginState copyWith({
@@ -30,6 +34,7 @@ class LoginState {
     Object? errorMessage = _unset,
     bool? isSuccess,
     bool? obscurePassword,
+    Object? method = _unset,
   }) {
     return LoginState(
       email: email ?? this.email,
@@ -42,6 +47,7 @@ class LoginState {
               : errorMessage as String?,
       isSuccess: isSuccess ?? this.isSuccess,
       obscurePassword: obscurePassword ?? this.obscurePassword,
+      method: identical(method, _unset) ? this.method : method as LoginMethod?,
     );
   }
 
@@ -56,9 +62,23 @@ class LoginState {
           isLoading == other.isLoading &&
           errorMessage == other.errorMessage &&
           isSuccess == other.isSuccess &&
-          obscurePassword == other.obscurePassword;
+          obscurePassword == other.obscurePassword &&
+          method == other.method;
+
+  @override
+  int get hashCode => Object.hash(
+    email,
+    password,
+    rememberMe,
+    isLoading,
+    errorMessage,
+    isSuccess,
+    obscurePassword,
+    method,
+  );
+
   @override
   String toString() {
-    return 'LoginState{email: $email, rememberMe: $rememberMe, isLoading: $isLoading, errorMessage: $errorMessage, isSuccess: $isSuccess}';
+    return 'LoginState{email: $email, rememberMe: $rememberMe, isLoading: $isLoading, errorMessage: $errorMessage, isSuccess: $isSuccess, method: $method}';
   }
 }

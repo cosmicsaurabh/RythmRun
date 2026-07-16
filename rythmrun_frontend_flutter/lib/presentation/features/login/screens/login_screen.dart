@@ -5,6 +5,7 @@ import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/utils/validation_helper.dart';
 import '../../../common/widgets/error_display_widget.dart';
+import '../models/login_state.dart';
 import '../providers/login_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -36,9 +37,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.read(loginProvider.notifier).loginUser();
   }
 
+  void _handleGoogleSignIn() {
+    ref.read(loginProvider.notifier).loginWithGoogle();
+  }
+
   @override
   Widget build(BuildContext context) {
     final loginState = ref.watch(loginProvider);
+    final googleSignInAvailable = ref.watch(googleSignInAvailabilityProvider);
     final loginNotifier = ref.read(loginProvider.notifier);
 
     // The app-level session listener owns stack normalization after sign-in.
@@ -185,8 +191,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     onRetry: () {
                       // Clear the error first
                       ref.read(loginProvider.notifier).clearError();
-                      // Then retry the login
-                      _handleSubmit();
+                      if (loginState.method == LoginMethod.google) {
+                        _handleGoogleSignIn();
+                      } else {
+                        _handleSubmit();
+                      }
                     },
                     isRetryEnabled: !loginState.isLoading,
                   ),
@@ -198,7 +207,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: ElevatedButton(
                     onPressed: loginState.isLoading ? null : _handleSubmit,
                     child:
-                        loginState.isLoading
+                        loginState.isLoading &&
+                                loginState.method == LoginMethod.password
                             ? SizedBox(
                               width: 20,
                               height: 20,
@@ -210,6 +220,57 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: spacingLg),
+
+                if (googleSignInAvailable) ...[
+                  Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: spacingMd,
+                        ),
+                        child: Text(
+                          'or',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: CustomAppColors.secondaryText),
+                        ),
+                      ),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: spacingLg),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      key: const Key('googleSignInButton'),
+                      onPressed:
+                          loginState.isLoading ? null : _handleGoogleSignIn,
+                      icon:
+                          loginState.isLoading &&
+                                  loginState.method == LoginMethod.google
+                              ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CupertinoActivityIndicator(
+                                  color:
+                                      Theme.of(context).colorScheme.secondary,
+                                ),
+                              )
+                              : Text(
+                                'G',
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleMedium?.copyWith(
+                                  color: const Color(0xFF4285F4),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                      label: const Text('Continue with Google'),
+                    ),
+                  ),
+                  const SizedBox(height: spacingLg),
+                ],
 
                 // Register Link
                 Center(

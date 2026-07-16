@@ -5,6 +5,7 @@ import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/models/app_settings.dart';
 import '../../../common/providers/settings_provider.dart';
+import '../../../common/providers/session_provider.dart';
 import '../../../shared/widgets/connectivity_badge.dart';
 import '../providers/change_password_provider.dart';
 
@@ -14,6 +15,9 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
+    final hasPassword = ref.watch(
+      currentUserProvider.select((user) => user?.hasPassword ?? false),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -81,17 +85,19 @@ class SettingsScreen extends ConsumerWidget {
             // ]),
             const SizedBox(height: spacingLg),
 
-            // Account Section
-            _buildSection(context, 'Account', personIcon, [
-              _buildTile(
-                context,
-                'Change Password',
-                'Update your account password',
-                lockIcon,
-                () => _showChangePasswordDialog(context, ref),
-              ),
-            ]),
-            const SizedBox(height: spacingLg),
+            if (hasPassword) ...[
+              // Account Section
+              _buildSection(context, 'Account', personIcon, [
+                _buildTile(
+                  context,
+                  'Change Password',
+                  'Update your account password',
+                  lockIcon,
+                  () => _showChangePasswordDialog(context, ref),
+                ),
+              ]),
+              const SizedBox(height: spacingLg),
+            ],
 
             // Danger Zone
             _buildSection(
