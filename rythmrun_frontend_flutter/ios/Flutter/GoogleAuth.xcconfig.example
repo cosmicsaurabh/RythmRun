@@ -1,0 +1,4 @@
+// Copy this file to GoogleAuth.xcconfig and replace both placeholders.
+// GoogleAuth.xcconfig is intentionally ignored by git.
+GOOGLE_CLIENT_ID = <ios-client-id>.apps.googleusercontent.com
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.<ios-client-id>

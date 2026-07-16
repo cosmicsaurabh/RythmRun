@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
 import 'package:rythmrun_frontend_flutter/core/network/authenticated_request_coordinator.dart';
 import 'package:rythmrun_frontend_flutter/core/services/activity_image_file_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/auth_persistence_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/auth_token_store.dart';
 import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_gate.dart';
+import 'package:rythmrun_frontend_flutter/core/services/google_identity_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/local_db_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/online_operation_guard.dart';
 import 'package:rythmrun_frontend_flutter/core/services/sync_coordinator.dart';
@@ -30,6 +33,7 @@ import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/settings_repository.dart';
 import '../../domain/repositories/workout_repository.dart';
 import '../../domain/usecases/login_user_usecase.dart';
+import '../../domain/usecases/login_with_google_usecase.dart';
 import '../../domain/usecases/register_user_usecase.dart';
 import '../../domain/usecases/change_password_usecase.dart';
 
@@ -46,6 +50,15 @@ final authTokenStoreProvider = Provider<AuthTokenStore>((ref) {
 
 final authPersistenceServiceProvider = Provider<AuthPersistenceService>((ref) {
   return AuthPersistenceService(tokenStore: ref.watch(authTokenStoreProvider));
+});
+
+final googleIdentityServiceProvider = Provider<GoogleIdentityService>((ref) {
+  return NativeGoogleIdentityService(
+    clientId: AppConfig.googleClientId,
+    serverClientId: AppConfig.googleServerClientId,
+    backendUsesSecureTransport: AppConfig.googleAuthUsesSecureTransport,
+    clientIdRequired: !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS,
+  );
 });
 
 // Data Sources
@@ -159,6 +172,7 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
     authenticatedRequests: ref.watch(authenticatedRequestCoordinatorProvider),
     authenticationAttemptGate: ref.watch(authenticationAttemptGateProvider),
     onlineOperationGuard: ref.watch(onlineOperationGuardProvider),
+    googleIdentityService: ref.watch(googleIdentityServiceProvider),
   );
 });
 
@@ -218,6 +232,10 @@ final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
 final loginUserUsecaseProvider = Provider<LoginUserUsecase>((ref) {
   final repository = ref.watch(authRepositoryProvider);
   return LoginUserUsecase(repository);
+});
+
+final loginWithGoogleUsecaseProvider = Provider<LoginWithGoogleUsecase>((ref) {
+  return LoginWithGoogleUsecase(ref.watch(authRepositoryProvider));
 });
 
 final registerUserUsecaseProvider = Provider<RegisterUserUsecase>((ref) {
