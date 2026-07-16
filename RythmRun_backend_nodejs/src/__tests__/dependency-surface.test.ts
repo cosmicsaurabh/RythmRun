@@ -46,6 +46,10 @@ describe('backend production dependency surface', () => {
     expect(devDependencies.prisma).toBe('7.8.0');
   });
 
+  it('uses the official Google verifier for backend ID-token validation', () => {
+    expect(dependencies['google-auth-library']).toEqual(expect.any(String));
+  });
+
   it('keeps the end-of-support monolithic AWS SDK out of the dependency graph', () => {
     expect(allDeclaredDependencies).not.toHaveProperty('aws-sdk');
     expect(

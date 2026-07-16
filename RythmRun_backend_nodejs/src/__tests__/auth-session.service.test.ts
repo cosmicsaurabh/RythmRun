@@ -21,6 +21,7 @@ const user: User = {
   id: 7,
   username: 'runner@example.com',
   password: 'hashed-password',
+  googleSubject: null,
   firstname: 'Ada',
   lastname: 'Runner',
   profilePicturePath: null,
@@ -131,6 +132,7 @@ describe('AuthSessionService', () => {
     expect(Object.keys(response).sort()).toEqual([
       'accessToken',
       'firstname',
+      'hasPassword',
       'id',
       'lastname',
       'profilePicturePath',
@@ -138,6 +140,7 @@ describe('AuthSessionService', () => {
       'refreshToken',
       'username',
     ]);
+    expect(response.hasPassword).toBe(true);
     expect(access).toMatchObject({
       sub: String(user.id),
       sid: refresh.sid,

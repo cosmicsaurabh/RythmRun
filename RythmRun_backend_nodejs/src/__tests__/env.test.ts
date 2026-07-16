@@ -11,6 +11,7 @@ const REFRESH_SECRET = 'b'.repeat(MINIMUM_JWT_SECRET_LENGTH);
 
 const validServerEnvironment = {
   DATABASE_URL: 'postgresql://user:password@localhost:5432/rythmrun',
+  GOOGLE_SERVER_CLIENT_ID: 'test.apps.googleusercontent.com',
   JWT_SECRET: ACCESS_SECRET,
   REFRESH_TOKEN_SECRET: REFRESH_SECRET,
   R2_ACCOUNT_ID: 'test-account-id',
@@ -113,6 +114,7 @@ describe('server environment validation', () => {
 
   it.each([
     'DATABASE_URL',
+    'GOOGLE_SERVER_CLIENT_ID',
     'R2_ACCOUNT_ID',
     'R2_ACCESS_KEY_ID',
     'R2_SECRET_ACCESS_KEY',
@@ -132,6 +134,7 @@ describe('server environment validation', () => {
 
   it.each([
     ['DATABASE_URL', 'REPLACE_WITH_DATABASE_URL'],
+    ['GOOGLE_SERVER_CLIENT_ID', 'REPLACE_WITH_GOOGLE_SERVER_CLIENT_ID'],
     ['R2_ACCOUNT_ID', 'REPLACE_WITH_ACCOUNT_ID'],
     ['R2_ACCESS_KEY_ID', 'REPLACE_WITH_ACCESS_KEY_ID'],
     ['R2_SECRET_ACCESS_KEY', 'REPLACE_WITH_SECRET_ACCESS_KEY'],
@@ -143,5 +146,19 @@ describe('server environment validation', () => {
         [name]: value,
       }),
     ).toThrow(`${name} must not use a documented placeholder`);
+  });
+
+  it.each([
+    ' test.apps.googleusercontent.com',
+    'test.apps.googleusercontent.com ',
+    'not-a-google-client-id',
+    'one.apps.googleusercontent.com,two.apps.googleusercontent.com',
+  ])('rejects an invalid Google server client ID: %s', (clientId) => {
+    expect(() =>
+      validateServerEnvironment({
+        ...validServerEnvironment,
+        GOOGLE_SERVER_CLIENT_ID: clientId,
+      }),
+    ).toThrow('GOOGLE_SERVER_CLIENT_ID');
   });
 });
