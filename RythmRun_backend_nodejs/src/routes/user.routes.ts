@@ -7,6 +7,7 @@ import { authMiddleware } from '../middleware/auth.middleware.js';
 export interface UserRouteController {
   register: RequestHandler;
   login: RequestHandler;
+  googleAuth: RequestHandler;
   logout: RequestHandler;
   refreshToken: RequestHandler;
   me: RequestHandler;
@@ -46,6 +47,14 @@ export function createUserRouter({
    * @returns {Object} User data with access and refresh tokens
    */
   router.post('/login', controller.login);
+
+  /**
+   * @route POST /api/users/auth/google
+   * @description Exchange a Google ID token for a RythmRun session
+   * @body {GoogleAuthDto} - idToken
+   * @returns {Object} User data with access and refresh tokens
+   */
+  router.post('/auth/google', controller.googleAuth);
 
   /**
    * @route POST /api/users/logout
