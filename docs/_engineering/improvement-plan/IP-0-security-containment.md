@@ -10,7 +10,7 @@ published: false
 | Priority | P0 / release blocker |
 | Target | 1–2 days after the required operational access is available |
 | Owner | Unassigned |
-| Last updated | 2026-07-11 |
+| Last updated | 2026-07-17 |
 | Entry condition | None; containment begins immediately |
 | Exit condition | All criteria in [Exit gate](#exit-gate) have evidence |
 
@@ -338,11 +338,11 @@ This is operational work. Store sensitive evidence in the approved incident syst
 8. Open routes in stages: registration/profile text fields first, S3 avatar request/confirm next. Never reopen local filesystem routes. Keep avatar routes contained if storage-boundary limits, intent checks, quota, or cleanup are incomplete.
 9. Monitor `4xx`, `5xx`, registration, avatar-confirm, storage rejection, and S3 error rates continuously, with an explicit 24-hour heightened observation window after reopen and an owner/on-call rollback trigger.
 
-#### IP-0.7 dependency-surface reduction — current repository package
+#### IP-0.7 dependency-surface reduction — repository-delivered package
 
 **Status**
 
-- In progress on `ip0-dependency-advisories`.
+- Repository implementation is committed in `fc33dca`; it is no longer the current package.
 - This package reduces known dependency risk but does not satisfy the dated advisory gate. MC-0.10 remains blocked until an owner explicitly approves the outbound npm scan and every result is triaged.
 
 **Implementation**

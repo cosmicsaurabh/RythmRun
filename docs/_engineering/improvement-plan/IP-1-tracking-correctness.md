@@ -6,11 +6,11 @@ published: false
 
 | Field | Value |
 | --- | --- |
-| Status | **In progress** |
+| Status | **Verification** |
 | Priority | P1 |
 | Target | 7 focused work packages after IP-0 |
 | Owner | Unassigned |
-| Last updated | 2026-07-13 |
+| Last updated | 2026-07-17 |
 | Depends on | IP-0 patched deployment; incident containment remains active until IP-0 exits |
 | Exit condition | Metrics, account-switch, cascade, PATCH, long-payload, and CI gates pass |
 

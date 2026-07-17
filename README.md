@@ -84,7 +84,7 @@ The backend is a strict-TypeScript Express modular monolith running as native No
 - **SQLite** stores workouts, accepted GPS points, status transitions, image state, and remote-deletion tombstones. Schema migrations preserve compatibility through database version 6.
 - **PostgreSQL** stores canonical server records and enforces relational ownership, cascading deletion, image identity, avatar intents, and `(userId, clientSyncId)` uniqueness.
 - **Cloudflare R2** stores binary media through its S3-compatible API. PostgreSQL stores object identity and lifecycle state rather than blobs; activity reads are short-lived signed URLs while configured public delivery supports the intended public objects.
-- **JWTs** authenticate API calls. Access and refresh secrets are distinct and validated at startup; the current refresh/session contract still has known gaps documented below.
+- **Sessions** use short-lived access JWTs plus rotating refresh JWTs bound to server-side session families. PostgreSQL stores refresh digests rather than raw tokens, protected requests verify active session state, and mobile credential pairs live in a verified secure-storage envelope with bounded offline admission.
 
 There is no AI or LLM integration in the repository. Generated summaries are explicitly deferred rather than represented by unused infrastructure.
 
@@ -238,13 +238,16 @@ Known performance limits include image transforms on the Flutter UI isolate, eag
 - Avatar presigned policies bind the exact key, MIME type, and byte length; confirmation rechecks object metadata before selection.
 - User-facing activity list and detail responses replace stored R2 keys with short-lived signed R2 URLs; upload-protocol responses still return the key needed by the client.
 - Avatar cleanup rechecks the currently selected object before deleting an older one.
+- Refresh tokens rotate inside bounded session families and are stored only as digests; protected access checks active session state so logout/password revocation does not wait for JWT expiry.
+- Flutter stores each access/refresh pair as one verified secure-storage envelope, coordinates refresh through one revision-safe flight, and permits bounded offline access only after server verification.
+- Google Sign-In verifies the provider token only on the backend, binds accounts to the stable provider subject without implicit email linking, and then uses the same first-party RythmRun session lifecycle.
 - The tracked backend and Flutter workflows use read-only GitHub permissions, immutable action SHAs, pinned runners/toolchains, timeouts, non-persisted checkout credentials, and concurrency cancellation.
 
 ### Open risks
 
-- Mobile tokens currently use `SharedPreferences`; tokens, SQLite route data, and activity files are not encrypted at rest.
-- The refresh-token route and mobile response contract are not aligned, registration does not persist its refresh token, and access-token revocation is incomplete.
-- Refresh tokens are stored unhashed in PostgreSQL and the model permits only one server-side session per user.
+- SQLite route data and retained activity-photo files are not yet encrypted at rest; IP-2.7 owns the threat model, key design, migration, and performance gate.
+- Secure-storage/session behavior is repository-tested but still lacks the MC-2.1 through MC-2.3 hosted PostgreSQL, destructive-cutover, physical-device, backup, clock, and release-log evidence.
+- Google identity is repository-delivered, but its non-rolling database migration, real OAuth/signing configuration, provider/device lifecycle, release branding, and optional-iOS policy remain MC-2.4.
 - CORS is currently unrestricted, general API rate limiting is absent, and public activity defaults require a privacy review.
 - Authenticated activity create/PATCH routes now have bounded nested validation, capped error output, an explicit 3 MiB parser, and interim per-user/process admission; deployed proxy alignment, resource limits, real PostgreSQL rollback/concurrency, and prior-client compatibility still require MC-1.8 staging proof.
 - Activity-image confirmation does not yet verify MIME type and checksum end to end; stale pending server uploads need orphan cleanup.
@@ -254,18 +257,20 @@ These gaps are tracked as release work rather than hidden behind a blanket “se
 
 ## Verification
 
-Local verification on **2026-07-13**:
+Current-tree local verification on **2026-07-17**. Backend dependencies were already installed for this audit, so a fresh `npm ci` is not claimed; the Flutter lockfile restore was rerun with enforcement.
 
 | Check | Result |
 | --- | --- |
-| Backend clean-install contract | Node 22.22.3 `npm ci --no-audit` restored 612 packages from the lockfile, including exact Prisma CLI/client/adapter 7.8.0, `pg` 8.22.0, and Node 22 types |
-| Backend Jest suite | 15 native-ESM suites and 244 tests passed, including loopback HTTP and database-lifecycle coverage |
+| Backend dependency state | Node 22.22.3 existing locked installation used; run `npm ci --no-audit` in hosted/clean verification before release |
+| Backend Jest suite | 19 executable native-ESM suites and 307 tests passed; the seven-test real-PostgreSQL suite was intentionally skipped locally |
 | TypeScript | `npm run typecheck` passed with NodeNext resolution, explicit `.js` specifiers, and generated-client type imports |
-| Prisma schema/client | `prisma.config.ts` owns the datasource URL and migration path; `prisma-client` is configured to generate native-ESM TypeScript under `src/generated/prisma`; the final clean validation/generation rerun is pending |
+| Prisma schema/client | Prisma 7.8 schema validation and generated-client build passed; applying the Google identity migration remains hosted/MC-2.4 proof |
 | Backend build/runtime smoke | The clean production build passed; the emitted runtime started, returned `200` from `/health`, rejected an unauthenticated protected request with `401`, and shut down cleanly |
-| Flutter tests | 189 tests passed, including 8 analyzer-baseline tests |
-| Flutter analyzer | 0 errors, 0 warnings; the exact 20-finding informational multiset baseline passed |
-| Changed Dart formatting | 3 changed/new files passed |
+| Flutter locked restore | `flutter pub get --enforce-lockfile` passed |
+| Flutter tests | 330/330 tests passed |
+| Flutter analyzer | 0 errors, 0 warnings, 9 informational findings; the baseline accepted all 9 and reported 11 previous allowed findings removed |
+| Changed Dart formatting | All 29 Google-auth changed/new Dart files passed with zero changes |
+| Android debug package | `flutter build apk --debug --no-pub` passed; physical-device and signed-release proof remains manual |
 
 The repository contains separate stable `Backend security` and `Flutter CI` workflows. The latter pins Flutter 3.44.1/Dart 3.12.1, enforces the lockfile, checks merge-base-changed Dart formatting, rejects warning/error analysis, compares the informational multiset baseline, and runs all Flutter tests. These files and local results are source evidence only: hosted success, independent failure probes, protected CI-control review, and required default-branch checks remain MC-0.7 through MC-0.9 and MC-1.9 through MC-1.11. Local backend verification used Node 22.22.3; the workflow's exact Node 22.23.1 path still needs hosted proof.
 
@@ -321,7 +326,7 @@ flutter pub get --enforce-lockfile
 flutter run
 ```
 
-The checked-in development URL is a LAN address and will not work on another machine unchanged. Google sign-in requires the same web OAuth client ID in the backend and Flutter build, and its ID-token exchange refuses cleartext HTTP; use an HTTPS development endpoint or tunnel. Android and iOS OAuth registration, build defines, and the iOS callback scheme are documented in [`CONFIGURATION.md`](rythmrun_frontend_flutter/CONFIGURATION.md#google-sign-in-configuration). The staging API URL is unset and its R2 configuration is a placeholder. Android is the primary exercised target; iOS contains project scaffolding but is not documented as release-ready.
+The checked-in development URL is a LAN address and will not work on another machine unchanged. Google sign-in requires the same web OAuth client ID in the backend and Flutter build, and its ID-token exchange refuses cleartext HTTP; use an HTTPS development endpoint or tunnel. Android and iOS OAuth registration, build defines, and the iOS callback scheme are documented in [`CONFIGURATION.md`](rythmrun_frontend_flutter/CONFIGURATION.md#google-sign-in-configuration). Checked-in staging/production API URLs use Render, while the R2 domain entries remain placeholders that must be configured before media verification. Android is the primary exercised target; iOS contains project scaffolding but is not documented as release-ready.
 
 ### Run the verification suite
 
@@ -350,7 +355,7 @@ dart run tool/ci/analyzer_baseline.dart check \
 The next steps are ordered by risk rather than feature visibility:
 
 1. **Close the operational release gate:** verify credential rotation, migrations, hosted CI, storage/CDN policy, staging behavior, backups, rollback, and deployment provenance.
-2. **Finish authentication and privacy hardening:** align refresh contracts, move device secrets to protected storage, hash and scope server sessions, add revocation, restrict CORS, rate-limit sensitive routes, and make route privacy explicit.
+2. **Finish account and privacy hardening:** implement durable account deletion (password recovery remains provider-blocked), make exact routes private, disable unfinished social paths, restrict CORS/rate-limit sensitive routes, enforce upload integrity, and encrypt retained local routes/photos.
 3. **Persist active workouts:** checkpoint the tracking timeline and accepted route so process death, reboot, and OS suspension can recover safely; add Android foreground-service behavior where required.
 4. **Add server-to-client restore:** introduce cursors, revisions, tombstones, chunked route transfer, and a documented conflict policy before calling synchronization bidirectional.
 5. **Externalize asynchronous cleanup:** replace process-local polling with leased durable work, readiness checks, graceful shutdown, structured logs, request IDs, metrics, and alerts.
