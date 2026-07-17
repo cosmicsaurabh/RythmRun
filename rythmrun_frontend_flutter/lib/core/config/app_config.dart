@@ -10,6 +10,11 @@ class AppConfig {
   );
   static const String _googleServerClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
+    // Public web OAuth client ID (audience) — safe to embed; it ships in every
+    // build regardless. A --dart-define of the same name still overrides this
+    // (e.g. for a different audience in staging).
+    defaultValue:
+        '825804253502-2g743kq71sr2cep4tqo5ciabs9h26qkn.apps.googleusercontent.com',
   );
 
   // Environment-specific configurations
