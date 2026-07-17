@@ -10,7 +10,7 @@ published: false
 | Priority | P1 |
 | Target | 2–4 weeks in independently shippable packages, plus external email/privacy decisions |
 | Owner | Unassigned |
-| Last updated | 2026-07-14 |
+| Last updated | 2026-07-17 |
 | Depends on | IP-0 secret/avatar fix; IP-1 user-scope teardown and minimum CI |
 | External prerequisites | Password-recovery email provider/domain; privacy/deletion retention decision |
 | Exit condition | Auth expiry/rotation/revocation, secure storage, account lifecycle, and route-privacy gates pass |
@@ -45,10 +45,11 @@ After this phase, login, registration, access expiry, refresh, logout, password 
 - Private-by-default activities and owner-only exact routes.
 - CORS allowlisting, endpoint rate limits, and typed auth errors.
 - Disable dormant social/public behavior until its privacy model exists.
+- Record the maintainer-selected Google identity extension without treating it as closure of account deletion, route privacy, abuse control, or local-protection findings.
 
 ## Non-goals
 
-- OAuth/social login or enterprise identity providers.
+- Additional OAuth/enterprise providers, implicit email-based account linking, or a generalized identity-provider framework beyond the delivered Google exchange.
 - A social feed or public route-sharing UI.
 - Cross-device workout restore; IP-4 owns it.
 - Full route redaction/public-sharing implementation. This phase uses owner-only exact routes as the safe default.
@@ -343,7 +344,7 @@ The last verified user may access only that user's local completed history while
 
 **Implementation: account deletion**
 
-1. Require recent authentication/password confirmation and explicit destructive confirmation.
+1. Require recent authentication and explicit destructive confirmation. Password-capable accounts re-enter the current password; Google-only accounts must present a fresh provider assertion that the backend verifies again. Never treat a cached profile, email match, or old RythmRun access token alone as destructive reauthentication.
 2. Add a minimal `ObjectCleanupJob`/outbox table and durable runner in this phase. Each job stores the validated object key, operation, idempotency identity, status, retry count, next attempt, and safe error independently; it must survive `User`/activity cascades and must not rely on a deleted foreign-key owner row.
 3. In one transaction, revoke sessions, create cleanup jobs/tombstones for avatar/activity-image objects, and delete/anonymize database rows according to the approved retention policy.
 4. Do not perform irreversible S3 work before the database transaction. The initial single-replica runner is restart-safe and retries idempotently; IP-4.6 adds general leasing/multi-replica coordination and reuses it for all deletion paths.
@@ -489,6 +490,30 @@ The app intentionally retains completed offline history across normal logout. Ex
 
 - Locally retained exact routes/photos are encrypted at rest under the approved threat model, and policy documentation states the limits accurately.
 
+### IP-2.8 — Google identity extension (delivered out of sequence)
+
+This maintainer-selected extension is not an original audit closure and does not change the lowest-numbered unfinished canonical work: IP-2.4 account deletion remains the next selected slice after its retention/reauthentication decision gate, while password recovery remains blocked on its provider/domain decision. If the deletion decision is unavailable, IP-2.5 is the next implementable package without claiming IP-2.4 complete.
+
+**Repository implementation state (2026-07-17)**
+
+1. The PostgreSQL migration canonicalizes usernames only after aborting on case/whitespace collisions, makes password nullable, adds a unique bounded Google subject, and enforces that every user retains at least one authentication method. It is deliberately non-rolling-compatible with old backend code: all old instances must drain before the migration and only the matching Google-aware artifact may be promoted.
+2. The backend uses `google-auth-library` to verify the ID-token signature, issuer/expiry, configured web-client audience, verified email, bounded subject, and safe optional names. It accepts only the ID token from the client, keys the account by stable Google `sub`, refuses implicit linking when an existing password account owns the email, and issues the same bounded, revocable RythmRun access/refresh session as password login.
+3. Google certificate/network unavailability maps to a typed retryable `503`; invalid, expired, wrong-audience, unverified-email, or malformed tokens map to a generic typed `401`. No provider token or client-supplied subject/profile is stored as identity proof.
+4. Flutter uses `google_sign_in` 7.2 through a narrow test seam, initializes lazily once, serializes chooser/sign-out operations, clears stale native selection before deliberate account choice, and sends the ID token only to an HTTPS backend. Cancellation is a non-error; backend exchange failure triggers best-effort native sign-out.
+5. The Google exchange holds the existing authentication-attempt gate against logout/account cleanup, stores the returned first-party credential pair through the IP-2.2 secure envelope, and reaches the same authenticated root. Google-only users carry a safe `hasPassword: false` capability so Settings hides an unusable password-change action.
+6. The implementation is merged into `origin/main` through `c805f62` (constituent commits `87eaaa6`, `98afe83`, `ae3a8a8`, `6d98c82`, `a4c089f`, and `7a93bf2`). Repository configuration documents Android package/signing registration, the common web/server audience, iOS client/reversed scheme, HTTPS fail-closed behavior, and the non-rolling migration order.
+
+**Repository verification**
+
+- On Node 22.22.3, Prisma schema validation, production typecheck, 307 executable Jest tests, production build, and the built ESM runtime smoke pass. Seven real-PostgreSQL cases are intentionally skipped locally and remain hosted/staging work.
+- Locked Flutter dependency restoration passes. The full suite passes 330/330; analysis reports 9 informational findings and zero warnings/errors; the counted baseline accepts all 9 and reports 11 previous allowed findings removed. All 29 Google-auth Dart files are formatted and the Android debug APK builds.
+- Tests cover claim/audience/email validation, safe outage classification, exact-subject reuse, email-conflict refusal, concurrent first sign-in, password-null compatibility, HTTP allowlists, HTTPS-only exchange, no automatic exchange retry, auth-gate/account-switch races, cancellation, navigation ownership, and password-action visibility.
+
+**Still required**
+
+- MC-2.4 must prove the migration/artifact cutover, real Google OAuth configuration, Android signing/client matrix, physical-device and staging flows, release-log redaction, approved Google branding, and rollback. iOS remains optional under D-008; if iOS enters release scope, its callback scheme and the Sign in with Apple policy decision become mandatory.
+- Explicit account linking is not implemented. A matching password-account email remains a safe conflict. Password recovery must not silently add a password to a Google-only account without a separately approved ownership and product policy.
+
 ## Migration and rollout order
 
 1. Deploy schema capable of new sessions while old mobile login remains compatible.
@@ -496,10 +521,11 @@ The app intentionally retains completed offline history across normal logout. Ex
 3. Deploy backend registration/login/refresh/me and revocation tests behind staging.
 4. Release secure-storage/single-flight mobile build; prove migration from the previous supported version.
 5. Enforce new session checking and retire old refresh behavior after the minimum-client window.
-6. Roll out profile/recovery/deletion endpoints, keeping recovery UI hidden until email is production-ready.
-7. Migrate local data protection in a staged mobile release with verified rollback/recovery.
-8. Migrate activities private, then enforce owner-only route reads and disable social routes.
-9. Update privacy/account documentation only after staging/production behavior is verified.
+6. For Google identity, drain every old backend instance, apply the canonical-username/password-null migration to a reviewed upgrade copy, and atomically promote only the matching artifact; never run old and new versions together across this boundary.
+7. Roll out profile/recovery/deletion endpoints, keeping recovery UI hidden until email is production-ready.
+8. Migrate local data protection in a staged mobile release with verified rollback/recovery.
+9. Migrate activities private, then enforce owner-only route reads and disable social routes.
+10. Update privacy/account documentation only after staging/production behavior is verified.
 
 ## Rollback plan
 
@@ -527,15 +553,20 @@ The app intentionally retains completed offline history across normal logout. Ex
 
 ## Exit gate
 
-- [ ] Login, registration, and refresh share one tested response contract.
-- [ ] Raw refresh tokens are never stored server-side.
-- [ ] Refresh rotation is atomic; replay and concurrent-use behavior are proven.
-- [ ] Logout, password change, and deletion revoke active sessions.
-- [ ] `/users/me` exists and returns safe fields only.
-- [ ] Mobile tokens live only in secure storage after migration.
-- [ ] Concurrent auth failures trigger one refresh and one retry per request.
-- [ ] Offline access policy is enforced under a fake clock and user scope.
-- [ ] Profile edit works and updates local session data.
+Checked repository items below record delivered code and automated evidence only. They do not mark IP-2 complete or close the corresponding hosted/device rows in the manual register.
+
+- [x] Repository login, registration, and refresh share one tested response contract.
+- [x] Repository persistence paths store refresh digests rather than raw refresh tokens.
+- [x] Repository transaction/service tests cover rotation, replay-family revocation, and concurrent-use behavior.
+- [ ] MC-2.1/MC-2.2 prove digest-only storage and atomic rotation/replay behavior on hosted PostgreSQL and the destructive staging cutover.
+- [x] Repository logout and password change revoke active sessions.
+- [ ] Account deletion revokes active sessions and completes the required deletion lifecycle.
+- [x] Repository `/users/me` exists and returns safe fields only.
+- [x] Repository mobile writes and migration tests use the verified secure envelope and remove ongoing preference-token APIs.
+- [ ] MC-2.3 proves physical-device migration leaves no plaintext token copy and fails safely across interruption/backup/key-loss cases.
+- [x] Repository concurrent auth failures trigger one refresh and at most one eligible retry per request.
+- [x] Repository offline access policy is enforced under a fake clock and user scope.
+- [x] Repository profile edit works and updates local session data.
 - [ ] Recovery is non-enumerating, one-use, rate-limited, and connected to an approved email provider before UI exposure.
 - [ ] Account deletion purges/revokes correctly; its independent durable cleanup rows survive cascades and the minimal runner demonstrably processes/retries them.
 - [ ] Activities default/migrate private; only owners receive exact routes.
@@ -553,3 +584,4 @@ The app intentionally retains completed offline history across normal logout. Ex
 | 2026-07-13 | IP-2.2 | Locked Flutter restore; focused migration/refresh/session/navigation race suites; full Flutter suite; analyzer and counted baseline; Android debug APK | Repository gates pass; physical-device/staging gate pending | Flutter passed 275/275 tests. Analyzer reported 10 informational findings and zero warnings/errors, with 10 prior baseline findings removed. The debug APK compiled with the current secure-storage platform integration. No device storage, upgrade interruption, backup/restore, release-log, or staging lifecycle claim is made; those remain MC-2.3. IP-2.3 fake-clock/rollback policy remains separate. |
 | 2026-07-13 | IP-2.3 | Locked Flutter restore; fake-clock offline-window/rollback/recovery suite; online-guard, session-transition, and mutation-denial suites; full Flutter suite; analyzer and counted baseline; formatting/`git diff --check`; Android debug APK; independent adversarial multi-agent review | Repository gates pass; physical-device/staging gate pending | Flutter passed 291/291 tests (16 new). Analyzer reported 10 informational findings and zero warnings/errors, and the counted baseline accepted 10 findings with 10 prior findings removed. The seven-day boundary, clock rollback, future-timestamp, restart-surviving tripwire, forward-excursion recovery, best-effort observed-advance, cleared-secure-storage fail-closed, network-vs-`401` divergence, guard-mirroring, and offline password/avatar/sync denial are proven under fake clocks and injected fakes. The adversarial review confirmed two medium-severity clock-observation defects, both fixed and retested. The debug APK built. No physical-device offline/rollback, airplane-mode-vs-revocation, backup, or release-log claim is made; those remain MC-2.3. Defeating a fully attacker-controlled device clock is noted as future platform-monotonic/server hardening. |
 | 2026-07-14 | IP-2.4 (profile slice) | Backend Prisma validate/generate, typecheck, full Jest suite, production build, built runtime smoke; Flutter locked restore, full suite, analyzer and counted baseline, formatting/`git diff --check`, Android debug APK; independent adversarial multi-agent review | Repository gates pass; recovery/deletion undelivered; hosted/staging gates pending | `PUT /profile` returns the updated safe `/me`-shaped user and the mobile app gains the name-edit flow committing only server-confirmed, same-owner first/last name, composing safely with concurrent avatar uploads. Backend passed 281 executable Jest tests (6 PostgreSQL tests correctly skipped locally; 2 new) and the built-ESM smoke; Flutter passed 302/302 (11 new). The adversarial review confirmed one medium concurrent-commit clobber defect, fixed and retested. Analyzer reported 10 informational findings, zero warnings/errors, baseline accepted. Password recovery remains blocked on the email-provider decision and account deletion remains undelivered; no claim is made for either. Hosted CI remains MC-0.7/MC-1.9; staging auth lifecycle remains MC-2.2/MC-2.3. |
+| 2026-07-17 | IP-2.8 (Google identity extension) | Merged tree `c805f62`; Prisma validation; backend typecheck, full local Jest suite, production build and built smoke; locked Flutter restore, full suite, analyzer/baseline, changed-file formatting, Android debug APK | Repository gates pass; provider/migration/device/staging verification pending | Backend passed 307 executable tests with seven real-PostgreSQL cases intentionally skipped locally; Flutter passed 330/330. Analyzer reported 9 informational findings and zero warnings/errors; the baseline accepted 9 and reported 11 prior allowed findings removed. Tests cover provider verification, safe conflict/concurrency/outage behavior, first-party session parity, cleartext refusal, auth-gate races, cancellation/navigation, and Google-only capability UI. No real OAuth-console, signed-device, provider-network, non-rolling migration, deployment, branding, or iOS release claim is made; those remain MC-2.4. IP-2.4 deletion and recovery remain open. |

@@ -11,7 +11,7 @@ When you start the app, it prints the configuration:
 ```
 === App Configuration ===
 Environment: dev
-Base URL: http://192.168.1.51:8080/api
+Base URL: http://192.168.1.47:8080/api
 Timeout: 30 seconds
 Debug Mode: true
 Release Mode: false
@@ -19,11 +19,7 @@ Profile Mode: false
 ========================
 ```
 
-#### Method 2: Debug Menu
-- Tap the bug icon (🐛) in the top-right corner of the app
-- The environment info is displayed at the top
-
-#### Method 3: Build Mode Detection
+#### Method 2: Build Mode Detection
 - **Debug Mode** (`flutter run`): `dev` environment
 - **Profile Mode** (`flutter run --profile`): `staging` environment  
 - **Release Mode** (`flutter run --release`): `prod` environment
@@ -31,22 +27,22 @@ Profile Mode: false
 ### Current Configuration
 
 #### Development (dev)
-- **Base URL**: `http://192.168.1.51:8080/api`
+- **Base URL**: `http://192.168.1.47:8080/api`
 - **Timeout**: 30 seconds
-- **Retries**: 2 attempts
-- **Build Command**: `flutter run` or `./scripts/build_dev.sh`
+- **Retries**: GET may retry network failures twice; mutations default to no transport retry
+- **Build Command**: `flutter run`
 
 #### Staging (staging)
-- **Base URL**: `http://192.168.1.51:8080/api` (same as dev for now)
+- **Base URL**: `https://rythmrun-staging.onrender.com/api`
 - **Timeout**: 15 seconds
-- **Retries**: 2 attempts
+- **Retries**: GET may retry network failures twice; mutations default to no transport retry
 - **Build Command**: `flutter run --profile`
 
 #### Production (prod)
-- **Base URL**: `http://192.168.1.51:8080/api` (same as dev for now)
+- **Base URL**: `https://rythmrun.onrender.com/api`
 - **Timeout**: 10 seconds
-- **Retries**: 2 attempts
-- **Build Command**: `flutter run --release` or `./scripts/build_prod.sh`
+- **Retries**: GET may retry network failures twice; mutations default to no transport retry
+- **Build Command**: `flutter run --release`
 
 ## Advertising Configuration (IP-1.7)
 
@@ -143,9 +139,9 @@ Repository tests cover this state/configuration contract. Follow MC-1.14 in `doc
 Edit `lib/core/config/app_config.dart`:
 ```dart
 static const Map<String, String> _baseUrls = {
-  'dev': 'http://192.168.1.51:8080/api',
-  'staging': '', // Change this
-  'prod': '', // Change this
+  'dev': 'http://192.168.1.47:8080/api', // Replace for your LAN/tunnel
+  'staging': 'https://rythmrun-staging.onrender.com/api',
+  'prod': 'https://rythmrun.onrender.com/api',
 };
 ```
 
@@ -158,18 +154,18 @@ static const Map<String, int> _timeouts = {
 };
 ```
 
-#### 3. Use Build Scripts
+#### 3. Build directly with Flutter
 ```bash
 # Development
-./scripts/build_dev.sh
+flutter run
 
 # Production
-./scripts/build_prod.sh
+flutter run --release
 ```
 
 ### Network Features
 
-- **Automatic Retry**: Failed requests are retried with exponential backoff
+- **Method-aware retry**: GET retries network failures up to twice with bounded backoff; POST/PUT/DELETE/multipart requests default to zero transport retries unless an owning coordinator proves replay safety
 - **Timeout Handling**: Requests timeout after environment-specific duration
 - **Error Classification**: Different exception types for different error scenarios
 - **Connection Pooling**: Efficient HTTP client reuse
@@ -248,7 +244,7 @@ mobile release configuration.
 1. Check if the backend server is running
 2. Verify the IP address in the configuration
 3. Check network connectivity
-4. Use the debug menu to verify the current environment
+4. Call `AppConfig.printConfig()` from an approved debug-only entry point if you need to verify the resolved environment; the app does not currently expose a debug menu
 
 #### Environment Not Detected Correctly
 1. Check the build mode you're using

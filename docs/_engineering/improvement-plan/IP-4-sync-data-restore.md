@@ -10,7 +10,7 @@ published: false
 | Priority | P1/P2 |
 | Target | 2–4 weeks with compatibility and load evidence |
 | Owner | Unassigned |
-| Last updated | 2026-07-10 |
+| Last updated | 2026-07-17 |
 | Depends on | IP-2 refresh/privacy; IP-3 durable local workout identity and finalization |
 | Exit condition | Resumable long-workout sync, visible states, query/index, restore, tombstone, and durable-cleanup gates pass |
 
@@ -29,7 +29,7 @@ After this phase, a completed workout syncs through bounded, resumable, idempote
 - Activity PATCH can destroy child history unless presence-aware behavior from IP-1 is retained.
 - Backend activity deletion calls S3 before deleting the database row, so failures can leave cross-system inconsistency.
 - Image cleanup is an in-process timer handling 25 rows per web process and is not safely coordinated across replicas.
-- Several backend modules create their own Prisma clients.
+- At audit time several backend modules created their own Prisma clients. IP-1.6 now centralizes repository ownership on one adapter-backed client/pool; real deployed replica/pool behavior remains unverified under MC-1.12/MC-1.13.
 - Connectivity state may not emit an initial connected value and uses a repeated TCP probe to a public DNS address.
 
 ## Scope
@@ -40,7 +40,7 @@ After this phase, a completed workout syncs through bounded, resumable, idempote
 - Server revisions, tombstones, cursor-based pull, and deterministic conflict policy.
 - Remote image metadata restore and on-demand local caching rules.
 - PostgreSQL indexes and measured query plans.
-- Shared Prisma lifetime.
+- Preserve the IP-1.6 shared Prisma lifetime and prove deployed pool/replica behavior; do not reintroduce per-module clients.
 - Durable, leased object-deletion/outbox worker.
 - Initial connectivity emission and sync triggering without public-DNS polling.
 - Contract, migration, failure, and representative load tests.

@@ -10,7 +10,7 @@ published: false
 | Priority | P1 |
 | Target | 1–2 weeks, including physical-device evidence |
 | Owner | Unassigned |
-| Last updated | 2026-07-10 |
+| Last updated | 2026-07-17 |
 | Depends on | IP-1 tracking state/units; IP-2.1–IP-2.3 stable session identity/offline rules for recovery integration |
 | Platform gate | Android first; iOS remains out of release scope until IP-5 |
 | Exit condition | Crash recovery, screen-off, failure-injection, and long-session gates pass |
@@ -228,14 +228,14 @@ All tables are user-reachable only through a parent checkpoint scoped by `user_i
 **Primary files**
 
 - `rythmrun_frontend_flutter/android/app/src/main/AndroidManifest.xml`
-- Android Gradle/configuration files after resolving the duplicate Groovy/Kotlin build-file authority
+- The single authoritative Android Groovy build plus Gradle/AGP/Kotlin and plugin configuration
 - `rythmrun_frontend_flutter/lib/core/services/live_tracking_service.dart`
 - Native/Flutter service integration selected for the pinned SDK/plugin versions
 - Permission and notification UX in Track flow
 
 **Implementation**
 
-1. Resolve the duplicate app Gradle files in this work package: follow `settings.gradle.kts`/Flutter tooling to prove which file is authoritative with a clean build, transfer any required signing/SDK settings, remove the conflicting file, and keep one tested configuration before editing service permissions.
+1. Preserve the duplicate-build-file resolution already delivered in `a9f2535` (`app/build.gradle` is authoritative). Before foreground-service changes, move beyond Flutter's current warning thresholds—Gradle 8.11.1 to at least 8.14, AGP 8.9.1 to at least 8.11.1, and Kotlin 2.1.0 to at least 2.2.20—evaluate built-in Kotlin compatibility for the app plus `location` and `package_info_plus`, and prove clean debug/release configuration without regressing signing, Google Sign-In, or ads fail-closed rules.
 2. Follow official Android and pinned location-plugin requirements for foreground location, foreground-service type, notification permission, and any background-location permission that the chosen behavior actually needs. Do not cargo-cult permissions from an older target SDK.
 3. Start the foreground service only from a user-initiated Start/Resume while the app is eligible to do so.
 4. Show a persistent notification containing non-sensitive state (workout type, elapsed time, pause/resume/stop actions if safely supported). Never show exact coordinates.

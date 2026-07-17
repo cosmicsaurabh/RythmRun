@@ -10,7 +10,7 @@ published: false
 | Priority | P2 after all P0/P1 gates |
 | Target | 3–6 weeks for IP-5.1–IP-5.6 release controls; IP-5.7 estimated separately after the gate |
 | Owner | Unassigned |
-| Last updated | 2026-07-10 |
+| Last updated | 2026-07-17 |
 | Depends on | Verified exit gates for IP-0 through IP-4 |
 | Exit condition | Staging, operations, CI/E2E, platform, documentation, and focused-product release gates pass |
 
@@ -22,7 +22,7 @@ After the IP-5 release gate, RythmRun has a repeatable staging-to-production rel
 
 - `/health` reports process availability only and does not verify PostgreSQL or storage dependencies.
 - A read-only probe showed roughly 16–20 seconds of likely cold-start latency.
-- `app.ts` constructs middleware/routes, starts an in-process job, and calls `listen` in one module, complicating integration tests and graceful shutdown.
+- At audit time `app.ts` constructed middleware/routes, started an in-process job, and called `listen` in one module. IP-0.5/IP-1.6 separated app construction, listener ownership, and shared cleanup with a built smoke; dependency-aware readiness, bounded deployed shutdown, and durable job ownership remain open here and in MC-1.13.
 - There is no tracked CI workflow before IP-1, no staging configuration, no IaC, and no production observability contract.
 - Flutter analysis reported 159 findings (6 warnings, 153 informational), including deprecated APIs and unguarded prints.
 - Root/backend/configuration documentation contains stale features, versions, routes, scripts, and secret names.
@@ -229,7 +229,7 @@ After the IP-5 release gate, RythmRun has a repeatable staging-to-production rel
 
 **Android release checklist**
 
-- Resolve duplicate `build.gradle`/`build.gradle.kts`; retain one authoritative build.
+- Preserve the single authoritative `app/build.gradle` established in `a9f2535`; move Gradle 8.11.1 to at least 8.14, AGP 8.9.1 to at least 8.11.1, and Kotlin 2.1.0 to at least 2.2.20, then migrate the app/plugins to the supported built-in Kotlin model without regressing signing, Google Sign-In, ads fail-closed behavior, or debug/release builds.
 - Verify signing, package ID, min/target SDK, foreground location, notification, photo picker/storage, network security, and release shrinking rules.
 - Inject AdMob app/unit IDs per environment; development/staging always use test IDs.
 - Add the applicable consent flow and privacy choices before requesting/serving personalized ads.
