@@ -56,6 +56,7 @@ jest.unstable_mockModule('../config/env.js', () => ({
       GOOGLE_SERVER_CLIENT_ID: 'test.apps.googleusercontent.com',
     };
   }),
+  validateEmailEnvironment: jest.fn(() => null),
 }));
 
 jest.unstable_mockModule('../app.js', () => {

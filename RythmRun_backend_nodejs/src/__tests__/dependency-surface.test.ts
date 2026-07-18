@@ -50,6 +50,11 @@ describe('backend production dependency surface', () => {
     expect(dependencies['google-auth-library']).toEqual(expect.any(String));
   });
 
+  it('declares nodemailer as an explicit production dependency for email', () => {
+    expect(dependencies.nodemailer).toEqual(expect.any(String));
+    expect(devDependencies['@types/nodemailer']).toEqual(expect.any(String));
+  });
+
   it('keeps the end-of-support monolithic AWS SDK out of the dependency graph', () => {
     expect(allDeclaredDependencies).not.toHaveProperty('aws-sdk');
     expect(

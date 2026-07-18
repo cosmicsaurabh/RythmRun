@@ -2,6 +2,7 @@ import {
   EnvironmentValidationError,
   MINIMUM_JWT_SECRET_LENGTH,
   getJwtSecrets,
+  validateEmailEnvironment,
   validateJwtSecrets,
   validateServerEnvironment,
 } from '../config/env.js';
@@ -160,5 +161,91 @@ describe('server environment validation', () => {
         GOOGLE_SERVER_CLIENT_ID: clientId,
       }),
     ).toThrow('GOOGLE_SERVER_CLIENT_ID');
+  });
+});
+
+describe('email environment validation', () => {
+  const validEmailEnvironment = {
+    SMTP_HOST: 'smtp-relay.brevo.com',
+    SMTP_PORT: '587',
+    SMTP_SECURE: 'false',
+    SMTP_USER: 'mailer@reshapeapp.ai',
+    SMTP_PASS: 'brevo-smtp-key',
+    MAIL_FROM: 'RythmRun <noreply@reshapeapp.ai>',
+    PUBLIC_APP_URL: 'https://rythmrun.onrender.com',
+  };
+
+  it('returns null when no email variables are set (feature disabled)', () => {
+    expect(validateEmailEnvironment({})).toBeNull();
+  });
+
+  it('parses a fully configured mailer with defaults applied', () => {
+    expect(validateEmailEnvironment(validEmailEnvironment)).toEqual({
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false,
+      user: 'mailer@reshapeapp.ai',
+      pass: 'brevo-smtp-key',
+      from: 'RythmRun <noreply@reshapeapp.ai>',
+      publicAppUrl: 'https://rythmrun.onrender.com',
+    });
+  });
+
+  it('defaults port to 587 and secure to false when omitted', () => {
+    const source: Record<string, string | undefined> = {
+      ...validEmailEnvironment,
+    };
+    delete source.SMTP_PORT;
+    delete source.SMTP_SECURE;
+
+    const result = validateEmailEnvironment(source);
+    expect(result?.port).toBe(587);
+    expect(result?.secure).toBe(false);
+  });
+
+  it('strips a trailing slash from PUBLIC_APP_URL for clean link building', () => {
+    expect(
+      validateEmailEnvironment({
+        ...validEmailEnvironment,
+        PUBLIC_APP_URL: 'https://rythmrun.onrender.com/',
+      })?.publicAppUrl,
+    ).toBe('https://rythmrun.onrender.com');
+  });
+
+  it.each(['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM', 'PUBLIC_APP_URL'])(
+    'throws when partially configured and %s is missing',
+    (name) => {
+      const source: Record<string, string | undefined> = {
+        ...validEmailEnvironment,
+      };
+      delete source[name];
+
+      expect(() => validateEmailEnvironment(source)).toThrow(
+        EnvironmentValidationError,
+      );
+    },
+  );
+
+  it.each([
+    'not-a-url',
+    'ftp://rythmrun.onrender.com',
+    ' https://rythmrun.onrender.com',
+    'REPLACE_WITH_PUBLIC_APP_URL',
+  ])('rejects an invalid PUBLIC_APP_URL: %s', (url) => {
+    expect(() =>
+      validateEmailEnvironment({ ...validEmailEnvironment, PUBLIC_APP_URL: url }),
+    ).toThrow('PUBLIC_APP_URL');
+  });
+
+  it.each(['0', '70000', 'abc'])('rejects an invalid SMTP_PORT: %s', (port) => {
+    expect(() =>
+      validateEmailEnvironment({ ...validEmailEnvironment, SMTP_PORT: port }),
+    ).toThrow('SMTP_PORT');
+  });
+
+  it('rejects a non-boolean SMTP_SECURE', () => {
+    expect(() =>
+      validateEmailEnvironment({ ...validEmailEnvironment, SMTP_SECURE: 'yes' }),
+    ).toThrow('SMTP_SECURE');
   });
 });

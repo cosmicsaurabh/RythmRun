@@ -20,6 +20,35 @@ export interface ServerEnvironment {
   R2_PUBLIC_URL: string;
 }
 
+/**
+ * Optional email/SMTP configuration. Email verification is a feature module:
+ * when NONE of these variables are set the feature is disabled and the app
+ * still boots (fail-closed only for the always-required ServerEnvironment).
+ * When ANY are set, ALL required fields must be present — a half-configured
+ * mailer is worse than none.
+ */
+export interface EmailEnvironment {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+  publicAppUrl: string;
+}
+
+export const EMAIL_ENVIRONMENT_VARIABLES = [
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_SECURE',
+  'SMTP_USER',
+  'SMTP_PASS',
+  'MAIL_FROM',
+  'PUBLIC_APP_URL',
+] as const;
+
+export const DEFAULT_SMTP_PORT = 587;
+
 export const MINIMUM_JWT_SECRET_LENGTH = 32;
 
 export const REQUIRED_SERVER_ENVIRONMENT_VARIABLES = [
@@ -189,6 +218,96 @@ export function validateServerEnvironment(
     R2_PUBLIC_URL: requireConfiguredEnvironmentVariable(
       source,
       'R2_PUBLIC_URL',
+    ),
+  };
+}
+
+function parsePublicAppUrl(value: string): string {
+  if (value !== value.trim()) {
+    throw new EnvironmentValidationError(
+      'PUBLIC_APP_URL must not have leading or trailing whitespace',
+    );
+  }
+  if (DOCUMENTED_CONFIGURATION_PLACEHOLDER.test(value)) {
+    throw new EnvironmentValidationError(
+      'PUBLIC_APP_URL must not use a documented placeholder',
+    );
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new EnvironmentValidationError(
+      'PUBLIC_APP_URL must be an absolute http(s) URL',
+    );
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new EnvironmentValidationError(
+      'PUBLIC_APP_URL must use the http or https scheme',
+    );
+  }
+
+  // Normalize away trailing slashes so verification links concatenate cleanly.
+  return value.replace(/\/+$/, '');
+}
+
+function parseSmtpPort(source: EnvironmentSource): number {
+  const raw = source.SMTP_PORT;
+  if (raw === undefined || raw.trim().length === 0) {
+    return DEFAULT_SMTP_PORT;
+  }
+
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new EnvironmentValidationError(
+      'SMTP_PORT must be an integer between 1 and 65535',
+    );
+  }
+  return port;
+}
+
+function parseSmtpSecure(source: EnvironmentSource): boolean {
+  const raw = source.SMTP_SECURE;
+  if (raw === undefined || raw.trim().length === 0) {
+    return false;
+  }
+
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === 'true') {
+    return true;
+  }
+  if (normalized === 'false') {
+    return false;
+  }
+  throw new EnvironmentValidationError("SMTP_SECURE must be 'true' or 'false'");
+}
+
+/**
+ * Validates the optional email feature configuration. Returns null when the
+ * feature is entirely unconfigured (no email variables set), and throws when
+ * it is only partially configured so a broken mailer never boots silently.
+ */
+export function validateEmailEnvironment(
+  source: EnvironmentSource,
+): EmailEnvironment | null {
+  const anyConfigured = EMAIL_ENVIRONMENT_VARIABLES.some((name) => {
+    const value = source[name];
+    return value !== undefined && value.trim().length > 0;
+  });
+  if (!anyConfigured) {
+    return null;
+  }
+
+  return {
+    host: requireEnvironmentVariable(source, 'SMTP_HOST'),
+    port: parseSmtpPort(source),
+    secure: parseSmtpSecure(source),
+    user: requireEnvironmentVariable(source, 'SMTP_USER'),
+    pass: requireEnvironmentVariable(source, 'SMTP_PASS'),
+    from: requireEnvironmentVariable(source, 'MAIL_FROM'),
+    publicAppUrl: parsePublicAppUrl(
+      requireEnvironmentVariable(source, 'PUBLIC_APP_URL'),
     ),
   };
 }
