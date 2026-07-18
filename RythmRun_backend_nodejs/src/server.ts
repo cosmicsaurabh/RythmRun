@@ -2,7 +2,10 @@ import 'reflect-metadata';
 import type { Server } from 'node:http';
 import os from 'node:os';
 
-import { loadAndValidateEnvironment } from './config/env.js';
+import {
+  loadAndValidateEnvironment,
+  validateEmailEnvironment,
+} from './config/env.js';
 import type { DatabaseRuntime } from './config/database.js';
 import type { ActivityImageService } from './services/activity-image.service.js';
 import type { AvatarService } from './services/avatar.service.js';
@@ -107,6 +110,8 @@ export async function startServer(
   options: StartServerOptions = {},
 ): Promise<Server> {
   const environment = loadAndValidateEnvironment();
+  // Optional feature config; null disables email delivery without blocking boot.
+  const emailConfig = validateEmailEnvironment(process.env);
   const port = getPort(options.port);
   let database: DatabaseRuntime | undefined;
 
@@ -117,6 +122,7 @@ export async function startServer(
     database = configureContainer(
       environment.DATABASE_URL,
       environment.GOOGLE_SERVER_CLIENT_ID,
+      emailConfig,
     );
 
     const [

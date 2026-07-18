@@ -11,6 +11,8 @@ import { FriendService } from '../services/friend.service.js';
 import { AvatarService } from '../services/avatar.service.js';
 import { AuthSessionService } from '../services/auth-session.service.js';
 import { GoogleAuthService } from '../services/google-auth.service.js';
+import { createEmailSender } from '../services/email.service.js';
+import type { EmailEnvironment } from './env.js';
 import s3Service from '../services/s3.service.js';
 
 export const container = rootContainer.createChildContainer();
@@ -19,6 +21,7 @@ let configured = false;
 export function configureContainer(
   databaseUrl: string,
   googleServerClientId: string,
+  emailConfig: EmailEnvironment | null = null,
 ): DatabaseRuntime {
   if (configured) {
     throw new Error('Dependency container is already configured');
@@ -31,6 +34,9 @@ export function configureContainer(
     'GoogleIdentityVerifier',
     new GoogleAuthService(googleServerClientId),
   );
+  // Always registered so the DI token resolves even when email is disabled;
+  // createEmailSender returns a no-op sender for a null config.
+  container.registerInstance('EmailSender', createEmailSender(emailConfig));
 
   container.register('AuthSessionService', { useClass: AuthSessionService });
   container.register('UserService', { useClass: UserService });
