@@ -22,6 +22,7 @@ const user: User = {
   username: 'runner@example.com',
   password: 'hashed-password',
   googleSubject: null,
+  emailVerified: true,
   firstname: 'Ada',
   lastname: 'Runner',
   profilePicturePath: null,
@@ -131,6 +132,7 @@ describe('AuthSessionService', () => {
 
     expect(Object.keys(response).sort()).toEqual([
       'accessToken',
+      'emailVerified',
       'firstname',
       'hasPassword',
       'id',

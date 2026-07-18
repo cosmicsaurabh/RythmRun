@@ -18,6 +18,7 @@ model User {
   username            String               @unique
   password            String?
   googleSubject       String?              @unique @db.VarChar(255)
+  emailVerified       Boolean              @default(false)
   profilePicturePath  String?
   profilePictureType  String?
   createdAt           DateTime             @default(now())
@@ -30,6 +31,32 @@ model User {
   friendsAsUser2      Friend[]             @relation("UserFriends2")
   likes               Like[]
   authSessions        AuthSession[]
+  verificationTokens  VerificationToken[]
+}
+
+enum VerificationTokenPurpose {
+  EMAIL_VERIFICATION
+}
+
+// Single-use, hash-at-rest capability tokens delivered by email. Only the
+// SHA-256 digest is stored (mirrors RefreshTokenRecord.tokenDigest); the raw
+// token lives only in the emailed link. The @@unique([userId, purpose])
+// constraint keeps exactly one outstanding token per user per purpose, so a
+// resend rotates the previous token instead of accumulating live secrets.
+model VerificationToken {
+  id          String                   @id @default(cuid())
+  userId      Int
+  purpose     VerificationTokenPurpose @default(EMAIL_VERIFICATION)
+  tokenDigest String                   @unique @db.Char(64)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  lastSentAt  DateTime?
+  createdAt   DateTime                 @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, purpose])
+  @@index([expiresAt])
 }
 
 model AvatarUploadIntent {
