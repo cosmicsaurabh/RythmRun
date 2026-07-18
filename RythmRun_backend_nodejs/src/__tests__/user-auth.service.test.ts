@@ -64,6 +64,12 @@ function harness() {
       create: jest.fn().mockResolvedValue(user),
       findUnique: jest.fn().mockResolvedValue(user),
       findFirst: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue(user),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    verificationToken: {
+      upsert: jest.fn().mockResolvedValue({}),
+      findUnique: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
   };
@@ -71,6 +77,10 @@ function harness() {
     user: {
       findUnique: jest.fn(),
       updateMany: jest.fn(),
+    },
+    verificationToken: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
   };
   const authSessions = {
@@ -87,15 +97,21 @@ function harness() {
   const googleIdentityVerifier = {
     verifyIdToken: jest.fn().mockResolvedValue(googleIdentity),
   };
+  const emailSender = {
+    enabled: true,
+    sendEmailVerification: jest.fn().mockResolvedValue(undefined),
+  };
   return {
     transaction,
     prisma,
     authSessions,
     googleIdentityVerifier,
+    emailSender,
     service: new UserService(
       prisma as never,
       authSessions as never,
       googleIdentityVerifier,
+      emailSender as never,
     ),
   };
 }
@@ -106,7 +122,7 @@ describe('UserService authentication lifecycle', () => {
   });
 
   it('creates the user and its first session in one transaction', async () => {
-    const { service, transaction, authSessions } = harness();
+    const { service, transaction, authSessions, emailSender } = harness();
     jest.mocked(bcrypt.hash).mockResolvedValue('new-hash' as never);
 
     const result = await service.register({
@@ -129,6 +145,130 @@ describe('UserService authentication lifecycle', () => {
       transaction,
       user,
     );
+    // A verification token is issued in-transaction and the email is sent
+    // afterwards (post-commit, best-effort).
+    expect(transaction.verificationToken.upsert).toHaveBeenCalledTimes(1);
+    expect(emailSender.sendEmailVerification).toHaveBeenCalledTimes(1);
+  });
+
+  it('still registers when the post-commit verification email fails', async () => {
+    const { service, emailSender } = harness();
+    jest.mocked(bcrypt.hash).mockResolvedValue('new-hash' as never);
+    emailSender.sendEmailVerification.mockRejectedValueOnce(
+      new Error('SMTP down'),
+    );
+
+    await expect(
+      service.register({
+        username: 'runner@example.com',
+        password: 'correct-horse-battery-staple',
+      }),
+    ).resolves.toEqual(authResponse);
+  });
+
+  it('verifies an email with a valid unconsumed token', async () => {
+    const { service, transaction } = harness();
+    transaction.verificationToken.findUnique.mockResolvedValueOnce({
+      userId: user.id,
+      tokenDigest: 'digest',
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    transaction.verificationToken.updateMany.mockResolvedValueOnce({
+      count: 1,
+    });
+
+    await expect(service.verifyEmail('raw-token')).resolves.toBe('verified');
+    expect(transaction.user.update).toHaveBeenCalledWith({
+      where: { id: user.id },
+      data: { emailVerified: true },
+    });
+  });
+
+  it('is idempotent for a consumed token on an already-verified user', async () => {
+    const { service, transaction } = harness();
+    transaction.verificationToken.findUnique.mockResolvedValueOnce({
+      userId: user.id,
+      consumedAt: new Date(),
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    transaction.user.findUnique.mockResolvedValueOnce({ emailVerified: true });
+
+    await expect(service.verifyEmail('raw-token')).resolves.toBe(
+      'already_verified',
+    );
+    expect(transaction.user.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown verification token', async () => {
+    const { service, transaction } = harness();
+    transaction.verificationToken.findUnique.mockResolvedValueOnce(null);
+
+    await expect(service.verifyEmail('raw-token')).rejects.toMatchObject({
+      code: 'AUTH_VERIFICATION_TOKEN_INVALID',
+    });
+  });
+
+  it('rejects an empty token without touching the database', async () => {
+    const { service, authSessions } = harness();
+
+    await expect(service.verifyEmail('')).rejects.toMatchObject({
+      code: 'AUTH_VERIFICATION_TOKEN_INVALID',
+    });
+    expect(authSessions.withSerializableTransaction).not.toHaveBeenCalled();
+  });
+
+  it('resends verification and rotates the token for an unverified user', async () => {
+    const { service, prisma, transaction, emailSender } = harness();
+    prisma.user.findUnique.mockResolvedValueOnce({
+      ...user,
+      emailVerified: false,
+    });
+    prisma.verificationToken.findUnique.mockResolvedValueOnce({
+      lastSentAt: null,
+    });
+
+    await service.resendVerification(user.id);
+
+    expect(transaction.verificationToken.upsert).toHaveBeenCalledTimes(1);
+    expect(emailSender.sendEmailVerification).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not resend for an already-verified account', async () => {
+    const { service, prisma, authSessions, emailSender } = harness();
+    prisma.user.findUnique.mockResolvedValueOnce({
+      ...user,
+      emailVerified: true,
+    });
+
+    await service.resendVerification(user.id);
+
+    expect(authSessions.withSerializableTransaction).not.toHaveBeenCalled();
+    expect(emailSender.sendEmailVerification).not.toHaveBeenCalled();
+  });
+
+  it('throttles a resend inside the cooldown window', async () => {
+    const { service, prisma, emailSender } = harness();
+    prisma.user.findUnique.mockResolvedValueOnce({
+      ...user,
+      emailVerified: false,
+    });
+    prisma.verificationToken.findUnique.mockResolvedValueOnce({
+      lastSentAt: new Date(),
+    });
+
+    await expect(service.resendVerification(user.id)).rejects.toMatchObject({
+      code: 'AUTH_VERIFICATION_RATE_LIMITED',
+      statusCode: 429,
+    });
+    expect(emailSender.sendEmailVerification).not.toHaveBeenCalled();
+  });
+
+  it('purges expired verification tokens', async () => {
+    const { service, prisma } = harness();
+    prisma.verificationToken.deleteMany.mockResolvedValueOnce({ count: 3 });
+
+    await expect(service.purgeExpiredVerificationTokens()).resolves.toBe(3);
   });
 
   it('creates a separate session on valid login', async () => {

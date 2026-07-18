@@ -10,6 +10,7 @@ import type { DatabaseRuntime } from './config/database.js';
 import type { ActivityImageService } from './services/activity-image.service.js';
 import type { AvatarService } from './services/avatar.service.js';
 import type { AuthSessionService } from './services/auth-session.service.js';
+import type { UserService } from './services/user.service.js';
 
 export interface StartServerOptions {
   host?: string;
@@ -184,6 +185,12 @@ export async function startServer(
         container
           .resolve<AuthSessionService>('AuthSessionService')
           .purgeExpiredSessions()
+          .then(() => undefined),
+      );
+      runRetry('Expired verification token cleanup', () =>
+        container
+          .resolve<UserService>('UserService')
+          .purgeExpiredVerificationTokens()
           .then(() => undefined),
       );
     }, options.retryIntervalMs ?? 15 * 60 * 1000);

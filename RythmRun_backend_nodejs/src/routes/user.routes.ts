@@ -8,6 +8,8 @@ export interface UserRouteController {
   register: RequestHandler;
   login: RequestHandler;
   googleAuth: RequestHandler;
+  verifyEmail: RequestHandler;
+  resendVerification: RequestHandler;
   logout: RequestHandler;
   refreshToken: RequestHandler;
   me: RequestHandler;
@@ -57,6 +59,14 @@ export function createUserRouter({
   router.post('/auth/google', controller.googleAuth);
 
   /**
+   * @route GET /api/users/verify-email
+   * @description Consume an email verification token from a link (public).
+   * @query {string} token - the raw verification token
+   * @returns {text/html} A human-facing verification result page
+   */
+  router.get('/verify-email', controller.verifyEmail);
+
+  /**
    * @route POST /api/users/logout
    * @description Logout user and invalidate refresh token
    * @auth Required
@@ -98,6 +108,18 @@ export function createUserRouter({
    * @returns {Object} Success message
    */
   router.put('/change-password', authenticate, controller.changePassword);
+
+  /**
+   * @route POST /api/users/verify-email/resend
+   * @description Re-send the verification email for the authenticated user.
+   * @auth Required
+   * @returns {Object} Generic acknowledgement (throttled server-side)
+   */
+  router.post(
+    '/verify-email/resend',
+    authenticate,
+    controller.resendVerification,
+  );
 
   return router;
 }

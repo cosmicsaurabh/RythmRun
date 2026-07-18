@@ -6,6 +6,7 @@ const mockEvents: string[] = [];
 const mockRetryPendingDeletes = jest.fn().mockResolvedValue(undefined);
 const mockRetryPendingCleanup = jest.fn().mockResolvedValue(undefined);
 const mockPurgeExpiredSessions = jest.fn().mockResolvedValue(0);
+const mockPurgeExpiredVerificationTokens = jest.fn().mockResolvedValue(0);
 const mockResolve = jest.fn((token: string) => {
   if (token === 'ActivityImageService') {
     return { retryPendingDeletes: mockRetryPendingDeletes };
@@ -17,6 +18,12 @@ const mockResolve = jest.fn((token: string) => {
 
   if (token === 'AuthSessionService') {
     return { purgeExpiredSessions: mockPurgeExpiredSessions };
+  }
+
+  if (token === 'UserService') {
+    return {
+      purgeExpiredVerificationTokens: mockPurgeExpiredVerificationTokens,
+    };
   }
 
   throw new Error(`Unexpected service token: ${token}`);
@@ -149,9 +156,11 @@ describe('server bootstrap', () => {
     expect(mockResolve).toHaveBeenCalledWith('ActivityImageService');
     expect(mockResolve).toHaveBeenCalledWith('AvatarService');
     expect(mockResolve).toHaveBeenCalledWith('AuthSessionService');
+    expect(mockResolve).toHaveBeenCalledWith('UserService');
     expect(mockRetryPendingDeletes).toHaveBeenCalledTimes(1);
     expect(mockRetryPendingCleanup).toHaveBeenCalledTimes(1);
     expect(mockPurgeExpiredSessions).toHaveBeenCalledTimes(1);
+    expect(mockPurgeExpiredVerificationTokens).toHaveBeenCalledTimes(1);
     expect(console.error).toHaveBeenCalledWith(
       'Avatar cleanup retry failed (AvatarCleanupError)',
     );
