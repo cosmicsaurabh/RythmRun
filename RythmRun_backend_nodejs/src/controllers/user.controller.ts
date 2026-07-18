@@ -18,6 +18,7 @@ import {
   UpdateProfileDto,
 } from '../models/dto/user.dto.js';
 import { UserService } from '../services/user.service.js';
+import { renderVerifyPage } from '../templates/verify-page.template.js';
 
 interface ErrorResponseOptions {
   validationCode: string;
@@ -132,6 +133,53 @@ export class UserController {
       sendError(res, error, {
         validationCode: 'LOGOUT_FAILED',
         unexpectedOperation: 'Logout',
+      });
+    }
+  };
+
+  verifyEmail = async (req: Request, res: Response): Promise<void> => {
+    // Public, human-facing HTML route. Tighten CSP for this static page and
+    // strip the Referer so the token in the URL cannot leak to any origin.
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+    );
+    res.setHeader('Referrer-Policy', 'no-referrer');
+
+    const token =
+      typeof req.query.token === 'string' ? req.query.token : '';
+    try {
+      const result = await this.userService.verifyEmail(token);
+      res
+        .status(200)
+        .type('html')
+        .send(
+          renderVerifyPage(result === 'already_verified' ? 'already' : 'success'),
+        );
+    } catch (error: unknown) {
+      if (!(error instanceof AuthApplicationError)) {
+        const category = error instanceof Error ? error.name : 'UnknownError';
+        console.error(`Email verification failed (${category})`);
+      }
+      const statusCode =
+        error instanceof AuthApplicationError ? error.statusCode : 500;
+      res.status(statusCode).type('html').send(renderVerifyPage('error'));
+    }
+  };
+
+  resendVerification = async (req: Request, res: Response): Promise<void> => {
+    try {
+      await this.userService.resendVerification(req.user!.id);
+      res.status(200).json({
+        message:
+          'If your email is not yet verified, a new verification link has been sent.',
+        statusCode: 200,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'VERIFICATION_RESEND_FAILED',
+        unexpectedOperation: 'Verification resend',
       });
     }
   };

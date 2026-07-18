@@ -5,6 +5,8 @@ const mockProductionController = {
   register: jest.fn(),
   login: jest.fn(),
   googleAuth: jest.fn(),
+  verifyEmail: jest.fn(),
+  resendVerification: jest.fn(),
   logout: jest.fn(),
   refreshToken: jest.fn(),
   me: jest.fn(),

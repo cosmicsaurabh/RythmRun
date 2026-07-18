@@ -198,6 +198,9 @@ describe('UserService writable-field mapping', () => {
         const transaction = {
             user: {
                 create: jest.fn().mockResolvedValue(persistedUser)
+            },
+            verificationToken: {
+                upsert: jest.fn().mockResolvedValue({})
             }
         };
         const authSessions = createMockAuthSessions(transaction);

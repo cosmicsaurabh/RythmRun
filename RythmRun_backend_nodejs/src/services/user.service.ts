@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 import * as bcrypt from 'bcrypt';
 import { inject, injectable } from 'tsyringe';
 
@@ -5,9 +7,11 @@ import {
   AuthApplicationError,
   googleAccountConflictError,
   invalidCredentialsError,
+  invalidVerificationTokenError,
   passwordUnavailableError,
+  verificationRateLimitedError,
 } from '../errors/auth.error.js';
-import type { PrismaClient } from '../generated/prisma/client.js';
+import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import {
   ChangePasswordDto,
   GoogleAuthDto,
@@ -19,11 +23,18 @@ import {
   AuthSessionService,
   type AuthResponse,
   type SafeUserResponse,
+  digestRefreshToken,
   toSafeUserResponse,
 } from './auth-session.service.js';
+import type { EmailSender } from './email.service.js';
 import type { GoogleIdentityVerifier } from './google-auth.service.js';
 
 const SALT_ROUNDS = 10;
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
+const EMAIL_VERIFICATION_PURPOSE = 'EMAIL_VERIFICATION' as const;
+
+export type EmailVerificationResult = 'verified' | 'already_verified';
 
 function canonicalizeUsername(username: string): string {
   return username.trim().toLowerCase();
@@ -55,14 +66,22 @@ export class UserService {
     private readonly authSessions: AuthSessionService,
     @inject('GoogleIdentityVerifier')
     private readonly googleIdentityVerifier?: GoogleIdentityVerifier,
+    @inject('EmailSender')
+    private readonly emailSender?: EmailSender,
   ) {}
 
   async register(registerDto: RegisterUserDto): Promise<AuthResponse> {
     const hashedPassword = await bcrypt.hash(registerDto.password, SALT_ROUNDS);
     const username = canonicalizeUsername(registerDto.username);
 
+    let registration: {
+      response: AuthResponse;
+      username: string;
+      firstname: string | null;
+      rawToken: string;
+    };
     try {
-      return await this.authSessions.withSerializableTransaction(
+      registration = await this.authSessions.withSerializableTransaction(
         async (transaction) => {
           const user = await transaction.user.create({
             data: {
@@ -72,10 +91,23 @@ export class UserService {
               lastname: registerDto.lastname,
             },
           });
-          return this.authSessions.issueSessionInTransaction(
+          const response = await this.authSessions.issueSessionInTransaction(
             transaction,
             user,
           );
+          // Cheap, atomic DB work only; the SMTP call stays out of the
+          // serializable transaction (it retries on P2034 and its latency
+          // would hold locks / risk duplicate sends).
+          const rawToken = await this.issueVerificationToken(
+            transaction,
+            user.id,
+          );
+          return {
+            response,
+            username: user.username,
+            firstname: user.firstname,
+            rawToken,
+          };
         },
       );
     } catch (error: unknown) {
@@ -93,6 +125,174 @@ export class UserService {
         }
       }
       throw error;
+    }
+
+    // Post-commit and best-effort: a send failure must never roll back an
+    // already-registered user, who still receives a session either way.
+    await this.deliverVerificationEmail(
+      registration.username,
+      registration.firstname,
+      registration.rawToken,
+    );
+    return registration.response;
+  }
+
+  /**
+   * Verifies an email using the raw token from a verification link. The
+   * state transition is a single atomic update; re-presenting a consumed
+   * token for an already-verified user is idempotent success (email
+   * scanners and browsers routinely prefetch the GET link).
+   */
+  async verifyEmail(rawToken: string): Promise<EmailVerificationResult> {
+    if (typeof rawToken !== 'string' || rawToken.length === 0) {
+      throw invalidVerificationTokenError();
+    }
+    const tokenDigest = digestRefreshToken(rawToken);
+
+    const outcome = await this.authSessions.withSerializableTransaction(
+      async (transaction) => {
+        const now = new Date();
+        const token = await transaction.verificationToken.findUnique({
+          where: { tokenDigest },
+        });
+        if (token === null) {
+          return 'invalid' as const;
+        }
+
+        if (token.consumedAt !== null) {
+          const owner = await transaction.user.findUnique({
+            where: { id: token.userId },
+            select: { emailVerified: true },
+          });
+          return owner?.emailVerified === true
+            ? ('already_verified' as const)
+            : ('invalid' as const);
+        }
+
+        const consumed = await transaction.verificationToken.updateMany({
+          where: {
+            tokenDigest,
+            consumedAt: null,
+            expiresAt: { gt: now },
+          },
+          data: { consumedAt: now },
+        });
+        if (consumed.count !== 1) {
+          return 'invalid' as const;
+        }
+
+        await transaction.user.update({
+          where: { id: token.userId },
+          data: { emailVerified: true },
+        });
+        return 'verified' as const;
+      },
+    );
+
+    if (outcome === 'invalid') {
+      throw invalidVerificationTokenError();
+    }
+    return outcome;
+  }
+
+  /**
+   * Re-sends the verification link for the authenticated owner. No-op when
+   * already verified; DB-backed per-account cooldown throttles abuse; a
+   * resend rotates the single outstanding token so old links stop working.
+   */
+  async resendVerification(userId: number): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user === null) {
+      throw new AuthApplicationError(
+        'AUTH_USER_NOT_FOUND',
+        404,
+        'User account was not found',
+      );
+    }
+    if (user.emailVerified) {
+      return;
+    }
+
+    const existing = await this.prisma.verificationToken.findUnique({
+      where: {
+        userId_purpose: { userId, purpose: EMAIL_VERIFICATION_PURPOSE },
+      },
+      select: { lastSentAt: true },
+    });
+    if (
+      existing?.lastSentAt != null &&
+      Date.now() - existing.lastSentAt.getTime() <
+        VERIFICATION_RESEND_COOLDOWN_MS
+    ) {
+      throw verificationRateLimitedError();
+    }
+
+    const rawToken = await this.authSessions.withSerializableTransaction(
+      (transaction) => this.issueVerificationToken(transaction, userId),
+    );
+    await this.deliverVerificationEmail(
+      user.username,
+      user.firstname,
+      rawToken,
+    );
+  }
+
+  async purgeExpiredVerificationTokens(now = new Date()): Promise<number> {
+    const result = await this.prisma.verificationToken.deleteMany({
+      where: { expiresAt: { lte: now } },
+    });
+    return result.count;
+  }
+
+  /**
+   * Issues (or rotates) the single outstanding verification token for a user
+   * inside an existing transaction. Only the SHA-256 digest is stored; the
+   * returned raw token exists solely to be emailed.
+   */
+  private async issueVerificationToken(
+    transaction: Prisma.TransactionClient,
+    userId: number,
+    now = new Date(),
+  ): Promise<string> {
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenDigest = digestRefreshToken(rawToken);
+    const expiresAt = new Date(now.getTime() + VERIFICATION_TOKEN_TTL_MS);
+
+    await transaction.verificationToken.upsert({
+      where: {
+        userId_purpose: { userId, purpose: EMAIL_VERIFICATION_PURPOSE },
+      },
+      create: {
+        userId,
+        purpose: EMAIL_VERIFICATION_PURPOSE,
+        tokenDigest,
+        expiresAt,
+        lastSentAt: now,
+      },
+      update: {
+        tokenDigest,
+        expiresAt,
+        consumedAt: null,
+        lastSentAt: now,
+      },
+    });
+    return rawToken;
+  }
+
+  private async deliverVerificationEmail(
+    to: string,
+    firstname: string | null,
+    rawToken: string,
+  ): Promise<void> {
+    if (this.emailSender === undefined || !this.emailSender.enabled) {
+      return;
+    }
+    try {
+      await this.emailSender.sendEmailVerification({ to, firstname, rawToken });
+    } catch (error: unknown) {
+      // Never log the token or recipient (PII); only the error category.
+      const category = error instanceof Error ? error.name : 'UnknownError';
+      console.error(`Verification email send failed (${category})`);
     }
   }
 

@@ -5,6 +5,8 @@ const mockUserController = {
   register: jest.fn(),
   login: jest.fn(),
   googleAuth: jest.fn(),
+  verifyEmail: jest.fn(),
+  resendVerification: jest.fn(),
   logout: jest.fn(),
   refreshToken: jest.fn(),
   me: jest.fn(),
@@ -40,11 +42,13 @@ describe('user routes', () => {
       '/register',
       '/login',
       '/auth/google',
+      '/verify-email',
       '/logout',
       '/me',
       '/refresh-token',
       '/profile',
       '/change-password',
+      '/verify-email/resend',
     ]);
     expect(routePaths).not.toContain('/profile-picture');
     expect(routePaths).not.toContain('/profile-picture/:id');
