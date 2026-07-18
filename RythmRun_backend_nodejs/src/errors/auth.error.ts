@@ -1,5 +1,6 @@
 export type AuthErrorCode =
   | 'AUTH_ACCESS_INVALID'
+  | 'AUTH_EMAIL_UNVERIFIED_CONFLICT'
   | 'AUTH_GOOGLE_ACCOUNT_CONFLICT'
   | 'AUTH_GOOGLE_INVALID'
   | 'AUTH_GOOGLE_UNAVAILABLE'
@@ -8,7 +9,9 @@ export type AuthErrorCode =
   | 'AUTH_PASSWORD_INVALID'
   | 'AUTH_REFRESH_INVALID'
   | 'AUTH_USERNAME_TAKEN'
-  | 'AUTH_USER_NOT_FOUND';
+  | 'AUTH_USER_NOT_FOUND'
+  | 'AUTH_VERIFICATION_RATE_LIMITED'
+  | 'AUTH_VERIFICATION_TOKEN_INVALID';
 
 export class AuthApplicationError extends Error {
   constructor(
@@ -77,5 +80,42 @@ export function invalidRefreshError(): AuthApplicationError {
     'AUTH_REFRESH_INVALID',
     401,
     'Refresh session is invalid',
+  );
+}
+
+/**
+ * Raised when a Google sign-in matches an existing local account whose email
+ * has NOT been verified. Distinct from AUTH_GOOGLE_ACCOUNT_CONFLICT so the
+ * client can tell the user to sign in with their password and verify first,
+ * rather than a generic "account exists". Auto-linking an unverified account
+ * would enable account pre-hijacking, so this stays a hard conflict.
+ */
+export function emailUnverifiedConflictError(): AuthApplicationError {
+  return new AuthApplicationError(
+    'AUTH_EMAIL_UNVERIFIED_CONFLICT',
+    409,
+    'An unverified account already exists for this email. Sign in with your password and verify your email first.',
+  );
+}
+
+/**
+ * Single opaque error for every verification-token failure (unknown,
+ * malformed, expired, or already consumed). Collapsing them mirrors
+ * invalidCredentialsError so the endpoint never becomes a token-state oracle.
+ */
+export function invalidVerificationTokenError(): AuthApplicationError {
+  return new AuthApplicationError(
+    'AUTH_VERIFICATION_TOKEN_INVALID',
+    410,
+    'This verification link is invalid or has expired',
+  );
+}
+
+export function verificationRateLimitedError(): AuthApplicationError {
+  return new AuthApplicationError(
+    'AUTH_VERIFICATION_RATE_LIMITED',
+    429,
+    'Please wait before requesting another verification email',
+    true,
   );
 }

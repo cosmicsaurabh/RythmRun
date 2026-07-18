@@ -112,6 +112,7 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
     });
     const expectedKeys = [
       'accessToken',
+      'emailVerified',
       'firstname',
       'hasPassword',
       'id',
@@ -178,6 +179,7 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
     });
     expect(Object.keys(authenticated).sort()).toEqual([
       'accessToken',
+      'emailVerified',
       'firstname',
       'hasPassword',
       'id',
@@ -418,6 +420,7 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
       profilePicturePath: null,
       profilePictureType: null,
       hasPassword: true,
+      emailVerified: false,
     });
     expect(JSON.stringify(me)).not.toContain('password');
     expect(JSON.stringify(me)).not.toContain('session');
