@@ -243,7 +243,9 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
     await expect(
       conflictingGoogleUsers.googleLogin({ idToken: 'test-verifier-token' }),
     ).rejects.toMatchObject({
-      code: 'AUTH_GOOGLE_ACCOUNT_CONFLICT',
+      // The collision account registered by password is unverified, so an
+      // auto-merge is refused with the email-unverified conflict.
+      code: 'AUTH_EMAIL_UNVERIFIED_CONFLICT',
       statusCode: 409,
     });
   });

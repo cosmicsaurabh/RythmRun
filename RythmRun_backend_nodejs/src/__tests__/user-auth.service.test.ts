@@ -351,6 +351,7 @@ describe('UserService authentication lifecycle', () => {
         username: googleIdentity.email,
         password: null,
         googleSubject: googleIdentity.subject,
+        emailVerified: true,
         firstname: googleIdentity.firstname,
         lastname: googleIdentity.lastname,
       },
@@ -382,22 +383,25 @@ describe('UserService authentication lifecycle', () => {
     );
   });
 
-  it('does not auto-link a Google identity to an existing email account', async () => {
+  it('refuses to link Google to an unverified existing email account', async () => {
     const { service, transaction, authSessions } = harness();
     transaction.user.findUnique.mockResolvedValueOnce(null);
     transaction.user.findFirst.mockResolvedValueOnce({
       ...user,
       username: 'Google.Runner@Example.com',
+      emailVerified: false,
+      googleSubject: null,
     });
 
     await expect(
       service.googleLogin({ idToken: 'google-id-token' }),
     ).rejects.toMatchObject({
-      code: 'AUTH_GOOGLE_ACCOUNT_CONFLICT',
+      code: 'AUTH_EMAIL_UNVERIFIED_CONFLICT',
       statusCode: 409,
     });
 
     expect(transaction.user.create).not.toHaveBeenCalled();
+    expect(transaction.user.updateMany).not.toHaveBeenCalled();
     expect(transaction.user.findFirst).toHaveBeenCalledWith({
       where: {
         username: {
@@ -406,6 +410,60 @@ describe('UserService authentication lifecycle', () => {
         },
       },
     });
+    expect(authSessions.issueSessionInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('auto-links Google to a verified email account and revokes other sessions', async () => {
+    const { service, transaction, authSessions } = harness();
+    const verifiedOwner = {
+      ...user,
+      username: googleIdentity.email,
+      emailVerified: true,
+      googleSubject: null,
+    };
+    transaction.user.findUnique.mockResolvedValueOnce(null);
+    transaction.user.findFirst.mockResolvedValueOnce(verifiedOwner);
+    transaction.user.updateMany.mockResolvedValueOnce({ count: 1 });
+    authSessions.issueSessionInTransaction.mockResolvedValueOnce(
+      googleAuthResponse,
+    );
+
+    await expect(
+      service.googleLogin({ idToken: 'google-id-token' }),
+    ).resolves.toEqual(googleAuthResponse);
+
+    expect(transaction.user.updateMany).toHaveBeenCalledWith({
+      where: { id: verifiedOwner.id, googleSubject: null },
+      data: { googleSubject: googleIdentity.subject },
+    });
+    expect(
+      authSessions.revokeAllUserSessionsInTransaction,
+    ).toHaveBeenCalledWith(transaction, verifiedOwner.id);
+    expect(transaction.user.create).not.toHaveBeenCalled();
+    expect(authSessions.issueSessionInTransaction).toHaveBeenCalledWith(
+      transaction,
+      { ...verifiedOwner, googleSubject: googleIdentity.subject },
+    );
+  });
+
+  it('keeps a hard conflict when a verified account is already linked', async () => {
+    const { service, transaction, authSessions } = harness();
+    transaction.user.findUnique.mockResolvedValueOnce(null);
+    transaction.user.findFirst.mockResolvedValueOnce({
+      ...user,
+      username: googleIdentity.email,
+      emailVerified: true,
+      googleSubject: 'a-different-google-subject',
+    });
+
+    await expect(
+      service.googleLogin({ idToken: 'google-id-token' }),
+    ).rejects.toMatchObject({
+      code: 'AUTH_EMAIL_UNVERIFIED_CONFLICT',
+      statusCode: 409,
+    });
+
+    expect(transaction.user.updateMany).not.toHaveBeenCalled();
     expect(authSessions.issueSessionInTransaction).not.toHaveBeenCalled();
   });
 
