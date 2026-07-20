@@ -203,6 +203,12 @@ void main() {
 }
 
 class _FakeLoginRepository implements AuthRepository {
+  @override
+  Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
+
   _FakeLoginRepository({
     required this.failuresRemaining,
     this.googleFailure,

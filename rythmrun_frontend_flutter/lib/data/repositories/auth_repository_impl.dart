@@ -195,6 +195,28 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<UserEntity> refreshCurrentUser() async {
+    // A read, so it stays allowed offline-guard-free and simply fails if the
+    // network is down. One post-refresh replay is safe for a GET.
+    final user = await _authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
+      request: _remoteDataSource.fetchCurrentUser,
+    );
+    return user.toEntity();
+  }
+
+  @override
+  Future<void> resendVerificationEmail() async {
+    // Sending mail is an online-only action; the server throttles repeats, so
+    // a single post-refresh replay is safe.
+    _onlineOperationGuard?.requireOnline();
+    await _authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
+      request: _remoteDataSource.resendVerificationEmail,
+    );
+  }
+
+  @override
   Future<UserEntity> updateProfile({
     required String firstName,
     required String lastName,

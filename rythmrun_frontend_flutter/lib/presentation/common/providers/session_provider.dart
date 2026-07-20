@@ -440,6 +440,45 @@ class SessionNotifier extends StateNotifier<SessionData> {
     }
   }
 
+  /// Re-reads the server's email verification state and commits only that flag.
+  ///
+  /// Verification normally completes in a browser, often on another device, so
+  /// the app has no other signal that it happened. Only emailVerified is
+  /// merged; name and avatar stay owned by their own flows, and a response for
+  /// a different or stale owner is discarded rather than applied.
+  Future<void> refreshVerificationState() async {
+    final currentUser = state.user;
+    if (currentUser == null) return;
+
+    final UserEntity serverUser;
+    try {
+      serverUser = await _authRepository.refreshCurrentUser();
+    } catch (_) {
+      // Best effort: a failed refresh simply leaves the banner as it was.
+      return;
+    }
+    if (serverUser.id != currentUser.id) return;
+
+    final latestUser = state.user;
+    if (latestUser == null ||
+        latestUser.id != currentUser.id ||
+        latestUser.emailVerified == serverUser.emailVerified) {
+      return;
+    }
+
+    final committedUser = latestUser.copyWith(
+      emailVerified: serverUser.emailVerified,
+    );
+    state = state.copyWith(user: committedUser);
+    await _authRepository.updateCurrentUser(committedUser);
+  }
+
+  /// Requests another verification email. Errors (including the server-side
+  /// rate limit) propagate so the caller can surface them.
+  Future<void> resendVerificationEmail() {
+    return _authRepository.resendVerificationEmail();
+  }
+
   /// Called to logout user. An active or unsaved workout requires an explicit
   /// decision before credentials or user state are cleared.
   Future<UserScopeTeardownResult> logout({UserScopeExitDecision? decision}) {

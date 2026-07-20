@@ -1515,6 +1515,12 @@ class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
 }
 
 class FakeAuthRepository implements AuthRepository {
+  @override
+  Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
+
   UserEntity? currentUser;
   Object? refreshError;
   void Function()? onRefresh;

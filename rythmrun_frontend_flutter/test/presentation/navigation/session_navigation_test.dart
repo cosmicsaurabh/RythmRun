@@ -459,6 +459,12 @@ class _TestSessionNotifier extends SessionNotifier {
 }
 
 class _SuccessfulAuthRepository implements AuthRepository {
+  @override
+  Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
+
   static const user = UserEntity(
     id: '7',
     firstName: 'A',
@@ -485,6 +491,12 @@ class _NoopGoogleIdentityService implements GoogleIdentityService {
 }
 
 class _UnavailableUnverifiedAuthRepository implements AuthRepository {
+  @override
+  Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
+
   @override
   Future<bool> hasPendingAuthCleanup() async => false;
 

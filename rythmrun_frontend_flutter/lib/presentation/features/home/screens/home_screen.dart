@@ -7,6 +7,7 @@ import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/sc
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/screens/tracking_history_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/profile/screens/profile_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/fitness_calculator/screens/fitness_tools_screen.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/home/widgets/email_verification_banner.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
 
 // Provider for managing the current tab index
@@ -97,7 +98,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ];
 
     return Scaffold(
-      body: IndexedStack(index: currentIndex, children: screens),
+      body: Column(
+        children: [
+          // Sits above the tab stack so it is visible from every tab.
+          const EmailVerificationBanner(),
+          Expanded(
+            child: IndexedStack(index: currentIndex, children: screens),
+          ),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
         onTap: (index) {

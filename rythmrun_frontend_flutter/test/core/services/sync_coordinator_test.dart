@@ -153,6 +153,12 @@ class _FakeActivityImageRepository implements ActivityImageRepository {
 }
 
 class _MutableAuthRepository implements AuthRepository {
+  @override
+  Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
+
   int? currentUserId;
 
   _MutableAuthRepository(this.currentUserId);
