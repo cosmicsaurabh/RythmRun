@@ -43,4 +43,47 @@ void main() {
     expect(googleUser.hashCode, isNot(passwordUser.hashCode));
     expect(googleUser.copyWith(), googleUser);
   });
+
+  test('parses and round-trips an unverified email', () {
+    final model = UserModel.fromJson(<String, Object?>{
+      'id': 7,
+      'firstname': 'Ada',
+      'lastname': 'Runner',
+      'username': 'runner@example.test',
+      'emailVerified': false,
+    });
+
+    expect(model.emailVerified, isFalse);
+    expect(model.toEntity().emailVerified, isFalse);
+    expect(model.toJson()['emailVerified'], isFalse);
+    expect(UserModel.fromEntity(model).emailVerified, isFalse);
+  });
+
+  test('responses omitting emailVerified default to verified', () {
+    final model = UserModel.fromJson(<String, Object?>{
+      'id': 7,
+      'firstname': 'Legacy',
+      'lastname': 'Runner',
+      'username': 'runner@example.test',
+    });
+
+    // Defaulting to true keeps an older API (or a pre-upgrade cached blob)
+    // from flagging every existing account as unverified.
+    expect(model.emailVerified, isTrue);
+  });
+
+  test('equality and copyWith track the verified flag so the UI rebuilds', () {
+    const verified = UserEntity(
+      id: '7',
+      firstName: 'A',
+      lastName: 'Runner',
+      email: 'runner@example.test',
+    );
+    final unverified = verified.copyWith(emailVerified: false);
+
+    expect(unverified.emailVerified, isFalse);
+    expect(unverified, isNot(verified));
+    expect(unverified.hashCode, isNot(verified.hashCode));
+    expect(unverified.copyWith(emailVerified: true), verified);
+  });
 }

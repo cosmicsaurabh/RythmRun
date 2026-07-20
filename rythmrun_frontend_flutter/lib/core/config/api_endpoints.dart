@@ -9,6 +9,7 @@ class ApiEndpoints {
   static const String me = '/users/me';
   static const String profile = '/users/profile';
   static const String changePassword = '/users/change-password';
+  static const String resendVerification = '/users/verify-email/resend';
 
   // Activity endpoints
   static const String activities = '/activities';

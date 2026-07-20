@@ -244,6 +244,39 @@ void main() {
     expect((await persistence.getUserData())?.hasPassword, isTrue);
   });
 
+  test('older cached users default to email-verified', () async {
+    final persistence = service(
+      secure: _MemorySecureValueStore(),
+      preferences: _MemoryPreferences(<String, Object>{
+        AuthPersistenceService.userDataKey: _encodedUser,
+      }),
+    );
+
+    // A blob cached before the field existed must not look unverified.
+    expect((await persistence.getUserData())?.emailVerified, isTrue);
+  });
+
+  test('locally rewritten users keep an unverified email flag', () async {
+    final persistence = service(
+      secure: _MemorySecureValueStore(),
+      preferences: _MemoryPreferences(),
+    );
+
+    await persistence.updateUserData(
+      const UserModel(
+        id: '7',
+        firstName: 'Ada',
+        lastName: 'Runner',
+        email: 'runner@example.test',
+        emailVerified: false,
+      ),
+    );
+
+    // updateUserData/getUserData hand-roll their JSON instead of going through
+    // UserModel, so this guards against silently dropping the field.
+    expect((await persistence.getUserData())?.emailVerified, isFalse);
+  });
+
   test('cleanup marker remains until every account value is absent', () async {
     final secure = _MemorySecureValueStore();
     final preferences = _MemoryPreferences();

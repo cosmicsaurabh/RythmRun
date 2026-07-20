@@ -177,6 +177,9 @@ class AuthPersistenceService {
         lastName: decoded['lastName'] as String,
         email: decoded['email'] as String,
         hasPassword: decoded['hasPassword'] as bool? ?? true,
+        // Same default as UserModel.fromJson: a blob cached before this field
+        // existed must not flash an "unverified" banner.
+        emailVerified: decoded['emailVerified'] as bool? ?? true,
         profilePicturePath: decoded['profilePicturePath'] as String?,
         profilePictureType: decoded['profilePictureType'] as String?,
         createdAt:
@@ -285,6 +288,7 @@ class AuthPersistenceService {
         'lastName': user.lastName,
         'email': user.email,
         'hasPassword': user.hasPassword,
+        'emailVerified': user.emailVerified,
         'profilePicturePath': user.profilePicturePath,
         'profilePictureType': user.profilePictureType,
         'createdAt': user.createdAt?.toIso8601String(),

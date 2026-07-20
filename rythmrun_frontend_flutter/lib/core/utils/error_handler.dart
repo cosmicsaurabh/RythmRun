@@ -15,6 +15,12 @@ class ErrorHandler {
           return 'Google sign-in could not be verified. Please choose your account and try again.';
         case 'AUTH_GOOGLE_ACCOUNT_CONFLICT':
           return 'A RythmRun account already exists for this email. Sign in with its original method.';
+        case 'AUTH_EMAIL_UNVERIFIED_CONFLICT':
+          return 'An account already exists for this email. Sign in with your password and verify your email, then Google sign-in will link automatically.';
+        case 'AUTH_VERIFICATION_TOKEN_INVALID':
+          return 'This verification link is invalid or has expired. Request a new one.';
+        case 'AUTH_VERIFICATION_RATE_LIMITED':
+          return 'Please wait a moment before requesting another verification email.';
       }
     }
 
