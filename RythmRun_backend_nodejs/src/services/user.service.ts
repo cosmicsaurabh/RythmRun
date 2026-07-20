@@ -5,6 +5,7 @@ import { inject, injectable } from 'tsyringe';
 
 import {
   AuthApplicationError,
+  emailUnverifiedConflictError,
   googleAccountConflictError,
   invalidCredentialsError,
   invalidVerificationTokenError,
@@ -357,9 +358,14 @@ export class UserService {
             );
           }
 
-          // A matching password account is not linked implicitly. Linking by
-          // email alone could attach a Google identity to the wrong account;
-          // an explicit, authenticated linking flow can be added separately.
+          // Safe automatic linking: a Google sign-in may merge onto an
+          // existing local account ONLY when that account has independently
+          // proven control of this email (emailVerified === true) and is not
+          // already linked to a Google identity. Google itself already
+          // enforced email_verified === true, so both sides then prove the
+          // same mailbox and the link is safe. Any other case stays a hard
+          // conflict — auto-linking an unverified account would let an
+          // attacker pre-hijack it.
           const emailOwner = await transaction.user.findFirst({
             where: {
               username: {
@@ -369,7 +375,28 @@ export class UserService {
             },
           });
           if (emailOwner !== null) {
-            throw googleAccountConflictError();
+            if (
+              emailOwner.emailVerified === true &&
+              emailOwner.googleSubject === null
+            ) {
+              const linked = await transaction.user.updateMany({
+                where: { id: emailOwner.id, googleSubject: null },
+                data: { googleSubject: identity.subject },
+              });
+              if (linked.count === 1) {
+                // Attaching a new sign-in method invalidates the account's
+                // other sessions, mirroring a password change.
+                await this.authSessions.revokeAllUserSessionsInTransaction(
+                  transaction,
+                  emailOwner.id,
+                );
+                return this.authSessions.issueSessionInTransaction(
+                  transaction,
+                  { ...emailOwner, googleSubject: identity.subject },
+                );
+              }
+            }
+            throw emailUnverifiedConflictError();
           }
 
           const user = await transaction.user.create({
@@ -377,6 +404,10 @@ export class UserService {
               username: identity.email,
               password: null,
               googleSubject: identity.subject,
+              // Google already enforced email_verified === true, so a new
+              // Google-origin account is verified at creation and needs no
+              // verification email.
+              emailVerified: true,
               firstname: identity.firstname,
               lastname: identity.lastname,
             },
