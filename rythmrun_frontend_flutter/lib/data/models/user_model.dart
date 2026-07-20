@@ -7,6 +7,7 @@ class UserModel extends UserEntity {
     required super.lastName,
     required super.email,
     super.hasPassword,
+    super.emailVerified,
     super.profilePicturePath,
     super.profilePictureType,
     super.createdAt,
@@ -19,6 +20,9 @@ class UserModel extends UserEntity {
       lastName: json['lastname'] ?? '', // Backend uses lowercase
       email: json['username'] ?? '', // Backend uses username field for email
       hasPassword: json['hasPassword'] as bool? ?? true,
+      // Defaults true so an older API that omits the field never flags an
+      // existing account as unverified.
+      emailVerified: json['emailVerified'] as bool? ?? true,
       profilePicturePath:
           json['profilePicturePath'] as String?, // Profile picture S3 key
       profilePictureType:
@@ -34,6 +38,7 @@ class UserModel extends UserEntity {
       'lastName': lastName,
       'email': email,
       'hasPassword': hasPassword,
+      'emailVerified': emailVerified,
       'profilePicturePath': profilePicturePath,
       'profilePictureType': profilePictureType,
       'createdAt': createdAt?.toIso8601String(),
@@ -47,6 +52,7 @@ class UserModel extends UserEntity {
       lastName: entity.lastName,
       email: entity.email,
       hasPassword: entity.hasPassword,
+      emailVerified: entity.emailVerified,
       profilePicturePath: entity.profilePicturePath,
       profilePictureType: entity.profilePictureType,
       createdAt: entity.createdAt,
@@ -60,6 +66,7 @@ class UserModel extends UserEntity {
       lastName: lastName,
       email: email,
       hasPassword: hasPassword,
+      emailVerified: emailVerified,
       profilePicturePath: profilePicturePath,
       profilePictureType: profilePictureType,
       createdAt: createdAt,

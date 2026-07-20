@@ -131,6 +131,41 @@ class AuthRemoteDataSource {
     return response.statusCode == 200;
   }
 
+  /// Fetch the server's current safe user.
+  ///
+  /// [verifySession] deliberately returns only a boolean, so it cannot observe
+  /// server-side state changes. This parses the body instead, which is what
+  /// lets the client notice an email that was verified on another device.
+  Future<UserModel> fetchCurrentUser(Map<String, String> authHeaders) async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    };
+
+    final response = await _httpClient.get(
+      _resolveEndpoint(ApiEndpoints.me),
+      headers: headers,
+    );
+
+    final Map<String, dynamic> jsonResponse = json.decode(response.body);
+    return UserModel.fromJson(jsonResponse);
+  }
+
+  /// Ask the backend to re-send the verification email for the signed-in user.
+  /// The server throttles this and answers generically.
+  Future<void> resendVerificationEmail(Map<String, String> authHeaders) async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    };
+
+    await _httpClient.post(
+      _resolveEndpoint(ApiEndpoints.resendVerification),
+      headers: headers,
+      maxRetries: 0,
+    );
+  }
+
   /// Update first/last name and return the server's updated safe user.
   Future<UserModel> updateProfile(
     String firstName,

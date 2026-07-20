@@ -6,6 +6,15 @@ class UserEntity {
   final String lastName;
   final String email;
   final bool hasPassword;
+
+  /// Whether the account has proven control of its email address.
+  ///
+  /// Defaults to true everywhere it is deserialized so that a response or a
+  /// cached blob written before this field existed never shows a spurious
+  /// "verify your email" banner. This value is presentation-only: the server
+  /// alone decides verification-gated behaviour such as Google account
+  /// linking, and never trusts a client-supplied value.
+  final bool emailVerified;
   final String? profilePicturePath; // Keep for backward compatibility
   final String? profilePictureType;
   final DateTime? createdAt;
@@ -16,6 +25,7 @@ class UserEntity {
     required this.lastName,
     required this.email,
     this.hasPassword = true,
+    this.emailVerified = true,
     this.profilePicturePath,
     this.profilePictureType,
     this.createdAt,
@@ -27,6 +37,7 @@ class UserEntity {
     String? lastName,
     String? email,
     bool? hasPassword,
+    bool? emailVerified,
     Object? profilePicturePath = _unset,
     Object? profilePictureType = _unset,
     Object? createdAt = _unset,
@@ -37,6 +48,7 @@ class UserEntity {
       lastName: lastName ?? this.lastName,
       email: email ?? this.email,
       hasPassword: hasPassword ?? this.hasPassword,
+      emailVerified: emailVerified ?? this.emailVerified,
       profilePicturePath:
           identical(profilePicturePath, _unset)
               ? this.profilePicturePath
@@ -64,6 +76,7 @@ class UserEntity {
           lastName == other.lastName &&
           email == other.email &&
           hasPassword == other.hasPassword &&
+          emailVerified == other.emailVerified &&
           profilePicturePath == other.profilePicturePath &&
           profilePictureType == other.profilePictureType;
 
@@ -74,11 +87,12 @@ class UserEntity {
       lastName.hashCode ^
       email.hashCode ^
       hasPassword.hashCode ^
+      emailVerified.hashCode ^
       profilePicturePath.hashCode ^
       profilePictureType.hashCode;
 
   @override
   String toString() {
-    return 'UserEntity{id: $id, hasPassword: $hasPassword, hasProfilePicture: ${profilePicturePath != null}, createdAt: $createdAt}';
+    return 'UserEntity{id: $id, hasPassword: $hasPassword, emailVerified: $emailVerified, hasProfilePicture: ${profilePicturePath != null}, createdAt: $createdAt}';
   }
 }
