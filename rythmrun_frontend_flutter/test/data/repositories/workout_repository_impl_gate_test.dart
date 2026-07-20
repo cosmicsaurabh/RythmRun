@@ -602,6 +602,12 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
 }
 
 class _FakeAuthRepository implements AuthRepository {
+  @override
+  Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
+
   int? currentUserId;
 
   _FakeAuthRepository(this.currentUserId);

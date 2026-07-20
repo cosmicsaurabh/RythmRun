@@ -216,6 +216,12 @@ void main() {
 }
 
 class _FakeAuthRepository implements AuthRepository {
+  @override
+  Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
+
   _FakeAuthRepository({
     this.registrationFailuresRemaining = 0,
     this.passwordFailuresRemaining = 0,

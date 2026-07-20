@@ -166,6 +166,12 @@ class _FakeAvatarRepository implements AvatarRepository {
 }
 
 class _FakeAuthRepository implements AuthRepository {
+  @override
+  Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
+
   _FakeAuthRepository({this.result, this.error, this.onRequest});
 
   final UserEntity? result;

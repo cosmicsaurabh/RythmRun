@@ -452,6 +452,73 @@ void main() {
       expect(events, <String>['clear']);
     });
 
+    test('refreshing verification state commits a newly verified email', () async {
+      final events = <String>[];
+      final repository = _FakeAuthRepository(events: events);
+      final teardown = _FakeUserScopeTeardown(events: events);
+      final notifier = SessionNotifier(repository, teardown);
+      addTearDown(notifier.dispose);
+
+      await _flushAsyncWork();
+      final admission = notifier.beginAuthenticationAttempt();
+      expect(
+        notifier.completeAuthenticationAttempt(
+          userA.copyWith(emailVerified: false),
+          admission!,
+        ),
+        isTrue,
+      );
+      expect(notifier.state.user?.emailVerified, isFalse);
+
+      repository.serverUser = userA.copyWith(emailVerified: true);
+      await notifier.refreshVerificationState();
+
+      // Both the visible session and the cached copy are committed.
+      expect(notifier.state.user?.emailVerified, isTrue);
+      expect(repository.currentUser?.emailVerified, isTrue);
+    });
+
+    test('a failed verification refresh leaves session state untouched', () async {
+      final events = <String>[];
+      final repository = _FakeAuthRepository(events: events);
+      final teardown = _FakeUserScopeTeardown(events: events);
+      final notifier = SessionNotifier(repository, teardown);
+      addTearDown(notifier.dispose);
+
+      await _flushAsyncWork();
+      final admission = notifier.beginAuthenticationAttempt();
+      notifier.completeAuthenticationAttempt(
+        userA.copyWith(emailVerified: false),
+        admission!,
+      );
+
+      repository.refreshCurrentUserError = StateError('offline');
+      await notifier.refreshVerificationState();
+
+      expect(notifier.state.user?.emailVerified, isFalse);
+    });
+
+    test('a verification refresh for another account is discarded', () async {
+      final events = <String>[];
+      final repository = _FakeAuthRepository(events: events);
+      final teardown = _FakeUserScopeTeardown(events: events);
+      final notifier = SessionNotifier(repository, teardown);
+      addTearDown(notifier.dispose);
+
+      await _flushAsyncWork();
+      final admission = notifier.beginAuthenticationAttempt();
+      notifier.completeAuthenticationAttempt(
+        userA.copyWith(emailVerified: false),
+        admission!,
+      );
+
+      // A response owned by a different account must never be applied.
+      repository.serverUser = userB.copyWith(emailVerified: true);
+      await notifier.refreshVerificationState();
+
+      expect(notifier.state.user?.emailVerified, isFalse);
+    });
+
     test(
       'authentication admission opens only after startup is unauthenticated',
       () async {
@@ -857,6 +924,27 @@ Future<void> _flushAsyncWork() async {
 }
 
 class _FakeAuthRepository implements AuthRepository {
+  /// Server-side user returned by [refreshCurrentUser]; set per test.
+  UserEntity? serverUser;
+  Object? refreshCurrentUserError;
+  int resendCalls = 0;
+
+  @override
+  Future<UserEntity> refreshCurrentUser() async {
+    final error = refreshCurrentUserError;
+    if (error != null) throw error;
+    final user = serverUser;
+    if (user == null) {
+      throw StateError('no server user configured for this test');
+    }
+    return user;
+  }
+
+  @override
+  Future<void> resendVerificationEmail() async {
+    resendCalls += 1;
+  }
+
   final List<String> events;
   final bool failRemoteLogout;
   bool failLocalClear;

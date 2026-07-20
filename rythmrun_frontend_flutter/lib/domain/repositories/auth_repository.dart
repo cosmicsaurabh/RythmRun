@@ -38,6 +38,14 @@ abstract class AuthRepository {
   /// Persist non-secret cached profile metadata for the active user.
   Future<void> updateCurrentUser(UserEntity user);
 
+  /// Read the server's current safe user, including verification state.
+  /// Remote-only: the session coordinator commits visible and cached state.
+  Future<UserEntity> refreshCurrentUser();
+
+  /// Ask the backend to re-send the verification email for the signed-in
+  /// user. The server throttles this and answers generically.
+  Future<void> resendVerificationEmail();
+
   /// Update first/last name on the server and return the updated safe user.
   /// Remote-only: the session coordinator commits visible and cached state.
   Future<UserEntity> updateProfile({

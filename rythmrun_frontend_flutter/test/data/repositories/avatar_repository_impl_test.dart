@@ -260,6 +260,12 @@ class _FakeAvatarRemoteDataSource implements AvatarRemoteDataSource {
 
 class _FakeAuthRepository implements AuthRepository {
   @override
+  Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
+
+  @override
   Future<UserEntity?> getCurrentUser() async => const UserEntity(
     id: '7',
     firstName: 'Test',
