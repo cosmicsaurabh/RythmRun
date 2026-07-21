@@ -29,13 +29,14 @@ still owes at least one manual/hosted gate.
 | --- | --- | --- | --- | --- |
 | IP-0 Security containment (P0) | **In progress** | 6 of 10 (code); 4 operational packages not started | IP-0.1, 0.1A, 0.6, 0.7 (all operational) | MC-0.1–0.12 |
 | IP-1 Tracking correctness | **Verification** | 7 of 7 | — | MC-1.1–1.14 |
-| IP-2 Auth, account, privacy | **In progress** | 4 of 8 (+ IP-2.4 profile slice only) | IP-2.5, 2.6, 2.7 | MC-2.1–2.4 |
+| IP-2 Auth, account, privacy | **In progress** | 4 of 8 + IP-2.9 (+ IP-2.4 profile slice only) | IP-2.5, 2.6, 2.7 | MC-2.1–2.5 |
 | IP-3 Workout durability | **Planned** | 0 of 5 | all | — |
 | IP-4 Sync & restore | **Planned** | 0 of 6 | all | — |
 | IP-5 Release readiness | **Planned** | 0 of 7 | all (5.7 Deferred) | — |
 
-**Manual/hosted checks: 0 of 29 verified** (28 pending, MC-0.10 blocked). No
-package can reach `Complete` until its gates carry dated evidence.
+**Manual/hosted checks: 0 of 31 verified** (30 pending, MC-0.10 blocked;
+MC-2.5 added 2026-07-20 for the IP-2.9 email delivery). No package can reach
+`Complete` until its gates carry dated evidence.
 
 The single most important fact: **IP-0 is a P0 release blocker and its blocking
 work is operational, not code.** Containment, exposure investigation, and
@@ -84,7 +85,8 @@ All seven packages are repo-delivered; each waits on a device/staging/hosted gat
 | IP-2.5 Private routes; disable social | Planned | ✗ | Not started. Default `isPublic=false`, one-way migrate existing rows to private, owner-only exact-route/image detail, unmount friend/comment/like paths. |
 | IP-2.6 API abuse controls & typed errors | Planned | ✗ | Not started. CORS allowlist, rate limits (login/register/recovery/password/**Google exchange**), finish typed error mapping, storage size/type/integrity + abandoned-upload cleanup. |
 | IP-2.7 Protect retained routes/photos at rest | Planned | ✗ | Not started; gated on an owner design spike (threat model, library/perf, backup/key-loss recovery) before migrating SQLite + photos to user-scoped at-rest protection. |
-| IP-2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. Left: MC-2.4 non-rolling migration, OAuth-console/signing, provider, device, staging, branding proof. **Note: partially superseded by the 2026-07-20 delivery below.** |
+| IP-2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. Left: MC-2.4 non-rolling migration, OAuth-console/signing, provider, device, staging, branding proof. **Note: its no-implicit-link behavior is superseded by IP-2.9 below.** |
+| IP-2.9 Email verification & safe linking | Verification | ✓ (branch) | Branch `feat/email-verification` (PR pending; not yet on main). Delivers `emailVerified` + hashed token table, optional SMTP send, verify/resend, and the emailVerified-gated Google auto-link. Left: **MC-2.5** — real Brevo/SMTP + DKIM/SPF, staging delivery + verify page, on-device banner/resend. Resolves D-018; unblocks IP-2.4 recovery prerequisite. |
 
 ## IP-3 — Workout durability `Planned`
 
@@ -113,7 +115,7 @@ IP-5.6 documentation reconciliation · **IP-5.7 post-gate retention epic —
 
 ---
 
-## Manual / hosted gates — 0 of 29 verified
+## Manual / hosted gates — 0 of 31 verified
 
 Every row is unevidenced. Grouped by who can close it:
 
@@ -131,21 +133,24 @@ Every row is unevidenced. Grouped by who can close it:
 - **Isolated staging:** MC-1.2 metric migration · MC-1.6 user-scope isolation ·
   MC-1.8 bounded ingest/PATCH · MC-1.12 Prisma 7.8 on real Postgres · MC-1.13
   deploy order/shutdown · MC-2.1 auth-session transaction · MC-2.2 auth cutover
-  · MC-2.4 Google identity migration/provider/device.
+  · MC-2.4 Google identity migration/provider/device · MC-2.5
+  email-verification provider/delivery + on-device banner (IP-2.9).
 - **Product-data analysis:** MC-1.1 legacy metric sampling · MC-1.4 rollout
   observation.
 
 ---
 
-## ⚠ Recent delivery not yet folded into the plan
+## Recent delivery — reconciled into the plan 2026-07-20
 
 **Email verification + safe Google account linking** — 7 commits
 (`7432e9c`…`4f0983f`) on branch **`feat/email-verification`** (not yet merged;
 PR pending). Backend **347** Jest tests pass; Flutter **343** tests pass. The
-plan predates this work and is now partly inaccurate. Per program rule 6 and
-maintenance step 4, the plan should be updated to match shipped code.
+plan has been updated to match shipped code (per program rule 6 and
+maintenance step 4): D-017 amended, D-018 added, the email-provider owner
+decision resolved, IP-2.8 prose scoped, and the delivery recorded as **IP-2.9**
+with an evidence-log row and manual gate **MC-2.5**.
 
-### What it changes in the plan
+### What it changed in the plan
 
 | Impact | Detail |
 | --- | --- |
@@ -155,24 +160,21 @@ maintenance step 4, the plan should be updated to match shipped code.
 | **Falsifies IP-2.8 prose** | "refuses implicit linking when a password account owns the email" and "explicit account linking is not implemented" now hold only for the **unverified** case. Scope both to unverified; note verified-email safe linking is delivered. The IP-2 non-goal "implicit email-based account linking" needs the same verified/unverified split. |
 | **New capability the plan has no concept of** | `User.emailVerified` + hash-at-rest `VerificationToken`; migration `20260718000000` backfills `emailVerified=true` only where `googleSubject IS NOT NULL` (never blanket-verifies password rows); post-commit best-effort send; public idempotent `GET /verify-email` (CSP + `no-referrer`); throttled `POST /verify-email/resend`; optional SMTP feature flag; Flutter banner (unverified password accounts only) + `/me` refresh + new error-code mapping. |
 
-### Suggested plan edits (not yet applied)
+### Plan edits applied 2026-07-20
 
-1. Amend **D-017** to the shipped gated-linking rule; add **D-018** for the
-   email-verification policy (register never verifies; verification is the
-   prerequisite that makes auto-link safe; backfill only Google rows; Flutter
-   defaults `emailVerified=true` as deliberate fail-open compat).
-2. Move the email-provider row into *Decisions already made*.
-3. Update the four "blocked on the email-provider decision" statements
-   (README program status, README next-steps #1, IP-2 header *External
-   prerequisites*, IP-2.4 implementation state) — prerequisite resolved.
-4. Add a dated IP-2 evidence-log row (~2026-07-20) and an implementation-state
-   subsection (new **IP-2.9** or an IP-2.8 extension) for the delivery; refresh
-   the test-count baselines (backend 347 / Flutter 343) and re-check the
-   analyzer baseline for the new banner/error-mapping code.
-5. Fix the now-false IP-2.8 prose and the IP-2 non-goal line.
-6. Add a manual gate (extend **MC-2.4** or add **MC-2.5**): real Brevo/SMTP
-   config, sender-domain DKIM/SPF, staging delivery + verify-page, on-device
-   banner/resend proof.
+1. ✅ **D-017** amended to the shipped gated-linking rule; **D-018** added for
+   the email-verification policy.
+2. ✅ Email-provider owner decision moved to *Decisions already made* (D-018).
+3. ✅ The "blocked on the email-provider decision" statements updated (README
+   program status, README next-steps #1, IP-2 header *External prerequisites*,
+   IP-2.4 implementation state).
+4. ✅ IP-2 evidence-log row added (2026-07-20) and an **IP-2.9**
+   implementation-state subsection recorded; test counts noted as
+   branch-pending (347 / 343), not overwriting the merged-main baseline.
+5. ✅ The now-false IP-2.8 prose and the IP-2 non-goal line scoped to the
+   unverified case.
+6. ✅ **MC-2.5** added: real Brevo/SMTP config, sender-domain DKIM/SPF, staging
+   delivery + verify-page, on-device banner/resend proof.
 
 ---
 
@@ -181,14 +183,14 @@ maintenance step 4, the plan should be updated to match shipped code.
 Lowest-numbered unblocked packages (operational IP-0 gates run in parallel but
 are not substitutes):
 
-1. **Reconcile this plan** with the email-verification delivery (the 6 edits
-   above) — cheap, and the plan's own rules require it.
-2. **IP-2.4 password recovery** — now unblocked; reuse the delivered token/
-   email plumbing.
-3. **IP-2.4 account deletion** — pending the retention/reauth decision.
-4. **IP-2.5 route privacy** — default activities private; owner-only detail;
+1. **IP-2.4 password recovery** — now unblocked; reuse the delivered token/
+   email plumbing (the `VerificationToken.purpose` enum extends to
+   `PASSWORD_RESET`).
+2. **IP-2.4 account deletion** — pending the retention/reauth decision.
+3. **IP-2.5 route privacy** — default activities private; owner-only detail;
    unmount social paths.
-5. **IP-2.6 abuse controls** — CORS + rate limiting (including the Google and
+4. **IP-2.6 abuse controls** — CORS + rate limiting (including the Google and
    the new verify/resend endpoints) + typed errors + upload integrity.
 
-_Last regenerated: 2026-07-20 (from phase files at 2026-07-17)._
+_Last regenerated: 2026-07-20 (from phase files at 2026-07-17; plan reconciled
+with the IP-2.9 delivery the same day)._

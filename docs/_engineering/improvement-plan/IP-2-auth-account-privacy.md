@@ -10,9 +10,9 @@ published: false
 | Priority | P1 |
 | Target | 2–4 weeks in independently shippable packages, plus external email/privacy decisions |
 | Owner | Unassigned |
-| Last updated | 2026-07-17 |
+| Last updated | 2026-07-20 |
 | Depends on | IP-0 secret/avatar fix; IP-1 user-scope teardown and minimum CI |
-| External prerequisites | Password-recovery email provider/domain; privacy/deletion retention decision |
+| External prerequisites | Privacy/deletion retention decision. (Password-recovery email provider/domain resolved 2026-07-20 — Brevo + reshapeapp.ai, see D-018.) |
 | Exit condition | Auth expiry/rotation/revocation, secure storage, account lifecycle, and route-privacy gates pass |
 
 ## Outcome
@@ -49,7 +49,7 @@ After this phase, login, registration, access expiry, refresh, logout, password 
 
 ## Non-goals
 
-- Additional OAuth/enterprise providers, implicit email-based account linking, or a generalized identity-provider framework beyond the delivered Google exchange.
+- Additional OAuth/enterprise providers, a generalized identity-provider framework beyond the delivered Google exchange, or implicit account linking to an **unverified** email account. Safe automatic linking to an existing account whose email is **verified** is now delivered (see IP-2.9 and D-017/D-018); only unverified-email linking remains excluded.
 - A social feed or public route-sharing UI.
 - Cross-device workout restore; IP-4 owns it.
 - Full route redaction/public-sharing implementation. This phase uses owner-only exact routes as the safe default.
@@ -365,8 +365,10 @@ The last verified user may access only that user's local completed history while
 **Repository implementation state (2026-07-14) — profile slice only**
 
 - The maintainer selected the profile-edit slice as its own package increment;
-  password recovery (blocked on the email-provider decision) and account
-  deletion (outbox/runner design) remain undelivered and unclaimed.
+  password recovery (its email-provider prerequisite was resolved later on
+  2026-07-20 — see D-018 and IP-2.9 — leaving only the reset endpoints/UI to
+  build on the delivered token/email plumbing) and account deletion
+  (outbox/runner design) remain undelivered and unclaimed.
 - `PUT /api/users/profile` now returns the updated safe user in exactly the
   `/me` contract instead of a message-only body. Only the two declared name
   fields are mapped into the Prisma update, a missing row maps to the safe
@@ -492,12 +494,12 @@ The app intentionally retains completed offline history across normal logout. Ex
 
 ### IP-2.8 — Google identity extension (delivered out of sequence)
 
-This maintainer-selected extension is not an original audit closure and does not change the lowest-numbered unfinished canonical work: IP-2.4 account deletion remains the next selected slice after its retention/reauthentication decision gate, while password recovery remains blocked on its provider/domain decision. If the deletion decision is unavailable, IP-2.5 is the next implementable package without claiming IP-2.4 complete.
+This maintainer-selected extension is not an original audit closure and does not change the lowest-numbered unfinished canonical work: IP-2.4 account deletion remains the next selected slice after its retention/reauthentication decision gate. Password recovery's provider/domain prerequisite is now resolved (D-018) and its reusable token/email plumbing is delivered (IP-2.9), leaving only the reset endpoints/UI to build. If the deletion decision is unavailable, IP-2.5 is the next implementable package without claiming IP-2.4 complete.
 
 **Repository implementation state (2026-07-17)**
 
 1. The PostgreSQL migration canonicalizes usernames only after aborting on case/whitespace collisions, makes password nullable, adds a unique bounded Google subject, and enforces that every user retains at least one authentication method. It is deliberately non-rolling-compatible with old backend code: all old instances must drain before the migration and only the matching Google-aware artifact may be promoted.
-2. The backend uses `google-auth-library` to verify the ID-token signature, issuer/expiry, configured web-client audience, verified email, bounded subject, and safe optional names. It accepts only the ID token from the client, keys the account by stable Google `sub`, refuses implicit linking when an existing password account owns the email, and issues the same bounded, revocable RythmRun access/refresh session as password login.
+2. The backend uses `google-auth-library` to verify the ID-token signature, issuer/expiry, configured web-client audience, verified email, bounded subject, and safe optional names. It accepts only the ID token from the client, keys the account by stable Google `sub`, and issues the same bounded, revocable RythmRun access/refresh session as password login. (As of this 2026-07-17 snapshot the backend refused *all* implicit email linking; the 2026-07-20 IP-2.9 delivery narrowed that to auto-link only a **verified** matching-email account and still refuse an unverified one — see IP-2.9 and D-017/D-018.)
 3. Google certificate/network unavailability maps to a typed retryable `503`; invalid, expired, wrong-audience, unverified-email, or malformed tokens map to a generic typed `401`. No provider token or client-supplied subject/profile is stored as identity proof.
 4. Flutter uses `google_sign_in` 7.2 through a narrow test seam, initializes lazily once, serializes chooser/sign-out operations, clears stale native selection before deliberate account choice, and sends the ID token only to an HTTPS backend. Cancellation is a non-error; backend exchange failure triggers best-effort native sign-out.
 5. The Google exchange holds the existing authentication-attempt gate against logout/account cleanup, stores the returned first-party credential pair through the IP-2.2 secure envelope, and reaches the same authenticated root. Google-only users carry a safe `hasPassword: false` capability so Settings hides an unusable password-change action.
@@ -512,7 +514,84 @@ This maintainer-selected extension is not an original audit closure and does not
 **Still required**
 
 - MC-2.4 must prove the migration/artifact cutover, real Google OAuth configuration, Android signing/client matrix, physical-device and staging flows, release-log redaction, approved Google branding, and rollback. iOS remains optional under D-008; if iOS enters release scope, its callback scheme and the Sign in with Apple policy decision become mandatory.
-- Explicit account linking is not implemented. A matching password-account email remains a safe conflict. Password recovery must not silently add a password to a Google-only account without a separately approved ownership and product policy.
+- Automatic linking to a **verified** matching-email account is delivered as of 2026-07-20 (see IP-2.9); a matching account whose email is **unverified** remains a safe conflict (`AUTH_EMAIL_UNVERIFIED_CONFLICT`, 409). Password recovery must not silently add a password to a Google-only account without a separately approved ownership and product policy.
+
+### IP-2.9 — Email verification and safe automatic account linking (delivered out of sequence)
+
+Maintainer-selected extension building on IP-2.8. It adds email verification
+and, on top of it, the safe automatic Google-to-local account linking that
+IP-2.8/D-017 originally excluded. It also resolves the IP-2 password-recovery
+email-provider prerequisite and delivers the reusable token/email primitives
+that recovery will consume. It does **not** deliver password recovery or
+account deletion, and does not change the lowest-numbered unfinished canonical
+work.
+
+**Repository implementation state (2026-07-20) — branch `feat/email-verification`, PR pending**
+
+1. Schema/migration `20260718000000`: `User.emailVerified` (`NOT NULL DEFAULT
+   false`) and a hash-at-rest `VerificationToken` table (`tokenDigest`
+   `CHAR(64)`, single-use `consumedAt`, `expiresAt`, unique `(tokenDigest)` and
+   `(userId, purpose)`, FK cascade, a `VerificationTokenPurpose` enum built to
+   extend to `PASSWORD_RESET`). The migration backfills `emailVerified = true`
+   **only** where `googleSubject IS NOT NULL` (Google already proved those
+   emails); password-only rows deliberately stay `false` to keep the legacy
+   account-takeover window closed. This migration is additive and rollback-safe.
+2. `googleLogin()` auto-links a Google identity onto an existing local account
+   **only** when `emailOwner.emailVerified === true` **and**
+   `emailOwner.googleSubject === null`, via a race-safe `updateMany` guarded on
+   `{ googleSubject: null }` plus `revokeAllUserSessionsInTransaction`; every
+   other collision throws `AUTH_EMAIL_UNVERIFIED_CONFLICT` (409). New
+   Google-origin accounts are created `emailVerified: true` and receive no
+   verification email. This is the behavior D-017 originally forbade and D-018
+   now authorizes under the verified-both-sides proof.
+3. `register()` issues a single-use token inside the existing serializable
+   transaction and sends the verification email **post-commit, best-effort**: a
+   send failure is logged by category only (never the token or recipient) and
+   never rolls back the registered user or fails the request. Only the SHA-256
+   digest is stored; the raw token exists only in the emailed link.
+4. Email delivery is an optional feature: `validateEmailEnvironment` returns
+   `null` when unset (server still boots, `NoopEmailSender` resolved), and only
+   the required subset must be present when any email variable is set. Brevo's
+   free SMTP relay is the selected provider; `reshapeapp.ai` is the sender
+   domain; STARTTLS is forced on port 587. `PUBLIC_APP_URL` builds the link and
+   is never derived from the request Host header.
+5. Public `GET /api/users/verify-email` renders a self-contained HTML result
+   page with a tightened per-response CSP and `Referrer-Policy: no-referrer`,
+   and is idempotent — a consumed token re-presented for an already-verified
+   user is success, tolerating email-scanner/browser prefetch. Authenticated
+   `POST /api/users/verify-email/resend` is owner-only, DB-cooldown throttled,
+   and rotates the single outstanding token. Expired tokens are purged on the
+   existing sweep timer.
+6. Flutter carries `emailVerified` through the entity/model/both hand-rolled
+   persistence sites (default **true** as a deliberate fail-open compatibility
+   choice so pre-field `/me` responses and older clients do not nag), parses
+   the `/me` body (previously discarded), shows a home banner only to
+   **unverified password accounts** with resend + an "I've confirmed" refresh,
+   and maps the three new error codes. The client `emailVerified` is
+   presentation-only; the server alone gates linking.
+
+**Repository verification**
+
+- Backend: Prisma validate/generate, typecheck, 347 Jest tests pass (7
+  real-PostgreSQL cases intentionally skipped), production build and built-ESM
+  smoke. Flutter: locked restore, 343 tests pass, analyzer zero warnings/errors
+  with the counted baseline accepted. Counts are on the unmerged
+  `feat/email-verification` branch and supersede the IP-2.8 figures only once
+  the branch merges.
+
+**Still required**
+
+- A manual provider/staging/device gate (extend MC-2.4 or add **MC-2.5**): real
+  Brevo/SMTP credentials configured, sender-domain SPF/DKIM/DMARC authenticated,
+  staging delivery of a live verification email and the rendered verify page,
+  and on-device banner/resend/refresh proof. No real-delivery, deliverability,
+  or device claim is made from local tests.
+- The migration must be applied as a release step (`npm run migrate:deploy`)
+  before the linking code that reads `emailVerified` goes live; see
+  `EMAIL_VERIFICATION_SETUP.md`.
+- The auto-merge is inert for legacy password accounts until they verify; the
+  recovery journey (password sign-in → verify via banner → retry Google) is
+  designed but not proactively nudged.
 
 ## Migration and rollout order
 
@@ -522,10 +601,15 @@ This maintainer-selected extension is not an original audit closure and does not
 4. Release secure-storage/single-flight mobile build; prove migration from the previous supported version.
 5. Enforce new session checking and retire old refresh behavior after the minimum-client window.
 6. For Google identity, drain every old backend instance, apply the canonical-username/password-null migration to a reviewed upgrade copy, and atomically promote only the matching artifact; never run old and new versions together across this boundary.
-7. Roll out profile/recovery/deletion endpoints, keeping recovery UI hidden until email is production-ready.
-8. Migrate local data protection in a staged mobile release with verified rollback/recovery.
-9. Migrate activities private, then enforce owner-only route reads and disable social routes.
-10. Update privacy/account documentation only after staging/production behavior is verified.
+7. For email verification/safe linking (IP-2.9), apply the additive
+   `emailVerified`/`VerificationToken` migration as a release step before the
+   `googleLogin` code that reads `emailVerified` serves traffic; the optional
+   SMTP feature flag may be enabled independently. See
+   `EMAIL_VERIFICATION_SETUP.md`.
+8. Roll out profile/recovery/deletion endpoints, keeping recovery UI hidden until email is production-ready.
+9. Migrate local data protection in a staged mobile release with verified rollback/recovery.
+10. Migrate activities private, then enforce owner-only route reads and disable social routes.
+11. Update privacy/account documentation only after staging/production behavior is verified.
 
 ## Rollback plan
 
@@ -567,7 +651,7 @@ Checked repository items below record delivered code and automated evidence only
 - [x] Repository concurrent auth failures trigger one refresh and at most one eligible retry per request.
 - [x] Repository offline access policy is enforced under a fake clock and user scope.
 - [x] Repository profile edit works and updates local session data.
-- [ ] Recovery is non-enumerating, one-use, rate-limited, and connected to an approved email provider before UI exposure.
+- [ ] Recovery is non-enumerating, one-use, rate-limited, and connected to an approved email provider before UI exposure. (Provider approved 2026-07-20 — D-018 — and the reusable token/email plumbing is delivered in IP-2.9; the reset endpoints/UI are still to build.)
 - [ ] Account deletion purges/revokes correctly; its independent durable cleanup rows survive cascades and the minimal runner demonstrably processes/retries them.
 - [ ] Activities default/migrate private; only owners receive exact routes.
 - [ ] Unfinished social endpoints/claims are disabled.
@@ -585,3 +669,4 @@ Checked repository items below record delivered code and automated evidence only
 | 2026-07-13 | IP-2.3 | Locked Flutter restore; fake-clock offline-window/rollback/recovery suite; online-guard, session-transition, and mutation-denial suites; full Flutter suite; analyzer and counted baseline; formatting/`git diff --check`; Android debug APK; independent adversarial multi-agent review | Repository gates pass; physical-device/staging gate pending | Flutter passed 291/291 tests (16 new). Analyzer reported 10 informational findings and zero warnings/errors, and the counted baseline accepted 10 findings with 10 prior findings removed. The seven-day boundary, clock rollback, future-timestamp, restart-surviving tripwire, forward-excursion recovery, best-effort observed-advance, cleared-secure-storage fail-closed, network-vs-`401` divergence, guard-mirroring, and offline password/avatar/sync denial are proven under fake clocks and injected fakes. The adversarial review confirmed two medium-severity clock-observation defects, both fixed and retested. The debug APK built. No physical-device offline/rollback, airplane-mode-vs-revocation, backup, or release-log claim is made; those remain MC-2.3. Defeating a fully attacker-controlled device clock is noted as future platform-monotonic/server hardening. |
 | 2026-07-14 | IP-2.4 (profile slice) | Backend Prisma validate/generate, typecheck, full Jest suite, production build, built runtime smoke; Flutter locked restore, full suite, analyzer and counted baseline, formatting/`git diff --check`, Android debug APK; independent adversarial multi-agent review | Repository gates pass; recovery/deletion undelivered; hosted/staging gates pending | `PUT /profile` returns the updated safe `/me`-shaped user and the mobile app gains the name-edit flow committing only server-confirmed, same-owner first/last name, composing safely with concurrent avatar uploads. Backend passed 281 executable Jest tests (6 PostgreSQL tests correctly skipped locally; 2 new) and the built-ESM smoke; Flutter passed 302/302 (11 new). The adversarial review confirmed one medium concurrent-commit clobber defect, fixed and retested. Analyzer reported 10 informational findings, zero warnings/errors, baseline accepted. Password recovery remains blocked on the email-provider decision and account deletion remains undelivered; no claim is made for either. Hosted CI remains MC-0.7/MC-1.9; staging auth lifecycle remains MC-2.2/MC-2.3. |
 | 2026-07-17 | IP-2.8 (Google identity extension) | Merged tree `c805f62`; Prisma validation; backend typecheck, full local Jest suite, production build and built smoke; locked Flutter restore, full suite, analyzer/baseline, changed-file formatting, Android debug APK | Repository gates pass; provider/migration/device/staging verification pending | Backend passed 307 executable tests with seven real-PostgreSQL cases intentionally skipped locally; Flutter passed 330/330. Analyzer reported 9 informational findings and zero warnings/errors; the baseline accepted 9 and reported 11 prior allowed findings removed. Tests cover provider verification, safe conflict/concurrency/outage behavior, first-party session parity, cleartext refusal, auth-gate races, cancellation/navigation, and Google-only capability UI. No real OAuth-console, signed-device, provider-network, non-rolling migration, deployment, branding, or iOS release claim is made; those remain MC-2.4. IP-2.4 deletion and recovery remain open. |
+| 2026-07-20 | IP-2.9 (email verification + safe linking) | Branch `feat/email-verification` (commits `7432e9c`…`4f0983f`, PR pending); Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM smoke; locked Flutter restore, full suite, analyzer/counted baseline | Repository gates pass; provider/staging/device verification pending | Backend passed 347 Jest tests (7 real-PostgreSQL cases intentionally skipped); Flutter passed 343 tests, analyzer zero warnings/errors with the baseline accepted. Delivers `User.emailVerified` + hash-at-rest `VerificationToken` (additive migration backfilling only `googleSubject IS NOT NULL`), post-commit best-effort verification email behind an optional SMTP feature flag, idempotent public verify page + throttled resend, the emailVerified-gated Google auto-link (`AUTH_EMAIL_UNVERIFIED_CONFLICT` otherwise), and the Flutter banner/refresh. Resolves the email-provider decision (D-018) and unblocks the IP-2.4 recovery prerequisite. No real Brevo/SMTP delivery, sender-domain SPF/DKIM, staging verify-page, or on-device banner claim is made; those remain MC-2.5 (or an MC-2.4 extension). Counts supersede IP-2.8 only on merge. |
