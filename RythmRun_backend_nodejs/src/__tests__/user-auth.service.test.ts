@@ -100,6 +100,7 @@ function harness() {
   const emailSender = {
     enabled: true,
     sendEmailVerification: jest.fn().mockResolvedValue(undefined),
+    sendPasswordReset: jest.fn().mockResolvedValue(undefined),
   };
   return {
     transaction,
@@ -269,6 +270,132 @@ describe('UserService authentication lifecycle', () => {
     prisma.verificationToken.deleteMany.mockResolvedValueOnce({ count: 3 });
 
     await expect(service.purgeExpiredVerificationTokens()).resolves.toBe(3);
+  });
+
+  it('emails a reset link for a password account', async () => {
+    const { service, prisma, transaction, emailSender } = harness();
+    prisma.user.findUnique.mockResolvedValueOnce(user);
+    prisma.verificationToken.findUnique.mockResolvedValueOnce({
+      lastSentAt: null,
+    });
+
+    await service.requestPasswordReset(' Runner@Example.COM ');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { username: user.username },
+    });
+    expect(transaction.verificationToken.upsert).toHaveBeenCalledTimes(1);
+    expect(emailSender.sendPasswordReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('silently no-ops a reset request for a Google-only account', async () => {
+    const { service, prisma, authSessions, emailSender } = harness();
+    prisma.user.findUnique.mockResolvedValueOnce({ ...googleUser, password: null });
+
+    await service.requestPasswordReset(googleUser.username);
+
+    expect(authSessions.withSerializableTransaction).not.toHaveBeenCalled();
+    expect(emailSender.sendPasswordReset).not.toHaveBeenCalled();
+  });
+
+  it('silently no-ops a reset request for an unknown email', async () => {
+    const { service, prisma, emailSender } = harness();
+    prisma.user.findUnique.mockResolvedValueOnce(null);
+
+    await service.requestPasswordReset('nobody@example.com');
+
+    expect(emailSender.sendPasswordReset).not.toHaveBeenCalled();
+  });
+
+  it('throttles a repeated reset request within the cooldown', async () => {
+    const { service, prisma, authSessions, emailSender } = harness();
+    prisma.user.findUnique.mockResolvedValueOnce(user);
+    prisma.verificationToken.findUnique.mockResolvedValueOnce({
+      lastSentAt: new Date(),
+    });
+
+    await service.requestPasswordReset(user.username);
+
+    expect(authSessions.withSerializableTransaction).not.toHaveBeenCalled();
+    expect(emailSender.sendPasswordReset).not.toHaveBeenCalled();
+  });
+
+  it('resets the password and revokes every session with a valid token', async () => {
+    const { service, transaction, authSessions } = harness();
+    jest.mocked(bcrypt.hash).mockResolvedValue('reset-hash' as never);
+    transaction.verificationToken.findUnique.mockResolvedValueOnce({
+      userId: user.id,
+      purpose: 'PASSWORD_RESET',
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    transaction.verificationToken.updateMany.mockResolvedValueOnce({ count: 1 });
+    transaction.user.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    await service.resetPassword('raw-token', 'brand-new-password');
+
+    expect(transaction.user.updateMany).toHaveBeenCalledWith({
+      where: { id: user.id, password: { not: null } },
+      data: { password: 'reset-hash' },
+    });
+    expect(
+      authSessions.revokeAllUserSessionsInTransaction,
+    ).toHaveBeenCalledWith(transaction, user.id);
+  });
+
+  it('rejects a token whose purpose is not password reset', async () => {
+    const { service, transaction } = harness();
+    jest.mocked(bcrypt.hash).mockResolvedValue('reset-hash' as never);
+    transaction.verificationToken.findUnique.mockResolvedValueOnce({
+      userId: user.id,
+      purpose: 'EMAIL_VERIFICATION',
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(
+      service.resetPassword('raw-token', 'brand-new-password'),
+    ).rejects.toMatchObject({ code: 'AUTH_VERIFICATION_TOKEN_INVALID' });
+    expect(transaction.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a reset for a passwordless account (update matches no row)', async () => {
+    const { service, transaction, authSessions } = harness();
+    jest.mocked(bcrypt.hash).mockResolvedValue('reset-hash' as never);
+    transaction.verificationToken.findUnique.mockResolvedValueOnce({
+      userId: user.id,
+      purpose: 'PASSWORD_RESET',
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    transaction.verificationToken.updateMany.mockResolvedValueOnce({ count: 1 });
+    transaction.user.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.resetPassword('raw-token', 'brand-new-password'),
+    ).rejects.toMatchObject({ code: 'AUTH_VERIFICATION_TOKEN_INVALID' });
+    expect(
+      authSessions.revokeAllUserSessionsInTransaction,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown reset token', async () => {
+    const { service, transaction } = harness();
+    jest.mocked(bcrypt.hash).mockResolvedValue('reset-hash' as never);
+    transaction.verificationToken.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      service.resetPassword('raw-token', 'brand-new-password'),
+    ).rejects.toMatchObject({ code: 'AUTH_VERIFICATION_TOKEN_INVALID' });
+  });
+
+  it('rejects an empty reset token without touching the database', async () => {
+    const { service, authSessions } = harness();
+
+    await expect(
+      service.resetPassword('', 'brand-new-password'),
+    ).rejects.toMatchObject({ code: 'AUTH_VERIFICATION_TOKEN_INVALID' });
+    expect(authSessions.withSerializableTransaction).not.toHaveBeenCalled();
   });
 
   it('creates a separate session on valid login', async () => {

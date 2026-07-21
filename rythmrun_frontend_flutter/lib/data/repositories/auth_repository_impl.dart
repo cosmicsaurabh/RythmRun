@@ -206,6 +206,13 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> requestPasswordReset(String email) async {
+    // Unauthenticated pre-login request: no auth coordinator, no online guard.
+    // Network/server errors propagate so the UI can offer a retry.
+    await _remoteDataSource.requestPasswordReset(email);
+  }
+
+  @override
   Future<void> resendVerificationEmail() async {
     // Sending mail is an online-only action; the server throttles repeats, so
     // a single post-refresh replay is safe.

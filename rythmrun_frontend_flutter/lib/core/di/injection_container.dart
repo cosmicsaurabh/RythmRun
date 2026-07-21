@@ -36,6 +36,7 @@ import '../../domain/usecases/login_user_usecase.dart';
 import '../../domain/usecases/login_with_google_usecase.dart';
 import '../../domain/usecases/register_user_usecase.dart';
 import '../../domain/usecases/change_password_usecase.dart';
+import '../../domain/usecases/request_password_reset_usecase.dart';
 
 // HTTP Client Provider
 final httpClientProvider = Provider<AppHttpClient>((ref) {
@@ -247,6 +248,11 @@ final changePasswordUsecaseProvider = Provider<ChangePasswordUsecase>((ref) {
   final repository = ref.watch(authRepositoryProvider);
   return ChangePasswordUsecase(repository);
 });
+
+final requestPasswordResetUsecaseProvider =
+    Provider<RequestPasswordResetUsecase>((ref) {
+      return RequestPasswordResetUsecase(ref.watch(authRepositoryProvider));
+    });
 
 final liveTrackingRepositoryProvider = Provider<LiveTrackingRepository>((ref) {
   return LiveTrackingRepositoryImpl();

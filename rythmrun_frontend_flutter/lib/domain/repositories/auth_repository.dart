@@ -46,6 +46,10 @@ abstract class AuthRepository {
   /// user. The server throttles this and answers generically.
   Future<void> resendVerificationEmail();
 
+  /// Start a password reset for [email]. Unauthenticated; the backend answers
+  /// generically, so success does not reveal whether the account exists.
+  Future<void> requestPasswordReset(String email);
+
   /// Update first/last name on the server and return the updated safe user.
   /// Remote-only: the session coordinator commits visible and cached state.
   Future<UserEntity> updateProfile({

@@ -209,6 +209,9 @@ class _FakeLoginRepository implements AuthRepository {
   @override
   Future<void> resendVerificationEmail() => throw UnimplementedError();
 
+  @override
+  Future<void> requestPasswordReset(String email) => throw UnimplementedError();
+
   _FakeLoginRepository({
     required this.failuresRemaining,
     this.googleFailure,

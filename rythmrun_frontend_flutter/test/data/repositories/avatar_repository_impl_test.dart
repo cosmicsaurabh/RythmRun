@@ -266,6 +266,9 @@ class _FakeAuthRepository implements AuthRepository {
   Future<void> resendVerificationEmail() => throw UnimplementedError();
 
   @override
+  Future<void> requestPasswordReset(String email) => throw UnimplementedError();
+
+  @override
   Future<UserEntity?> getCurrentUser() async => const UserEntity(
     id: '7',
     firstName: 'Test',

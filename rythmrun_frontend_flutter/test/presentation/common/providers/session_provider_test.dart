@@ -945,6 +945,9 @@ class _FakeAuthRepository implements AuthRepository {
     resendCalls += 1;
   }
 
+  @override
+  Future<void> requestPasswordReset(String email) => throw UnimplementedError();
+
   final List<String> events;
   final bool failRemoteLogout;
   bool failLocalClear;

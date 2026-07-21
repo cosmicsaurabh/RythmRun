@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, urlencoded } from 'express';
 import type { RequestHandler } from 'express';
 import { container } from '../config/container.js';
 import { UserController } from '../controllers/user.controller.js';
@@ -10,6 +10,9 @@ export interface UserRouteController {
   googleAuth: RequestHandler;
   verifyEmail: RequestHandler;
   resendVerification: RequestHandler;
+  requestPasswordReset: RequestHandler;
+  passwordResetPage: RequestHandler;
+  submitPasswordReset: RequestHandler;
   logout: RequestHandler;
   refreshToken: RequestHandler;
   me: RequestHandler;
@@ -65,6 +68,33 @@ export function createUserRouter({
    * @returns {text/html} A human-facing verification result page
    */
   router.get('/verify-email', controller.verifyEmail);
+
+  /**
+   * @route POST /api/users/password-reset/request
+   * @description Start a password reset (public, generic response, throttled).
+   * @body {PasswordResetRequestDto} - username (email)
+   */
+  router.post('/password-reset/request', controller.requestPasswordReset);
+
+  /**
+   * @route GET /api/users/password-reset
+   * @description Render the password-reset form opened from the emailed link.
+   * @query {string} token
+   * @returns {text/html}
+   */
+  router.get('/password-reset', controller.passwordResetPage);
+
+  /**
+   * @route POST /api/users/password-reset
+   * @description Submit the reset form (url-encoded) to set a new password.
+   * @body {PasswordResetConfirmDto} - token, newPassword
+   * @returns {text/html} Result page
+   */
+  router.post(
+    '/password-reset',
+    urlencoded({ extended: false }),
+    controller.submitPasswordReset,
+  );
 
   /**
    * @route POST /api/users/logout

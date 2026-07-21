@@ -80,3 +80,23 @@ export class UpdateProfileDto {
     @MaxLength(50)
     lastname?: string;
 }
+
+export class PasswordResetRequestDto {
+    @Transform(({ value }) => canonicalUsername(value))
+    @IsString()
+    @IsEmail()
+    @MaxLength(255)
+    username!: string;
+}
+
+export class PasswordResetConfirmDto {
+    @IsString()
+    @MinLength(1)
+    @MaxLength(512)
+    token!: string;
+
+    @IsString()
+    @MinLength(8)
+    @MaxLength(50)
+    newPassword!: string;
+}

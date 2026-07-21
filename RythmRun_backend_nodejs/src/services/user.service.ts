@@ -34,6 +34,13 @@ const SALT_ROUNDS = 10;
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
 const EMAIL_VERIFICATION_PURPOSE = 'EMAIL_VERIFICATION' as const;
+const PASSWORD_RESET_PURPOSE = 'PASSWORD_RESET' as const;
+const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
+const PASSWORD_RESET_COOLDOWN_MS = 60 * 1000;
+
+type VerificationPurpose =
+  | typeof EMAIL_VERIFICATION_PURPOSE
+  | typeof PASSWORD_RESET_PURPOSE;
 
 export type EmailVerificationResult = 'verified' | 'already_verified';
 
@@ -102,6 +109,8 @@ export class UserService {
           const rawToken = await this.issueVerificationToken(
             transaction,
             user.id,
+            EMAIL_VERIFICATION_PURPOSE,
+            VERIFICATION_TOKEN_TTL_MS,
           );
           return {
             response,
@@ -229,13 +238,126 @@ export class UserService {
     }
 
     const rawToken = await this.authSessions.withSerializableTransaction(
-      (transaction) => this.issueVerificationToken(transaction, userId),
+      (transaction) =>
+        this.issueVerificationToken(
+          transaction,
+          userId,
+          EMAIL_VERIFICATION_PURPOSE,
+          VERIFICATION_TOKEN_TTL_MS,
+        ),
     );
     await this.deliverVerificationEmail(
       user.username,
       user.firstname,
       rawToken,
     );
+  }
+
+  /**
+   * Starts a password reset for a password-capable account. Always resolves
+   * without revealing whether the email exists or is resettable
+   * (anti-enumeration): a Google-only account (no password) and a throttled
+   * repeat both silently no-op. The single-use token is emailed post-commit.
+   */
+  async requestPasswordReset(username: string): Promise<void> {
+    const canonical = canonicalizeUsername(username);
+    const user = await this.prisma.user.findUnique({
+      where: { username: canonical },
+    });
+    if (user === null || user.password === null) {
+      return;
+    }
+
+    const existing = await this.prisma.verificationToken.findUnique({
+      where: {
+        userId_purpose: { userId: user.id, purpose: PASSWORD_RESET_PURPOSE },
+      },
+      select: { lastSentAt: true },
+    });
+    if (
+      existing?.lastSentAt != null &&
+      Date.now() - existing.lastSentAt.getTime() < PASSWORD_RESET_COOLDOWN_MS
+    ) {
+      return;
+    }
+
+    const rawToken = await this.authSessions.withSerializableTransaction(
+      (transaction) =>
+        this.issueVerificationToken(
+          transaction,
+          user.id,
+          PASSWORD_RESET_PURPOSE,
+          PASSWORD_RESET_TTL_MS,
+        ),
+    );
+    await this.deliverPasswordResetEmail(
+      user.username,
+      user.firstname,
+      rawToken,
+    );
+  }
+
+  /**
+   * Consumes a password-reset token, sets the new password, and revokes every
+   * session — all in one transaction. Any invalid/expired/consumed/wrong-purpose
+   * token, or an account that is not password-capable, collapses to one opaque
+   * error so the endpoint is not a token- or account-state oracle.
+   */
+  async resetPassword(rawToken: string, newPassword: string): Promise<void> {
+    if (typeof rawToken !== 'string' || rawToken.length === 0) {
+      throw invalidVerificationTokenError();
+    }
+    const tokenDigest = digestRefreshToken(rawToken);
+    const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    const outcome = await this.authSessions.withSerializableTransaction(
+      async (transaction) => {
+        const now = new Date();
+        const token = await transaction.verificationToken.findUnique({
+          where: { tokenDigest },
+        });
+        if (
+          token === null ||
+          token.purpose !== PASSWORD_RESET_PURPOSE ||
+          token.consumedAt !== null ||
+          token.expiresAt <= now
+        ) {
+          return 'invalid' as const;
+        }
+
+        const consumed = await transaction.verificationToken.updateMany({
+          where: {
+            tokenDigest,
+            consumedAt: null,
+            expiresAt: { gt: now },
+          },
+          data: { consumedAt: now },
+        });
+        if (consumed.count !== 1) {
+          return 'invalid' as const;
+        }
+
+        // Never add a password to an account that has none (a Google-only
+        // account); the reset only rotates an existing password.
+        const updated = await transaction.user.updateMany({
+          where: { id: token.userId, password: { not: null } },
+          data: { password: hashedPassword },
+        });
+        if (updated.count !== 1) {
+          return 'invalid' as const;
+        }
+
+        await this.authSessions.revokeAllUserSessionsInTransaction(
+          transaction,
+          token.userId,
+        );
+        return 'reset' as const;
+      },
+    );
+
+    if (outcome === 'invalid') {
+      throw invalidVerificationTokenError();
+    }
   }
 
   async purgeExpiredVerificationTokens(now = new Date()): Promise<number> {
@@ -253,19 +375,21 @@ export class UserService {
   private async issueVerificationToken(
     transaction: Prisma.TransactionClient,
     userId: number,
+    purpose: VerificationPurpose,
+    ttlMs: number,
     now = new Date(),
   ): Promise<string> {
     const rawToken = randomBytes(32).toString('base64url');
     const tokenDigest = digestRefreshToken(rawToken);
-    const expiresAt = new Date(now.getTime() + VERIFICATION_TOKEN_TTL_MS);
+    const expiresAt = new Date(now.getTime() + ttlMs);
 
     await transaction.verificationToken.upsert({
       where: {
-        userId_purpose: { userId, purpose: EMAIL_VERIFICATION_PURPOSE },
+        userId_purpose: { userId, purpose },
       },
       create: {
         userId,
-        purpose: EMAIL_VERIFICATION_PURPOSE,
+        purpose,
         tokenDigest,
         expiresAt,
         lastSentAt: now,
@@ -294,6 +418,23 @@ export class UserService {
       // Never log the token or recipient (PII); only the error category.
       const category = error instanceof Error ? error.name : 'UnknownError';
       console.error(`Verification email send failed (${category})`);
+    }
+  }
+
+  private async deliverPasswordResetEmail(
+    to: string,
+    firstname: string | null,
+    rawToken: string,
+  ): Promise<void> {
+    if (this.emailSender === undefined || !this.emailSender.enabled) {
+      return;
+    }
+    try {
+      await this.emailSender.sendPasswordReset({ to, firstname, rawToken });
+    } catch (error: unknown) {
+      // Never log the token or recipient (PII); only the error category.
+      const category = error instanceof Error ? error.name : 'UnknownError';
+      console.error(`Password reset email send failed (${category})`);
     }
   }
 
