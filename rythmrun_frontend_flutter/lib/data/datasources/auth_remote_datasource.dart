@@ -151,6 +151,18 @@ class AuthRemoteDataSource {
     return UserModel.fromJson(jsonResponse);
   }
 
+  /// Start a password reset for [email]. Unauthenticated by design (the user
+  /// is signed out). The server answers generically and throttles repeats, so
+  /// a 2xx only means "request accepted", not "account exists".
+  Future<void> requestPasswordReset(String email) async {
+    await _httpClient.post(
+      _resolveEndpoint(ApiEndpoints.passwordResetRequest),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'username': email}),
+      maxRetries: 0,
+    );
+  }
+
   /// Ask the backend to re-send the verification email for the signed-in user.
   /// The server throttles this and answers generically.
   Future<void> resendVerificationEmail(Map<String, String> authHeaders) async {

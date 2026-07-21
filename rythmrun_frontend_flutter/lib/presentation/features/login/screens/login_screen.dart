@@ -5,6 +5,7 @@ import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/utils/validation_helper.dart';
 import '../../../common/widgets/error_display_widget.dart';
+import '../../forgot_password/screens/forgot_password_screen.dart';
 import '../models/login_state.dart';
 import '../providers/login_provider.dart';
 
@@ -161,14 +162,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     // Forgot Password Link
                     GestureDetector(
                       onTap: () {
-                        // TODO: Navigate to forgot password screen
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Forgot password feature coming soon!',
-                            ),
-                            backgroundColor: CustomAppColors.statusInfo,
-                            behavior: SnackBarBehavior.floating,
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ForgotPasswordScreen(),
                           ),
                         );
                       },

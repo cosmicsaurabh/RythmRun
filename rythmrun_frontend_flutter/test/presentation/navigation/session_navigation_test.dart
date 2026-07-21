@@ -465,6 +465,9 @@ class _SuccessfulAuthRepository implements AuthRepository {
   @override
   Future<void> resendVerificationEmail() => throw UnimplementedError();
 
+  @override
+  Future<void> requestPasswordReset(String email) => throw UnimplementedError();
+
   static const user = UserEntity(
     id: '7',
     firstName: 'A',
@@ -496,6 +499,9 @@ class _UnavailableUnverifiedAuthRepository implements AuthRepository {
 
   @override
   Future<void> resendVerificationEmail() => throw UnimplementedError();
+
+  @override
+  Future<void> requestPasswordReset(String email) => throw UnimplementedError();
 
   @override
   Future<bool> hasPendingAuthCleanup() async => false;
