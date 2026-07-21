@@ -6,8 +6,9 @@ published: false
 
 A single-page roll-up of every improvement phase, its work packages, and the
 open manual/hosted gates. It is derived from the phase files at their
-`Last updated: 2026-07-17` state, plus the reconciliation of the 2026-07-20
-email-verification delivery (see the final section).
+`Last updated: 2026-07-17` state, plus the reconciliations of the 2026-07-20
+email-verification and 2026-07-21 password-recovery deliveries (see the two
+"Recent delivery" sections below).
 
 The individual phase files and [MANUAL-CHECKS.md](./MANUAL-CHECKS.md) remain
 **canonical** for evidence. This tracker summarizes them; it does not replace
@@ -29,14 +30,15 @@ still owes at least one manual/hosted gate.
 | --- | --- | --- | --- | --- |
 | IP-0 Security containment (P0) | **In progress** | 6 of 10 (code); 4 operational packages not started | IP-0.1, 0.1A, 0.6, 0.7 (all operational) | MC-0.1–0.12 |
 | IP-1 Tracking correctness | **Verification** | 7 of 7 | — | MC-1.1–1.14 |
-| IP-2 Auth, account, privacy | **In progress** | 4 of 8 + IP-2.9 (+ IP-2.4 profile slice only) | IP-2.5, 2.6, 2.7 | MC-2.1–2.5 |
+| IP-2 Auth, account, privacy | **In progress** | 5 of 8 + IP-2.9 (IP-2.4 profile & password-recovery slices; account deletion left) — all merged to main | IP-2.6, 2.7 | MC-2.1–2.5 |
 | IP-3 Workout durability | **Planned** | 0 of 5 | all | — |
 | IP-4 Sync & restore | **Planned** | 0 of 6 | all | — |
 | IP-5 Release readiness | **Planned** | 0 of 7 | all (5.7 Deferred) | — |
 
 **Manual/hosted checks: 0 of 31 verified** (30 pending, MC-0.10 blocked;
-MC-2.5 added 2026-07-20 for the IP-2.9 email delivery). No package can reach
-`Complete` until its gates carry dated evidence.
+MC-2.5 added 2026-07-20 for the IP-2.9 email delivery, extended 2026-07-21 to
+also gate the IP-2.4 password-reset delivery on the same provider). No package
+can reach `Complete` until its gates carry dated evidence.
 
 The single most important fact: **IP-0 is a P0 release blocker and its blocking
 work is operational, not code.** Containment, exposure investigation, and
@@ -81,12 +83,12 @@ All seven packages are repo-delivered; each waits on a device/staging/hosted gat
 | IP-2.1 Rebuild session/refresh semantics | Verification | ✓ | Digest-only bounded sessions, serializable rotation, revocation, safe `/me`. Left: MC-2.1 hosted-Postgres transaction gate, MC-2.2 destructive cutover rehearsal. |
 | IP-2.2 Secure mobile token storage | Verification | ✓ | Versioned secure envelope + single-flight refresh. Left: MC-2.3 physical-device storage/upgrade/backup/log lifecycle. |
 | IP-2.3 Offline-session behavior | Verification | ✓ | 7-day fail-closed offline window + online-operation guard. Left: MC-2.3 device offline/rollback/airplane-vs-revocation proof. |
-| IP-2.4 Profile, password recovery, account deletion | **In progress** | partial | **Only the profile slice is delivered.** Password recovery: prerequisite now unblocked (see below) — reset endpoints/UI still to build. Account deletion: still blocked on the retention/reauth decision, then transactional revocation + durable object-cleanup outbox/runner + full local+remote purge. |
-| IP-2.5 Private routes; disable social | Planned | ✗ | Not started. Default `isPublic=false`, one-way migrate existing rows to private, owner-only exact-route/image detail, unmount friend/comment/like paths. |
+| IP-2.4 Profile, password recovery, account deletion | **In progress** | partial | **Profile and password-recovery slices delivered and merged to main** (PR #164; backend `34a14a9` + frontend `6b7dc97`): anti-enumerating request, one-transaction single-use reset revoking all sessions + refusing Google-only accounts, backend web form, and the Flutter forgot-password screen — reusing the IP-2.9 hashed-token store. Left for recovery: address-dimension rate limits (IP-2.6) and gated production exposure/staging delivery (MC-2.5). **Account deletion** still blocked on the retention/reauth decision, then transactional revocation + durable object-cleanup outbox/runner + full local+remote purge. |
+| IP-2.5 Private routes; disable social | Verification | ✓ | **Delivered and merged to main** (PR #165; `bd78d9a`). `isPublic` defaults false + backfill migration to private, `getActivityById` owner-only (cross-user route/image/identity closed), friend/comment/like routers unmounted (`404`), README/seed corrected. 290 backend tests. Left: apply the migration on staging/production (deploy step); qualify the published policy pages that still describe social/public sharing. |
 | IP-2.6 API abuse controls & typed errors | Planned | ✗ | Not started. CORS allowlist, rate limits (login/register/recovery/password/**Google exchange**), finish typed error mapping, storage size/type/integrity + abandoned-upload cleanup. |
 | IP-2.7 Protect retained routes/photos at rest | Planned | ✗ | Not started; gated on an owner design spike (threat model, library/perf, backup/key-loss recovery) before migrating SQLite + photos to user-scoped at-rest protection. |
 | IP-2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. Left: MC-2.4 non-rolling migration, OAuth-console/signing, provider, device, staging, branding proof. **Note: its no-implicit-link behavior is superseded by IP-2.9 below.** |
-| IP-2.9 Email verification & safe linking | Verification | ✓ (branch) | Branch `feat/email-verification` (PR pending; not yet on main). Delivers `emailVerified` + hashed token table, optional SMTP send, verify/resend, and the emailVerified-gated Google auto-link. Left: **MC-2.5** — real Brevo/SMTP + DKIM/SPF, staging delivery + verify page, on-device banner/resend. Resolves D-018; unblocks IP-2.4 recovery prerequisite. |
+| IP-2.9 Email verification & safe linking | Verification | ✓ | **Merged to main** (PR #164). Delivers `emailVerified` + hashed token table, optional SMTP send, verify/resend, and the emailVerified-gated Google auto-link. Left: **MC-2.5** — real Brevo/SMTP + DKIM/SPF, staging delivery + verify page, on-device banner/resend. Resolves D-018; its hashed-token store is reused by the merged IP-2.4 password recovery. |
 
 ## IP-3 — Workout durability `Planned`
 
@@ -134,7 +136,8 @@ Every row is unevidenced. Grouped by who can close it:
   MC-1.8 bounded ingest/PATCH · MC-1.12 Prisma 7.8 on real Postgres · MC-1.13
   deploy order/shutdown · MC-2.1 auth-session transaction · MC-2.2 auth cutover
   · MC-2.4 Google identity migration/provider/device · MC-2.5
-  email-verification provider/delivery + on-device banner (IP-2.9).
+  email provider/delivery + on-device banner (IP-2.9) — extended to also gate
+  the IP-2.4 password-reset email delivery/flow, which shares the same provider.
 - **Product-data analysis:** MC-1.1 legacy metric sampling · MC-1.4 rollout
   observation.
 
@@ -155,7 +158,7 @@ with an evidence-log row and manual gate **MC-2.5**.
 | Impact | Detail |
 | --- | --- |
 | **Resolves an owner decision** | "Password-recovery email provider and sender domain" → **Brevo** free SMTP relay (300/day, no card) + **reshapeapp.ai** sender domain, feature-flagged, tokens stored SHA-256-digest-only and never logged. Move this row from *Decisions that still require an owner* → *Decisions already made*. |
-| **Unblocks IP-2.4 password recovery** | The provider prerequisite is cleared and the reusable primitives are delivered: the `VerificationToken` table (single-use `consumedAt`, `expiresAt`, unique `(userId,purpose)`, sweep-timer purge) and a `VerificationTokenPurpose` enum explicitly built to add `PASSWORD_RESET`. Only the reset endpoints/UI remain. Account **deletion** stays blocked on its own retention/reauth decision. |
+| **Unblocks IP-2.4 password recovery** | The provider prerequisite is cleared and the reusable primitives are delivered: the `VerificationToken` table (single-use `consumedAt`, `expiresAt`, unique `(userId,purpose)`, sweep-timer purge) and a `VerificationTokenPurpose` enum explicitly built to add `PASSWORD_RESET`. Only the reset endpoints/UI remained then (delivered 2026-07-21 — see the next section). Account **deletion** stays blocked on its own retention/reauth decision. |
 | **Contradicts D-017** | D-017 says the system "never implicitly links an existing password account by email" — now false. `googleLogin()` auto-links when `emailVerified === true` **and** `googleSubject === null` (race-safe `updateMany` + revoke other sessions), else `AUTH_EMAIL_UNVERIFIED_CONFLICT` (409). **Amend, don't delete** — the rationale ("email alone is not safe proof") holds; both sides now prove the same mailbox. |
 | **Falsifies IP-2.8 prose** | "refuses implicit linking when a password account owns the email" and "explicit account linking is not implemented" now hold only for the **unverified** case. Scope both to unverified; note verified-email safe linking is delivered. The IP-2 non-goal "implicit email-based account linking" needs the same verified/unverified split. |
 | **New capability the plan has no concept of** | `User.emailVerified` + hash-at-rest `VerificationToken`; migration `20260718000000` backfills `emailVerified=true` only where `googleSubject IS NOT NULL` (never blanket-verifies password rows); post-commit best-effort send; public idempotent `GET /verify-email` (CSP + `no-referrer`); throttled `POST /verify-email/resend`; optional SMTP feature flag; Flutter banner (unverified password accounts only) + `/me` refresh + new error-code mapping. |
@@ -178,19 +181,40 @@ with an evidence-log row and manual gate **MC-2.5**.
 
 ---
 
+## Recent delivery — reconciled into the plan 2026-07-21
+
+**IP-2.4 password recovery** — backend `34a14a9` + frontend `6b7dc97` on branch
+**`feat/email-verification`** (same branch as IP-2.9; PR pending). Backend **364**
+Jest tests pass; Flutter **347** tests pass. Recovery is now repository-delivered,
+so IP-2.4 has two of its three slices done (profile + recovery); **account
+deletion** is the only remaining slice.
+
+| Impact | Detail |
+| --- | --- |
+| **Delivers IP-2.4 password recovery** | Anti-enumerating `POST /password-reset/request` (missing/Google-only/60s-cooldown all resolve to one generic success, email sent post-commit best-effort, token/recipient never logged); one-transaction `resetPassword` with a single-use 30-minute digest that revokes every session and refuses to add a password to a Google-only account, all failures collapsing to `AUTH_VERIFICATION_TOKEN_INVALID`; a deep-link-free backend web form (`GET`/`POST /password-reset`, tightened CSP + `no-referrer`); and a Flutter `forgot_password` screen wired from the login link. |
+| **Reuses IP-2.9 primitives, not a new table** | An additive `ALTER TYPE ... ADD VALUE IF NOT EXISTS 'PASSWORD_RESET'` migration (`20260721000000`) extends the hashed-token store; `@@unique([userId,purpose])` keeps verification and reset tokens independent. No separate reset table is introduced. |
+| **Closes the IP-2.8 Google-only concern** | The reset's `password IS NOT NULL` guard means recovery cannot silently password-enable a Google-only account. |
+| **Extends a manual gate, not the count** | Recovery's production exposure and real reset-email/flow proof fold into **MC-2.5** (same Brevo provider), so the 0-of-31 manual-gate count is unchanged. Address-dimension recovery rate limiting stays IP-2.6. |
+
 ## Next actionable repository work
 
 Lowest-numbered unblocked packages (operational IP-0 gates run in parallel but
 are not substitutes):
 
-1. **IP-2.4 password recovery** — now unblocked; reuse the delivered token/
-   email plumbing (the `VerificationToken.purpose` enum extends to
-   `PASSWORD_RESET`).
-2. **IP-2.4 account deletion** — pending the retention/reauth decision.
-3. **IP-2.5 route privacy** — default activities private; owner-only detail;
-   unmount social paths.
-4. **IP-2.6 abuse controls** — CORS + rate limiting (including the Google and
-   the new verify/resend endpoints) + typed errors + upload integrity.
+1. **IP-2.6 abuse controls** — CORS + rate limiting (including the Google, the
+   verify/resend, and the password-reset request endpoints) + typed errors +
+   upload size/type/integrity + abandoned-upload cleanup. The next
+   implementable package now that IP-2.5 is merged.
+2. **IP-2.4 account deletion** — pending the retention/reauth decision, then
+   transactional revocation + durable object-cleanup outbox/runner + full
+   local+remote purge. (Password recovery and IP-2.5 route privacy are now
+   merged to main — see the "Recent delivery" sections above.)
+3. **IP-2.7 retained-data protection** — gated on the owner design spike
+   (threat model, library/perf, backup/key-loss recovery).
 
-_Last regenerated: 2026-07-20 (from phase files at 2026-07-17; plan reconciled
-with the IP-2.9 delivery the same day)._
+_Last regenerated: 2026-07-21 (from phase files at 2026-07-17; plan reconciled
+with the IP-2.9 delivery 2026-07-20 and the IP-2.4 password-recovery + IP-2.5
+route-privacy deliveries 2026-07-21). The IP-2.9 email-verification (PR #164)
+and IP-2.5 route-privacy (PR #165) branches are now **merged to main**; the
+"branch / PR pending" wording in the dated snapshots above is historical
+(true at the snapshot date)._
