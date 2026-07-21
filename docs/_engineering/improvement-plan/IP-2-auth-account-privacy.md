@@ -10,7 +10,7 @@ published: false
 | Priority | P1 |
 | Target | 2–4 weeks in independently shippable packages, plus external email/privacy decisions |
 | Owner | Unassigned |
-| Last updated | 2026-07-20 |
+| Last updated | 2026-07-21 |
 | Depends on | IP-0 secret/avatar fix; IP-1 user-scope teardown and minimum CI |
 | External prerequisites | Privacy/deletion retention decision. (Password-recovery email provider/domain resolved 2026-07-20 — Brevo + reshapeapp.ai, see D-018.) |
 | Exit condition | Auth expiry/rotation/revocation, secure storage, account lifecycle, and route-privacy gates pass |
@@ -364,11 +364,11 @@ The last verified user may access only that user's local completed history while
 
 **Repository implementation state (2026-07-14) — profile slice only**
 
-- The maintainer selected the profile-edit slice as its own package increment;
-  password recovery (its email-provider prerequisite was resolved later on
-  2026-07-20 — see D-018 and IP-2.9 — leaving only the reset endpoints/UI to
-  build on the delivered token/email plumbing) and account deletion
-  (outbox/runner design) remain undelivered and unclaimed.
+- The maintainer selected the profile-edit slice as its own package increment.
+  As of this 2026-07-14 snapshot both password recovery and account deletion
+  remained undelivered; password recovery has since been delivered on
+  2026-07-21 (see the next subsection), and account deletion (outbox/runner
+  design) still remains undelivered and unclaimed.
 - `PUT /api/users/profile` now returns the updated safe user in exactly the
   `/me` contract instead of a message-only body. Only the two declared name
   fields are mapped into the Prisma update, a missing row maps to the safe
@@ -396,6 +396,89 @@ The last verified user may access only that user's local completed history while
   (281 executable Jest tests) and Flutter (302 tests) suites, analyzer/baseline,
   formatting, production build, built runtime smoke, and the Android debug APK
   pass locally.
+
+**Repository implementation state (2026-07-21) — password-recovery slice**
+
+Delivered on branch `feat/email-verification` (backend `34a14a9`, frontend
+`6b7dc97`), building on the IP-2.9 hashed-token primitives rather than a
+separate reset table. Account deletion is unaffected and still undelivered.
+
+- Instead of reconciling a legacy password-reset migration (the original plan
+  assumption, which predates the IP-2.9 token table), the delivery reuses the
+  single-use, hash-at-rest `VerificationToken` store. An additive, rollback-safe
+  migration (`20260721000000`) adds `PASSWORD_RESET` to the
+  `VerificationTokenPurpose` enum via `ALTER TYPE ... ADD VALUE IF NOT EXISTS`
+  (idempotent; no row uses it until the flow issues one). `issueVerificationToken`
+  is generalized to a `(purpose, ttlMs)` pair, and `@@unique([userId, purpose])`
+  keeps a user's verification and reset tokens independent — one outstanding
+  reset token per user, digest-only, 30-minute TTL.
+- `requestPasswordReset()` is anti-enumerating: a missing account, a
+  password-null (Google-only) account, and a within-cooldown repeat all resolve
+  to the same generic success with no email sent. A 60-second per-account DB
+  cooldown (the `lastSentAt` field) throttles repeats; the token is issued in a
+  serializable transaction and the raw token is emailed post-commit,
+  best-effort, logging only an error category — never the token or recipient.
+  This is a per-account throttle only; the address-dimension rate limiting for
+  recovery (3/account+address/hour) remains IP-2.6, not this slice.
+- `resetPassword()` consumes the token, sets the new password, and revokes every
+  session in one serializable transaction. The token is conditionally consumed
+  with an `updateMany` guarded on `consumedAt IS NULL AND expiresAt > now`
+  (count must be 1), the password update is guarded on `password IS NOT NULL`
+  (count must be 1) so a reset can never add a password to a Google-only
+  account, and `revokeAllUserSessionsInTransaction` runs before commit. Every
+  failure path — unknown, wrong-purpose, expired, already-consumed, or
+  passwordless-account — collapses to one opaque `AUTH_VERIFICATION_TOKEN_INVALID`
+  so the endpoint is neither a token- nor an account-state oracle. This resolves
+  the IP-2.8 concern that recovery must not silently password-enable a
+  Google-only account.
+- The web flow is deep-link-free: `POST /api/users/password-reset/request` (JSON,
+  public, generic `PASSWORD_RESET_REQUEST_FAILED` on error) emails a link to the
+  public `GET /api/users/password-reset`, a backend-rendered HTML form that POSTs
+  url-encoded back to `POST /api/users/password-reset`. Both pages carry a
+  tightened per-response CSP (`default-src 'none'; style-src 'unsafe-inline';
+  form-action 'self'; base-uri 'none'`) and `Referrer-Policy: no-referrer` so the
+  token is never leaked through the Referer header; a too-short password
+  re-renders the form with the token preserved. Email delivery reuses the same
+  optional feature-flagged provider (`NoopEmailSender` when unset), so no email
+  is sent when SMTP is unconfigured.
+- The Flutter client gains a `forgot_password` feature (state, notifier,
+  auto-dispose provider, screen) reached from the login screen's previously
+  stubbed "Forgot Password?" link. It collects the email, POSTs
+  `{username}` to the request endpoint through an unauthenticated datasource
+  path (no auth coordinator; the user is signed out), and always shows the same
+  generic "check your inbox" confirmation, mirroring the backend's
+  anti-enumeration; input is validated and network errors surface a retry. The
+  actual password change happens on the backend web form the emailed link opens,
+  not in the app.
+
+**Repository verification**
+
+- Backend: Prisma validate/generate, typecheck, **364** Jest tests pass (7
+  real-PostgreSQL cases intentionally skipped), production build and built-ESM
+  smoke. New/extended suites cover the anti-enumerating request (missing,
+  Google-only, throttled), one-use/expired/wrong-purpose reset, the
+  passwordless-account refusal, all-session revocation, the reset page/CSP, and
+  the route wiring.
+- Flutter: locked restore, **347** tests pass (4 new for the notifier's
+  canonicalized submit, invalid-email rejection, generic success, and error
+  handling), analyzer zero warnings/errors with the counted baseline accepted.
+  Counts are on the unmerged `feat/email-verification` branch and supersede the
+  IP-2.9 figures only once the branch merges.
+
+**Still required**
+
+- MC-2.5 (extended for recovery): a real Brevo/SMTP staging session must deliver
+  a live reset email, render the reset form, prove single-use consumption and
+  all-session revocation, and confirm no token/digest/recipient is logged. No
+  real-delivery or device claim is made from local tests.
+- Production UI exposure remains gated. The client link is wired
+  unconditionally (no client feature flag), so — as with the IP-2.9 verification
+  banner — the branch must not deploy until the Brevo provider is configured, or
+  a request will end at "check your inbox" with no email sent. Adding a client
+  gate is a reasonable belt-and-suspenders follow-up.
+- Address-dimension recovery rate limiting is IP-2.6; account deletion remains
+  the last undelivered IP-2.4 slice, still gated on its retention/reauth
+  decision.
 
 ### IP-2.5 — Make exact routes private and disable unfinished social paths
 
@@ -494,7 +577,7 @@ The app intentionally retains completed offline history across normal logout. Ex
 
 ### IP-2.8 — Google identity extension (delivered out of sequence)
 
-This maintainer-selected extension is not an original audit closure and does not change the lowest-numbered unfinished canonical work: IP-2.4 account deletion remains the next selected slice after its retention/reauthentication decision gate. Password recovery's provider/domain prerequisite is now resolved (D-018) and its reusable token/email plumbing is delivered (IP-2.9), leaving only the reset endpoints/UI to build. If the deletion decision is unavailable, IP-2.5 is the next implementable package without claiming IP-2.4 complete.
+This maintainer-selected extension is not an original audit closure and does not change the lowest-numbered unfinished canonical work: IP-2.4 account deletion remains the next selected slice after its retention/reauthentication decision gate. Password recovery's provider/domain prerequisite was resolved (D-018), its reusable token/email plumbing was delivered (IP-2.9), and the reset endpoints/UI are now delivered too (see the IP-2.4 2026-07-21 password-recovery subsection). If the deletion decision is unavailable, IP-2.5 is the next implementable package without claiming IP-2.4 complete.
 
 **Repository implementation state (2026-07-17)**
 
@@ -514,7 +597,7 @@ This maintainer-selected extension is not an original audit closure and does not
 **Still required**
 
 - MC-2.4 must prove the migration/artifact cutover, real Google OAuth configuration, Android signing/client matrix, physical-device and staging flows, release-log redaction, approved Google branding, and rollback. iOS remains optional under D-008; if iOS enters release scope, its callback scheme and the Sign in with Apple policy decision become mandatory.
-- Automatic linking to a **verified** matching-email account is delivered as of 2026-07-20 (see IP-2.9); a matching account whose email is **unverified** remains a safe conflict (`AUTH_EMAIL_UNVERIFIED_CONFLICT`, 409). Password recovery must not silently add a password to a Google-only account without a separately approved ownership and product policy.
+- Automatic linking to a **verified** matching-email account is delivered as of 2026-07-20 (see IP-2.9); a matching account whose email is **unverified** remains a safe conflict (`AUTH_EMAIL_UNVERIFIED_CONFLICT`, 409). The delivered password recovery (2026-07-21) already enforces the related rule: its reset refuses to add a password to a passwordless (Google-only) account, so it cannot silently password-enable a Google-only identity.
 
 ### IP-2.9 — Email verification and safe automatic account linking (delivered out of sequence)
 
@@ -651,7 +734,7 @@ Checked repository items below record delivered code and automated evidence only
 - [x] Repository concurrent auth failures trigger one refresh and at most one eligible retry per request.
 - [x] Repository offline access policy is enforced under a fake clock and user scope.
 - [x] Repository profile edit works and updates local session data.
-- [ ] Recovery is non-enumerating, one-use, rate-limited, and connected to an approved email provider before UI exposure. (Provider approved 2026-07-20 — D-018 — and the reusable token/email plumbing is delivered in IP-2.9; the reset endpoints/UI are still to build.)
+- [ ] Recovery is non-enumerating, one-use, rate-limited, and connected to an approved email provider before UI exposure. (Repository code delivered 2026-07-21: non-enumerating request, one-use 30-minute digest token, all-session revocation, Google-only refusal, and both the backend web form and the Flutter request UI. Remaining before the box is checked: address-dimension rate limiting is IP-2.6, and provider/staging delivery + gated production exposure is MC-2.5. Provider approved 2026-07-20 — D-018.)
 - [ ] Account deletion purges/revokes correctly; its independent durable cleanup rows survive cascades and the minimal runner demonstrably processes/retries them.
 - [ ] Activities default/migrate private; only owners receive exact routes.
 - [ ] Unfinished social endpoints/claims are disabled.
@@ -670,3 +753,4 @@ Checked repository items below record delivered code and automated evidence only
 | 2026-07-14 | IP-2.4 (profile slice) | Backend Prisma validate/generate, typecheck, full Jest suite, production build, built runtime smoke; Flutter locked restore, full suite, analyzer and counted baseline, formatting/`git diff --check`, Android debug APK; independent adversarial multi-agent review | Repository gates pass; recovery/deletion undelivered; hosted/staging gates pending | `PUT /profile` returns the updated safe `/me`-shaped user and the mobile app gains the name-edit flow committing only server-confirmed, same-owner first/last name, composing safely with concurrent avatar uploads. Backend passed 281 executable Jest tests (6 PostgreSQL tests correctly skipped locally; 2 new) and the built-ESM smoke; Flutter passed 302/302 (11 new). The adversarial review confirmed one medium concurrent-commit clobber defect, fixed and retested. Analyzer reported 10 informational findings, zero warnings/errors, baseline accepted. Password recovery remains blocked on the email-provider decision and account deletion remains undelivered; no claim is made for either. Hosted CI remains MC-0.7/MC-1.9; staging auth lifecycle remains MC-2.2/MC-2.3. |
 | 2026-07-17 | IP-2.8 (Google identity extension) | Merged tree `c805f62`; Prisma validation; backend typecheck, full local Jest suite, production build and built smoke; locked Flutter restore, full suite, analyzer/baseline, changed-file formatting, Android debug APK | Repository gates pass; provider/migration/device/staging verification pending | Backend passed 307 executable tests with seven real-PostgreSQL cases intentionally skipped locally; Flutter passed 330/330. Analyzer reported 9 informational findings and zero warnings/errors; the baseline accepted 9 and reported 11 prior allowed findings removed. Tests cover provider verification, safe conflict/concurrency/outage behavior, first-party session parity, cleartext refusal, auth-gate races, cancellation/navigation, and Google-only capability UI. No real OAuth-console, signed-device, provider-network, non-rolling migration, deployment, branding, or iOS release claim is made; those remain MC-2.4. IP-2.4 deletion and recovery remain open. |
 | 2026-07-20 | IP-2.9 (email verification + safe linking) | Branch `feat/email-verification` (commits `7432e9c`…`4f0983f`, PR pending); Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM smoke; locked Flutter restore, full suite, analyzer/counted baseline | Repository gates pass; provider/staging/device verification pending | Backend passed 347 Jest tests (7 real-PostgreSQL cases intentionally skipped); Flutter passed 343 tests, analyzer zero warnings/errors with the baseline accepted. Delivers `User.emailVerified` + hash-at-rest `VerificationToken` (additive migration backfilling only `googleSubject IS NOT NULL`), post-commit best-effort verification email behind an optional SMTP feature flag, idempotent public verify page + throttled resend, the emailVerified-gated Google auto-link (`AUTH_EMAIL_UNVERIFIED_CONFLICT` otherwise), and the Flutter banner/refresh. Resolves the email-provider decision (D-018) and unblocks the IP-2.4 recovery prerequisite. No real Brevo/SMTP delivery, sender-domain SPF/DKIM, staging verify-page, or on-device banner claim is made; those remain MC-2.5 (or an MC-2.4 extension). Counts supersede IP-2.8 only on merge. |
+| 2026-07-21 | IP-2.4 (password-recovery slice) | Branch `feat/email-verification` (backend `34a14a9`, frontend `6b7dc97`, PR pending); Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM smoke; locked Flutter restore, full suite, analyzer/counted baseline | Repository gates pass; provider/staging exposure pending | Backend passed 364 Jest tests (7 real-PostgreSQL cases intentionally skipped); Flutter passed 347 tests, analyzer zero warnings/errors with the baseline accepted. Reuses the IP-2.9 hashed-token store: additive `PASSWORD_RESET` enum migration (`20260721000000`), anti-enumerating `requestPasswordReset` (missing/Google-only/60s-cooldown all generic, post-commit best-effort email, token/recipient never logged), one-transaction `resetPassword` (single-use 30-minute digest, all-session revocation, refuses to add a password to a Google-only account, all failures collapse to `AUTH_VERIFICATION_TOKEN_INVALID`), a deep-link-free backend web form (tightened CSP + `no-referrer`), and a Flutter `forgot_password` screen wired from the login link. Address-dimension rate limiting remains IP-2.6; production exposure + real provider/staging delivery remain MC-2.5 (extended for recovery). Account deletion remains undelivered. Counts supersede IP-2.9 only on merge. |
