@@ -467,6 +467,22 @@ describe('HTTP security boundaries', () => {
   });
 
   it.each([
+    ['GET', '/api/friends'],
+    ['POST', '/api/friends/requests'],
+    ['GET', '/api/activities/1/comments'],
+    ['POST', '/api/activities/1/comments'],
+    ['POST', '/api/activities/1/likes'],
+    ['DELETE', '/api/activities/1/likes'],
+  ])(
+    'keeps the disabled social %s %s endpoint unavailable (IP-2.5)',
+    async (method, path) => {
+      const response = await requestJson(server, method, path);
+
+      expect(response.statusCode).toBe(404);
+    },
+  );
+
+  it.each([
     [
       '/api/avatar/upload-url',
       'requestUpload',

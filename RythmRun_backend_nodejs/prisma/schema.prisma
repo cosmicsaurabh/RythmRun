@@ -94,7 +94,7 @@ model Activity {
   maxSpeed       Float
   calories       Int?
   description    String?
-  isPublic       Boolean         @default(true)
+  isPublic       Boolean         @default(false)
   pausedDuration Int?
   name           String?
   elevationGain  Float?

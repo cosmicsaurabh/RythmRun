@@ -181,6 +181,22 @@ describe('ActivityService', () => {
   });
 
   describe('createActivity', () => {
+    it('forces isPublic to false even when the client requests public (IP-2.5)', async () => {
+      mockTx.activity.findUnique.mockResolvedValueOnce(null);
+      mockTx.activity.create.mockResolvedValue({ id: 1 });
+      mockTx.location.createMany.mockResolvedValue({ count: 1 });
+      mockTx.statusChange.createMany.mockResolvedValue({ count: 4 });
+      mockTx.activity.findUnique.mockResolvedValue(mockActivityReturn);
+
+      await service.createActivity(userId, {
+        ...fullActivityDto,
+        isPublic: true,
+      });
+
+      const createData = mockTx.activity.create.mock.calls[0][0].data;
+      expect(createData.isPublic).toBe(false);
+    });
+
     it('should create activity with all new sync fields', async () => {
       mockTx.activity.findUnique.mockResolvedValueOnce(null);
       mockTx.activity.create.mockResolvedValue({ id: 1 });
@@ -472,6 +488,29 @@ describe('ActivityService', () => {
       expect(result.elevationGain).toBe(45.5);
       expect(result.elevationLoss).toBe(30.2);
       expect(result.metricsVersion).toBe(LEGACY_METRICS_VERSION);
+    });
+
+    it('scopes the lookup to the owner and never matches on public visibility (IP-2.5)', async () => {
+      prisma.activity.findFirst.mockResolvedValue(mockActivityReturn);
+
+      await service.getActivityById(userId, 1);
+
+      const findFirstArgs = prisma.activity.findFirst.mock.calls[0][0];
+      expect(findFirstArgs.where).toEqual({ id: 1, userId });
+      expect(findFirstArgs.where.OR).toBeUndefined();
+      expect(JSON.stringify(findFirstArgs.where)).not.toContain('isPublic');
+    });
+
+    it('denies a non-owner: an activity owned by another user is not found', async () => {
+      // With an owner-scoped where, Prisma returns null for a foreign activity.
+      prisma.activity.findFirst.mockResolvedValue(null);
+
+      await expect(service.getActivityById(userId, 999)).rejects.toThrow(
+        /not found or access denied/i,
+      );
+
+      const findFirstArgs = prisma.activity.findFirst.mock.calls[0][0];
+      expect(findFirstArgs.where).toEqual({ id: 999, userId });
     });
   });
 
