@@ -47,12 +47,16 @@ export function createApp(routes: ApplicationRoutes) {
   });
 
   app.use('/api/users', routes.users);
-  app.use('/api/friends', routes.friends);
   app.use('/api/avatar', routes.avatar);
   app.use('/api/activities/:activityId/images', routes.activityImages);
   app.use('/api/activities', routes.activities);
-  app.use('/api/activities/:activityId/comments', routes.comments);
-  app.use('/api/activities/:activityId/likes', routes.likes);
+
+  // IP-2.5 / D-007: the friend, comment, and like routers are intentionally
+  // NOT mounted. Social features stay disabled (requests fall through to 404)
+  // until authentication, privacy, route visibility, moderation, and
+  // blocking/reporting exist. The routers/services remain in the tree
+  // (`routes.friends`, `routes.comments`, `routes.likes`) for future re-enable;
+  // do not remount them merely to expose an unsupported product journey.
 
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });

@@ -24,7 +24,7 @@ Registration, login, refresh, and liveness are public HTTP routes. Refresh authe
 - Avatars: `POST /api/avatar/upload-url` and `POST /api/avatar/confirm`.
 - Activities: `GET/POST /api/activities` and `GET/PATCH/DELETE /api/activities/:activityId`.
 - Activity images: list, request upload, confirm, and delete below `/api/activities/:activityId/images`.
-- Friends, comments, and likes are exposed below `/api/friends`, `/api/activities/:activityId/comments`, and `/api/activities/:activityId/likes`.
+- Social (friends, comments, likes) is **not exposed**: the routers exist under `src/routes` but are intentionally unmounted (IP-2.5 / D-007) and return `404` until the privacy, visibility, and moderation model is complete.
 - Liveness: `GET /health`.
 
 The route source under `src/routes` is authoritative. In particular, activity updates use `PATCH`; the retired local profile-picture upload route is not part of this API.

@@ -121,7 +121,10 @@ export class ActivityService {
                     maxSpeed: dto.maxSpeed,
                     calories: dto.calories,
                     description: dto.description,
-                    isPublic: dto.isPublic ?? true,
+                    // IP-2.5: activities are private until a route-redaction /
+                    // public-sharing model exists. The client-supplied value is
+                    // deliberately ignored so nothing can be created public.
+                    isPublic: false,
                     pausedDuration: dto.pausedDuration,
                     name: dto.name,
                     elevationGain: dto.elevationGain,
@@ -316,7 +319,9 @@ export class ActivityService {
                     ...(dto.description !== undefined && {
                         description: dto.description
                     }),
-                    ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
+                    // IP-2.5: visibility is not client-editable while public
+                    // sharing is disabled; an update can never turn a private
+                    // activity public.
                     ...(dto.pausedDuration !== undefined && {
                         pausedDuration: dto.pausedDuration
                     }),
@@ -434,14 +439,13 @@ export class ActivityService {
     }
 
     async getActivityById(userId: number, activityId: number) {
-        // Find activity and check if it belongs to user or is public
+        // IP-2.5: exact routes are owner-only. A request for an activity the
+        // caller does not own resolves to the same not-found path as a missing
+        // id, so another user's route/images/identity are never returned.
         const activity = await this.prisma.activity.findFirst({
             where: {
                 id: activityId,
-                OR: [
-                    { userId },        // User's own activity
-                    { isPublic: true } // Public activity
-                ]
+                userId
             },
             include: {
                 ...this.activityInclude,

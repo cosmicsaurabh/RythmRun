@@ -54,7 +54,7 @@ async function main() {
       maxSpeed: 2.78, // 10km/h
       calories: 500,
       description: 'Morning run in the park',
-      isPublic: true,
+      isPublic: false, // IP-2.5: activities are private by default
       locations: {
         create: [
           {
