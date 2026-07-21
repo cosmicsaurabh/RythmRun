@@ -13,12 +13,19 @@ import {
   ChangePasswordDto,
   GoogleAuthDto,
   LoginUserDto,
+  PasswordResetConfirmDto,
+  PasswordResetRequestDto,
   RefreshTokenDto,
   RegisterUserDto,
   UpdateProfileDto,
 } from '../models/dto/user.dto.js';
 import { UserService } from '../services/user.service.js';
 import { renderVerifyPage } from '../templates/verify-page.template.js';
+import {
+  renderResetError,
+  renderResetForm,
+  renderResetSuccess,
+} from '../templates/reset-page.template.js';
 
 interface ErrorResponseOptions {
   validationCode: string;
@@ -183,6 +190,86 @@ export class UserController {
       });
     }
   };
+
+  requestPasswordReset = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const dto = await validateDto(PasswordResetRequestDto, req.body);
+      await this.userService.requestPasswordReset(dto.username);
+      // Always generic: the response is identical whether or not an account
+      // exists, so it never becomes an account-enumeration oracle.
+      res.status(200).json({
+        message:
+          'If an account exists for that email, a password reset link has been sent.',
+        statusCode: 200,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'PASSWORD_RESET_REQUEST_FAILED',
+        unexpectedOperation: 'Password reset request',
+      });
+    }
+  };
+
+  passwordResetPage = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    // Public HTML form opened from the emailed link. The token is validated on
+    // submit, not here, so rendering the form is not a token-existence oracle.
+    this.applyResetPageHeaders(res);
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    res.status(200).type('html').send(renderResetForm(token));
+  };
+
+  submitPasswordReset = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    this.applyResetPageHeaders(res);
+    const rawToken =
+      typeof req.body?.token === 'string' ? req.body.token : '';
+    try {
+      const dto = await validateDto(PasswordResetConfirmDto, req.body);
+      await this.userService.resetPassword(dto.token, dto.newPassword);
+      res.status(200).type('html').send(renderResetSuccess());
+    } catch (error: unknown) {
+      if (error instanceof DtoValidationError) {
+        // Bad password (e.g. too short): re-render the form to retry, keeping
+        // the token so a valid link is not lost.
+        res
+          .status(400)
+          .type('html')
+          .send(
+            renderResetForm(
+              rawToken,
+              'Password must be 8–50 characters. Please try again.',
+            ),
+          );
+        return;
+      }
+      if (!(error instanceof AuthApplicationError)) {
+        const category = error instanceof Error ? error.name : 'UnknownError';
+        console.error(`Password reset failed (${category})`);
+      }
+      const statusCode =
+        error instanceof AuthApplicationError ? error.statusCode : 500;
+      res.status(statusCode).type('html').send(renderResetError());
+    }
+  };
+
+  // The reset pages render a same-origin form and must not leak the token in
+  // the URL via the Referer header; the CSP also permits the form POST target.
+  private applyResetPageHeaders(res: Response): void {
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'",
+    );
+    res.setHeader('Referrer-Policy', 'no-referrer');
+  }
 
   me = async (req: Request, res: Response): Promise<void> => {
     try {

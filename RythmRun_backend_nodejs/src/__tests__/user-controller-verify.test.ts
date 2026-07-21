@@ -129,3 +129,98 @@ describe('UserController email verification', () => {
     );
   });
 });
+
+describe('UserController password reset', () => {
+  it('acknowledges a reset request generically for any email', async () => {
+    const userService = {
+      requestPasswordReset: jest
+        .fn<() => Promise<void>>()
+        .mockResolvedValue(undefined),
+    };
+    const controller = new UserController(userService as never);
+    const res = fakeResponse();
+
+    await controller.requestPasswordReset(
+      { body: { username: 'runner@example.com' } } as never,
+      res as never,
+    );
+
+    expect(userService.requestPasswordReset).toHaveBeenCalledWith(
+      'runner@example.com',
+    );
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('renders the reset form with hardened headers and the token', async () => {
+    const controller = new UserController({} as never);
+    const res = fakeResponse();
+
+    await controller.passwordResetPage(
+      { query: { token: 'raw-token' } } as never,
+      res as never,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['Referrer-Policy']).toBe('no-referrer');
+    expect(res.headers['Content-Security-Policy']).toContain("form-action 'self'");
+    expect(String(res.body)).toContain('raw-token');
+    expect(String(res.body)).toContain('Choose a new password');
+  });
+
+  it('renders success after a valid reset submit', async () => {
+    const userService = {
+      resetPassword: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    };
+    const controller = new UserController(userService as never);
+    const res = fakeResponse();
+
+    await controller.submitPasswordReset(
+      { body: { token: 'raw-token', newPassword: 'brand-new-pass' } } as never,
+      res as never,
+    );
+
+    expect(userService.resetPassword).toHaveBeenCalledWith(
+      'raw-token',
+      'brand-new-pass',
+    );
+    expect(res.statusCode).toBe(200);
+    expect(String(res.body)).toContain('Password updated');
+  });
+
+  it('re-renders the form with an error for a too-short password', async () => {
+    const userService = {
+      resetPassword: jest.fn<() => Promise<void>>(),
+    };
+    const controller = new UserController(userService as never);
+    const res = fakeResponse();
+
+    await controller.submitPasswordReset(
+      { body: { token: 'raw-token', newPassword: 'short' } } as never,
+      res as never,
+    );
+
+    expect(userService.resetPassword).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(400);
+    expect(String(res.body)).toContain('Choose a new password');
+    expect(String(res.body)).toContain('raw-token');
+  });
+
+  it('renders the error page for an invalid/expired reset token', async () => {
+    const userService = {
+      resetPassword: jest
+        .fn<() => Promise<void>>()
+        .mockRejectedValue(invalidVerificationTokenError()),
+    };
+    const controller = new UserController(userService as never);
+    const res = fakeResponse();
+
+    await controller.submitPasswordReset(
+      { body: { token: 'raw-token', newPassword: 'brand-new-pass' } } as never,
+      res as never,
+    );
+
+    expect(res.statusCode).toBe(410);
+    expect(res.headers['Referrer-Policy']).toBe('no-referrer');
+    expect(String(res.body)).toContain('didn’t work');
+  });
+});

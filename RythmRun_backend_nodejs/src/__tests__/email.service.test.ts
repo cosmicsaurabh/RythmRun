@@ -5,6 +5,7 @@ import type { EmailEnvironment } from '../config/env.js';
 import {
   NoopEmailSender,
   NodemailerEmailSender,
+  buildPasswordResetUrl,
   buildVerificationUrl,
   createEmailSender,
 } from '../services/email.service.js';
@@ -106,5 +107,46 @@ describe('NodemailerEmailSender', () => {
     const message = sendMail.mock.calls[0][0] as { html: string };
     expect(message.html).not.toContain('<script>alert(1)</script>');
     expect(message.html).toContain('&lt;script&gt;');
+  });
+
+  it('sends a password-reset email with the reset link and subject', async () => {
+    const { transporter, sendMail } = fakeTransport();
+    const sender = new NodemailerEmailSender(config, transporter);
+
+    await sender.sendPasswordReset({
+      to: 'runner@example.com',
+      firstname: 'Ada',
+      rawToken: 'reset-token',
+    });
+
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    const message = sendMail.mock.calls[0][0] as {
+      to: string;
+      subject: string;
+      text: string;
+      html: string;
+    };
+    expect(message.to).toBe('runner@example.com');
+    expect(message.subject).toMatch(/reset/i);
+    const expectedUrl = buildPasswordResetUrl(config.publicAppUrl, 'reset-token');
+    expect(message.text).toContain(expectedUrl);
+    expect(message.html).toContain(expectedUrl);
+  });
+});
+
+describe('buildPasswordResetUrl', () => {
+  it('points at the reset route with an url-encoded token', () => {
+    expect(
+      buildPasswordResetUrl('https://rythmrun.onrender.com', 'a b/c'),
+    ).toBe('https://rythmrun.onrender.com/api/users/password-reset?token=a%20b%2Fc');
+  });
+});
+
+describe('NoopEmailSender password reset', () => {
+  it('no-ops without a transport', async () => {
+    const sender = new NoopEmailSender();
+    await expect(
+      sender.sendPasswordReset({ to: 'x@y.com', rawToken: 'tok' }),
+    ).resolves.toBeUndefined();
   });
 });
