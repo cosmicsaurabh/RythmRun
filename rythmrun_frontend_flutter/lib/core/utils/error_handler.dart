@@ -7,10 +7,12 @@ import '../config/app_config.dart';
 class ErrorHandler {
   /// Converts any exception to a user-friendly error message
   static String getErrorMessage(dynamic exception) {
-    String message = exception.toString().replaceAll('Exception: ', '');
+    String message = _readableMessage(exception);
 
     if (exception is HttpStatusException) {
       switch (exception.code) {
+        case 'AUTH_INVALID_CREDENTIALS':
+          return 'Incorrect email or password. Please try again.';
         case 'AUTH_GOOGLE_INVALID':
           return 'Google sign-in could not be verified. Please choose your account and try again.';
         case 'AUTH_GOOGLE_ACCOUNT_CONFLICT':
@@ -21,6 +23,11 @@ class ErrorHandler {
           return 'This verification link is invalid or has expired. Request a new one.';
         case 'AUTH_VERIFICATION_RATE_LIMITED':
           return 'Please wait a moment before requesting another verification email.';
+        case 'AUTH_RATE_LIMITED':
+          // IP-2.6 abuse controls. Without this arm a 429 falls through to the
+          // generic path and surfaces the raw 'HttpStatusException(429): ...'
+          // string, because 429 has no dedicated exception type.
+          return 'Too many attempts. Please wait a few minutes and try again.';
       }
     }
 
@@ -116,6 +123,32 @@ class ErrorHandler {
     } else {
       return message;
     }
+  }
+
+  /// The human-readable text carried by an exception.
+  ///
+  /// Our own exception types expose the server's message directly, so use it.
+  /// Deriving it from `toString()` instead used to weld the class name onto
+  /// the text: `toString()` is `'UnauthorizedException: <msg>'`, and stripping
+  /// `'Exception: '` cut that literal out of the *middle*, so a failed login
+  /// reached the user as `'UnauthorizedInvalid username or password'`.
+  ///
+  /// The switch has no `default` arm on purpose — falling through to the
+  /// type-based branches is what produces the right generic message per status
+  /// — so an unmapped code has to degrade safely. It now degrades to clean
+  /// text rather than a mangled class name, meaning a new backend error code
+  /// cannot silently reintroduce that defect.
+  static String _readableMessage(dynamic exception) {
+    if (exception is HttpStatusException) {
+      return exception.message;
+    }
+    if (exception is NetworkException) {
+      return exception.message;
+    }
+    // Foreign exceptions (SocketException, TimeoutException, ...) have no
+    // message field; the checks further down deliberately match on their
+    // `toString()` text, so keep the existing derivation for them.
+    return exception.toString().replaceAll('Exception: ', '');
   }
 
   static String _parseValidationError(String errorMessage) {

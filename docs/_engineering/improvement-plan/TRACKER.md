@@ -30,15 +30,16 @@ still owes at least one manual/hosted gate.
 | --- | --- | --- | --- | --- |
 | IP-0 Security containment (P0) | **In progress** | 6 of 10 (code); 4 operational packages not started | IP-0.1, 0.1A, 0.6, 0.7 (all operational) | MC-0.1–0.12 |
 | IP-1 Tracking correctness | **Verification** | 7 of 7 | — | MC-1.1–1.14 |
-| IP-2 Auth, account, privacy | **In progress** | 5 of 8 + IP-2.9 (IP-2.4 profile & password-recovery slices; account deletion left) — all merged to main | IP-2.6, 2.7 | MC-2.1–2.5 |
+| IP-2 Auth, account, privacy | **In progress** | 5 of 8 + IP-2.9 merged to main, plus the IP-2.6 abuse-control slice on branch (IP-2.4 account deletion and IP-2.6 storage boundary left) | IP-2.7 | MC-2.1–2.6 |
 | IP-3 Workout durability | **Planned** | 0 of 5 | all | — |
 | IP-4 Sync & restore | **Planned** | 0 of 6 | all | — |
 | IP-5 Release readiness | **Planned** | 0 of 7 | all (5.7 Deferred) | — |
 
-**Manual/hosted checks: 0 of 31 verified** (30 pending, MC-0.10 blocked;
+**Manual/hosted checks: 0 of 32 verified** (31 pending, MC-0.10 blocked;
 MC-2.5 added 2026-07-20 for the IP-2.9 email delivery, extended 2026-07-21 to
-also gate the IP-2.4 password-reset delivery on the same provider). No package
-can reach `Complete` until its gates carry dated evidence.
+also gate the IP-2.4 password-reset delivery on the same provider; MC-2.6 added
+2026-07-27 for the IP-2.6 abuse-control slice). No package can reach `Complete`
+until its gates carry dated evidence.
 
 The single most important fact: **IP-0 is a P0 release blocker and its blocking
 work is operational, not code.** Containment, exposure investigation, and
@@ -85,7 +86,7 @@ All seven packages are repo-delivered; each waits on a device/staging/hosted gat
 | IP-2.3 Offline-session behavior | Verification | ✓ | 7-day fail-closed offline window + online-operation guard. Left: MC-2.3 device offline/rollback/airplane-vs-revocation proof. |
 | IP-2.4 Profile, password recovery, account deletion | **In progress** | partial | **Profile and password-recovery slices delivered and merged to main** (PR #164; backend `34a14a9` + frontend `6b7dc97`): anti-enumerating request, one-transaction single-use reset revoking all sessions + refusing Google-only accounts, backend web form, and the Flutter forgot-password screen — reusing the IP-2.9 hashed-token store. Left for recovery: address-dimension rate limits (IP-2.6) and gated production exposure/staging delivery (MC-2.5). **Account deletion** still blocked on the retention/reauth decision, then transactional revocation + durable object-cleanup outbox/runner + full local+remote purge. |
 | IP-2.5 Private routes; disable social | Verification | ✓ | **Delivered and merged to main** (PR #165; `bd78d9a`). `isPublic` defaults false + backfill migration to private, `getActivityById` owner-only (cross-user route/image/identity closed), friend/comment/like routers unmounted (`404`), README/seed corrected. 290 backend tests. Left: apply the migration on staging/production (deploy step); qualify the published policy pages that still describe social/public sharing. |
-| IP-2.6 API abuse controls & typed errors | Planned | ✗ | Not started. CORS allowlist, rate limits (login/register/recovery/password/**Google exchange**), finish typed error mapping, storage size/type/integrity + abandoned-upload cleanup. |
+| IP-2.6 API abuse controls & typed errors | **In progress** | partial | **Abuse-control slice delivered** on branch `feat/api-abuse-controls`: required-in-production exact-match CORS allowlist (fail-closed before listen, https-only), `TRUST_PROXY_HOPS`-driven `trust proxy` defaulting to 0, in-process sliding-window budgets on login/register/Google exchange/recovery request+submit/password change/verification resend returning a typed `AUTH_RATE_LIMITED` 429 with `Retry-After`, typed `ActivityImageServiceError` replacing exact-message branching in the mounted image controller, and request ids + fixed-field privacy-safe security events. 452 backend / 349 Flutter tests. Left: **storage-boundary items 6–8** (enforceable activity-image upload grant, real ContentType/ContentLength/checksum confirmation, per-user object/byte quotas, abandoned-upload lifecycle, volume alarms), the unmounted social controllers' message-string branching, and **MC-2.6** deployed edge configuration. |
 | IP-2.7 Protect retained routes/photos at rest | Planned | ✗ | Not started; gated on an owner design spike (threat model, library/perf, backup/key-loss recovery) before migrating SQLite + photos to user-scoped at-rest protection. |
 | IP-2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. Left: MC-2.4 non-rolling migration, OAuth-console/signing, provider, device, staging, branding proof. **Note: its no-implicit-link behavior is superseded by IP-2.9 below.** |
 | IP-2.9 Email verification & safe linking | Verification | ✓ | **Merged to main** (PR #164). Delivers `emailVerified` + hashed token table, optional SMTP send, verify/resend, and the emailVerified-gated Google auto-link. Left: **MC-2.5** — real Brevo/SMTP + DKIM/SPF, staging delivery + verify page, on-device banner/resend. Resolves D-018; its hashed-token store is reused by the merged IP-2.4 password recovery. |
@@ -137,7 +138,9 @@ Every row is unevidenced. Grouped by who can close it:
   deploy order/shutdown · MC-2.1 auth-session transaction · MC-2.2 auth cutover
   · MC-2.4 Google identity migration/provider/device · MC-2.5
   email provider/delivery + on-device banner (IP-2.9) — extended to also gate
-  the IP-2.4 password-reset email delivery/flow, which shares the same provider.
+  the IP-2.4 password-reset email delivery/flow, which shares the same provider
+  · MC-2.6 deployed abuse-control edge configuration (proxy depth, production
+  origins, fail-closed boot, live 429 recovery, single-replica assumption).
 - **Product-data analysis:** MC-1.1 legacy metric sampling · MC-1.4 rollout
   observation.
 
@@ -196,15 +199,35 @@ deletion** is the only remaining slice.
 | **Closes the IP-2.8 Google-only concern** | The reset's `password IS NOT NULL` guard means recovery cannot silently password-enable a Google-only account. |
 | **Extends a manual gate, not the count** | Recovery's production exposure and real reset-email/flow proof fold into **MC-2.5** (same Brevo provider), so the 0-of-31 manual-gate count is unchanged. Address-dimension recovery rate limiting stays IP-2.6. |
 
+## Recent delivery — reconciled into the plan 2026-07-27
+
+**IP-2.6 abuse-control slice** — branch **`feat/api-abuse-controls`**. Backend
+**452** Jest tests pass (7 real-PostgreSQL cases intentionally skipped), up from
+373 on main; Flutter **349** tests pass, up from 347. Production build and the
+built-ESM smoke pass, and the smoke now supplies the newly required production
+CORS variable, so it proves the built artifact reads it.
+
+| Impact | Detail |
+| --- | --- |
+| **Closes the "no rate limits and permissive CORS" audit finding at code level** | `app.use(cors())` becomes an exact-match `CORS_ALLOWED_ORIGINS` allowlist, required and https-only under `NODE_ENV=production` and validated before the listener binds; wildcards, paths, and credentials in entries are rejected, and `Access-Control-Allow-Credentials` is never sent because the API is bearer-authenticated. In-process sliding-window budgets cover login (5 failed / account+address / 15 min), register (5 / address / hour), recovery request (3 / account+address / hour), password change (5 / account / hour), plus Google exchange, reset submission, and verification resend. Login carries an added second ceiling of 20 failed attempts per address / 15 min: the account+address key bounds guessing one account's password but would never trip against credential spraying, where every attempt names a different account and mints a fresh key. |
+| **Makes the limits actually bind** | `TRUST_PROXY_HOPS` drives `trust proxy` and defaults to 0, so a forged `X-Forwarded-For` cannot select a limiter key; a test rotates the header and proves it buys no budget. Budgets are charged on admission and refunded when a `client_failures` response turns out not to be a 4xx — an adversarial review probe showed that deciding at response time instead admitted 40 concurrent guesses against a limit of 5, and a regression test now pins that burst at exactly 5. A 5xx outage never spends a caller's budget, and rejections are not charged so a limited key recovers on schedule rather than being pushed forward by continued abuse. |
+| **Advances typed errors (item 4)** | `AUTH_RATE_LIMITED` joins the typed auth codes. The mounted activity-image controller stops choosing an HTTP status by comparing `error.message` to exact English sentences and raises typed `ActivityImageServiceError` values instead; its 500 branch no longer logs the raw error object, which could carry a presigned URL. The unmounted social controllers still branch on message strings. |
+| **Adds privacy-safe observability (item 5)** | Server-minted `X-Request-Id` on every response, ignoring any inbound header so a client cannot forge a log trail. Rate-limit rejections emit one JSON `security_event` line built from a fixed allowlisted field set — never a spread of caller input — with identifying values reduced to a truncated SHA-256 digest. |
+| **Required a Flutter change** | Without a matching `AUTH_RATE_LIMITED` arm in `ErrorHandler.getErrorMessage`, a 429 surfaced the raw `HttpStatusException(429): …` string, because 429 has no dedicated exception type on the client. |
+| **Adds one manual gate** | **MC-2.6**: recorded proxy depth tied to the real hosting proxy, recorded production origins with allow/deny probes, a fail-closed boot smoke, a live 429-and-recovery run, and confirmation the deployment still runs exactly one replica. The limiter is in-process, so restart clears counters and a second replica would multiply every limit. |
+| **Does NOT close IP-2.6** | Storage-boundary items 6–8 are untouched: the activity-image grant still cannot enforce size at the storage boundary (avatars already can, from IP-0.4), confirmation still trusts declared metadata, and there are no per-user object/byte quotas, abandoned-upload cleanup, or volume alarms. |
+
 ## Next actionable repository work
 
 Lowest-numbered unblocked packages (operational IP-0 gates run in parallel but
 are not substitutes):
 
-1. **IP-2.6 abuse controls** — CORS + rate limiting (including the Google, the
-   verify/resend, and the password-reset request endpoints) + typed errors +
-   upload size/type/integrity + abandoned-upload cleanup. The next
-   implementable package now that IP-2.5 is merged.
+1. **IP-2.6 storage boundary (items 6–8)** — an enforceable activity-image
+   upload grant, confirmation against actual `ContentType`/`ContentLength`/
+   checksum, per-user object/count/byte quotas, abandoned-upload lifecycle
+   cleanup, and presign/storage volume alarms. Changing the grant alters the
+   client upload contract, so it needs a coordinated Flutter change and
+   real-storage proof.
 2. **IP-2.4 account deletion** — pending the retention/reauth decision, then
    transactional revocation + durable object-cleanup outbox/runner + full
    local+remote purge. (Password recovery and IP-2.5 route privacy are now
@@ -212,9 +235,10 @@ are not substitutes):
 3. **IP-2.7 retained-data protection** — gated on the owner design spike
    (threat model, library/perf, backup/key-loss recovery).
 
-_Last regenerated: 2026-07-21 (from phase files at 2026-07-17; plan reconciled
-with the IP-2.9 delivery 2026-07-20 and the IP-2.4 password-recovery + IP-2.5
-route-privacy deliveries 2026-07-21). The IP-2.9 email-verification (PR #164)
-and IP-2.5 route-privacy (PR #165) branches are now **merged to main**; the
-"branch / PR pending" wording in the dated snapshots above is historical
-(true at the snapshot date)._
+_Last regenerated: 2026-07-27 (from phase files at 2026-07-17; plan reconciled
+with the IP-2.9 delivery 2026-07-20, the IP-2.4 password-recovery + IP-2.5
+route-privacy deliveries 2026-07-21, and the IP-2.6 abuse-control slice
+2026-07-27). The IP-2.9 email-verification (PR #164) and IP-2.5 route-privacy
+(PR #165) branches are merged to main; the "branch / PR pending" wording in the
+dated snapshots above is historical (true at the snapshot date). The IP-2.6
+abuse-control slice is on branch `feat/api-abuse-controls` and not yet merged._

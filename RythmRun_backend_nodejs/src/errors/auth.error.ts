@@ -7,6 +7,7 @@ export type AuthErrorCode =
   | 'AUTH_INVALID_CREDENTIALS'
   | 'AUTH_PASSWORD_UNAVAILABLE'
   | 'AUTH_PASSWORD_INVALID'
+  | 'AUTH_RATE_LIMITED'
   | 'AUTH_REFRESH_INVALID'
   | 'AUTH_USERNAME_TAKEN'
   | 'AUTH_USER_NOT_FOUND'
@@ -108,6 +109,21 @@ export function invalidVerificationTokenError(): AuthApplicationError {
     'AUTH_VERIFICATION_TOKEN_INVALID',
     410,
     'This verification link is invalid or has expired',
+  );
+}
+
+/**
+ * Raised by the IP-2.6 abuse controls when a caller exceeds a configured
+ * request budget. The message is deliberately identical for every limited
+ * endpoint so the response never reveals which dimension (account or client
+ * address) tripped, nor whether the named account exists.
+ */
+export function rateLimitedError(): AuthApplicationError {
+  return new AuthApplicationError(
+    'AUTH_RATE_LIMITED',
+    429,
+    'Too many requests. Please wait and try again.',
+    true,
   );
 }
 

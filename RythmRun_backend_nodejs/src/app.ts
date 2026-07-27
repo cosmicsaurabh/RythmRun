@@ -1,7 +1,10 @@
+import type { CorsOptions } from 'cors';
 import type { Request, Response, Router } from 'express';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+
+import { requestContextMiddleware } from './middleware/request-context.middleware.js';
 
 export const DEFAULT_JSON_LIMIT_BYTES = 100 * 1024;
 
@@ -13,6 +16,48 @@ export interface ApplicationRoutes {
   activities: Router;
   comments: Router;
   likes: Router;
+}
+
+export interface ApplicationOptions {
+  /**
+   * Exact browser origins permitted to read responses. Empty means no
+   * cross-origin browser access, which is the safe default — mobile clients
+   * send no `Origin` and are unaffected either way.
+   */
+  allowedOrigins?: readonly string[];
+  /** Proxy hops in front of this process; see TRUST_PROXY_HOPS. */
+  trustProxyHops?: number;
+}
+
+/**
+ * Builds the CORS policy from an exact-match allowlist (IP-2.6 item 1).
+ *
+ * Credentials stay off: the API authenticates with a bearer token rather than
+ * a cookie, so no response ever needs `Access-Control-Allow-Credentials`, and
+ * leaving it off makes the wildcard-with-credentials mistake unreachable.
+ * CORS constrains browsers only — it is not an authentication substitute.
+ */
+export function createCorsOptions(
+  allowedOrigins: readonly string[],
+): CorsOptions {
+  const allowlist = new Set(allowedOrigins);
+
+  return {
+    origin(origin, callback) {
+      // No Origin header: a non-browser client (the mobile app, curl, a health
+      // probe). CORS has nothing to decide, so reflect nothing and let the
+      // request through to authentication.
+      if (origin === undefined) {
+        callback(null, false);
+        return;
+      }
+      callback(null, allowlist.has(origin));
+    },
+    credentials: false,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+  };
 }
 
 function usesActivityMutationParser(req: Request): boolean {
@@ -28,10 +73,18 @@ function usesActivityMutationParser(req: Request): boolean {
  * Constructs the HTTP application without loading configuration, creating
  * infrastructure clients, starting timers, or opening a network listener.
  */
-export function createApp(routes: ApplicationRoutes) {
+export function createApp(
+  routes: ApplicationRoutes,
+  options: ApplicationOptions = {},
+) {
   const app = express();
 
-  app.use(cors());
+  // Must match the real deployment. Too high and a client can forge
+  // X-Forwarded-For to pick its own rate-limit key; 0 ignores the header.
+  app.set('trust proxy', options.trustProxyHops ?? 0);
+
+  app.use(requestContextMiddleware);
+  app.use(cors(createCorsOptions(options.allowedOrigins ?? [])));
   app.use(helmet());
 
   const ordinaryJsonParser = express.json({ limit: DEFAULT_JSON_LIMIT_BYTES });

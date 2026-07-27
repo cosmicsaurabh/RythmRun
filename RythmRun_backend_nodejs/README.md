@@ -21,6 +21,12 @@ Generated Prisma source and `dist/` are build outputs and are not hand-edited or
 
 Registration, login, refresh, and liveness are public HTTP routes. Refresh authenticates the presented refresh JWT itself; all other application routes require an active access-token session.
 
+The authentication and recovery routes additionally carry per-endpoint request budgets (IP-2.6). Exceeding one returns `429` with `AUTH_RATE_LIMITED`, a `Retry-After` header, and a message identical across endpoints so the response never reveals which dimension tripped or whether an account exists. The shipped budgets live in `src/config/rate-limits.ts`: 5 failed logins per account+address / 15 min, 5 registrations per address / hour, 10 Google exchanges per address / 15 min, 3 recovery requests per account+address / hour, 10 reset submissions per address / hour, and 5 password changes and 5 verification resends per account / hour. Login carries a second, broader ceiling of 20 failed attempts per address / 15 min: the account+address key bounds guessing one account's password, but on its own it would never trip against credential spraying, where each attempt names a different account and mints a fresh key.
+
+Budgets are charged when the request is admitted, not when it responds, and a `client_failures` rule refunds the charge unless the response was a 4xx other than `429`. Deciding at response time instead would let a burst of overlapping requests all read an uncharged bucket — 40 concurrent password guesses against a limit of 5. A `429` is excluded because the application never saw the request, so a broad limiter that trips first cannot quietly drain the narrower per-account budget of everyone sharing an address.
+
+Counters are held in this process's heap. They are therefore **lost on restart and not shared between replicas**, so the limits are a defence-in-depth layer, not the primary control — authentication, anti-enumeration, and single-use tokens remain mandatory. Losing them on restart admits traffic rather than denying it, which is the right failure mode for a login endpoint but means N replicas would multiply every limit by N. Before a second replica or an autoscaler is introduced these budgets must move to a shared store or to the edge.
+
 - Users: `POST /api/users/register`, `POST /api/users/login`, `POST /api/users/auth/google`, `POST /api/users/refresh-token`, `POST /api/users/logout`, `GET /api/users/me`, `PUT /api/users/profile`, and `PUT /api/users/change-password`.
 - Avatars: `POST /api/avatar/upload-url` and `POST /api/avatar/confirm`.
 - Activities: `GET/POST /api/activities` and `GET/PATCH/DELETE /api/activities/:activityId`.
@@ -59,6 +65,8 @@ cp .env.example .env
 ```
 
 Replace every placeholder in `.env`; startup validates the database, JWT, and R2 values before constructing infrastructure clients. `DATABASE_URL` is shared by `prisma.config.ts` and the runtime adapter.
+
+Two edge variables gate the browser surface (IP-2.6). `CORS_ALLOWED_ORIGINS` is a comma-separated list of exact origins and is **required when `NODE_ENV=production`** — a production process without it exits before listening, and every production entry must use https. Outside production it may be omitted, which leaves the allowlist empty and grants no browser origin; the mobile app sends no `Origin` header and is unaffected. `TRUST_PROXY_HOPS` is the number of reverse proxies in front of the process and defaults to `0`. It must match the real deployment: set higher than the true proxy depth, a client can forge `X-Forwarded-For` to choose its own rate-limit key and escape every address-keyed limit.
 
 Set `GOOGLE_SERVER_CLIENT_ID` to the OAuth 2.0 web/server client ID from Google Cloud. The Flutter app must receive that exact same value as its `GOOGLE_SERVER_CLIENT_ID` build define so Google puts the expected audience in the ID token. The exchange contract is:
 
@@ -101,7 +109,7 @@ npm run smoke:runtime
 
 `npm test` invokes Jest through Node's ESM VM support. The hosted backend workflow provisions a disposable PostgreSQL database, applies the complete migration chain, sets `RUN_DATABASE_INTEGRATION=1`, and runs the serial refresh/session tests in the same Jest process. Without that explicit flag, the destructive database suite is skipped; its database-name guard also refuses any URL that is not clearly test/CI-scoped. `npm run build` cleans `dist`, regenerates the Prisma client, and compiles the production TypeScript project. The final smoke imports the emitted `dist/server.js`, starts a loopback listener, checks `/health` and unauthenticated rejection on a protected route, and closes the server.
 
-The PostgreSQL integration suite proves migration application, adapter-backed auth queries, digest-only storage, serializable refresh concurrency/replay behavior, session caps, and logout/password revocation against synthetic rows. It does **not** prove provider TLS, a deployed custom schema, pooling under production load, proxy behavior, or production rollout. The built smoke deliberately remains database-free.
+The PostgreSQL integration suite proves migration application, adapter-backed auth queries, digest-only storage, serializable refresh concurrency/replay behavior, session caps, and logout/password revocation against synthetic rows. It does **not** prove provider TLS, a deployed custom schema, pooling under production load, or production rollout. It also does not prove the deployed proxy behavior: the rate-limit tests exercise `trust proxy` against a synthetic `X-Forwarded-For`, which shows the code honours the configured hop count, not that `TRUST_PROXY_HOPS` matches the hosting proxy in front of the real deployment. That remains MC-2.6. The built smoke deliberately remains database-free.
 
 ## Build and deployment order
 

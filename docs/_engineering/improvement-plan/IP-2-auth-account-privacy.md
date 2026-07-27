@@ -420,7 +420,8 @@ unaffected and still undelivered.
   serializable transaction and the raw token is emailed post-commit,
   best-effort, logging only an error category — never the token or recipient.
   This is a per-account throttle only; the address-dimension rate limiting for
-  recovery (3/account+address/hour) remains IP-2.6, not this slice.
+  recovery (3/account+address/hour) was not part of this slice. It was
+  subsequently delivered by the 2026-07-27 IP-2.6 abuse-control slice.
 - `resetPassword()` consumes the token, sets the new password, and revokes every
   session in one serializable transaction. The token is conditionally consumed
   with an `updateMany` guarded on `consumedAt IS NULL AND expiresAt > now`
@@ -477,9 +478,10 @@ unaffected and still undelivered.
   banner — the branch must not deploy until the Brevo provider is configured, or
   a request will end at "check your inbox" with no email sent. Adding a client
   gate is a reasonable belt-and-suspenders follow-up.
-- Address-dimension recovery rate limiting is IP-2.6; account deletion remains
-  the last undelivered IP-2.4 slice, still gated on its retention/reauth
-  decision.
+- Address-dimension recovery rate limiting was IP-2.6 and is now delivered
+  (2026-07-27 abuse-control slice: 3 requests per account+address per hour).
+  Account deletion remains the last undelivered IP-2.4 slice, still gated on
+  its retention/reauth decision.
 
 ### IP-2.5 — Make exact routes private and disable unfinished social paths
 
@@ -585,6 +587,87 @@ already sent `isPublic: false` and has no social UI).
 - An upload exceeding the declared size is rejected by the storage policy rather than accepted and merely rejected at confirmation.
 - Wrong content type/checksum/ownership cannot become an uploaded avatar/activity-image record, and abandoned objects expire.
 
+**Repository implementation state (2026-07-27) — abuse-control slice delivered**
+
+Implementation items 1, 2, 4, 5, and 9 are delivered, together with the
+account/address dimension of item 3. Items 6, 7, and 8 — the storage-boundary
+slice — are **not** delivered and IP-2.6 therefore remains `In progress`.
+
+1. **CORS allowlist (item 1).** `app.use(cors())` is replaced by an
+   exact-match allowlist built from `CORS_ALLOWED_ORIGINS`. The variable is
+   required when `NODE_ENV=production` and validated before the listener binds,
+   so a production process without it exits rather than falling back to the
+   previous permissive policy. Entries must be bare origins (no path, query,
+   fragment, or credentials), wildcards are rejected, and production entries
+   must use https. `credentials` is off: the API authenticates with a bearer
+   token, never a cookie, which makes the wildcard-with-credentials mistake
+   unreachable. CORS is documented as a browser-only constraint that does not
+   replace authentication — the mobile client sends no `Origin` at all.
+2. **Request budgets (item 2).** `src/config/rate-limits.ts` carries the
+   configured limits and the tests assert the shipped numbers: 5 failed logins
+   per account+address / 15 min, 5 registrations per address / hour, 3 recovery
+   requests per account+address / hour, 5 password changes per account / hour,
+   plus 10 Google exchanges per address / 15 min, 10 reset-form submissions per
+   address / hour, and 5 verification resends per account / hour. Public
+   account-named endpoints are keyed by account **and** address so neither
+   guessing many passwords for one account nor spraying one password across
+   many accounts fits inside a single budget; authenticated endpoints are keyed
+   by the proven user id. Login carries a **second, broader ceiling of 20
+   failed attempts per address / 15 min**, added beyond the four budgets the
+   plan enumerates: the account+address key bounds guessing one account's
+   password but would never trip against credential spraying, where every
+   attempt names a different account and therefore mints a fresh key. Only 4xx
+   responses are charged where the spec says "failed", so a 5xx outage never
+   consumes a caller's budget, and rejections are not charged so a limited key
+   still recovers on schedule. Budgets are charged on admission and refunded
+   when a `client_failures` response is not a 4xx other than `429` — a `429`
+   never reached the application, so the broad address ceiling cannot drain the
+   narrower per-account budget of a bystander sharing that address; charging at
+   response time instead left a burst of overlapping requests all reading an
+   uncharged bucket, which a regression test now pins at exactly 5 admitted out
+   of 40 concurrent attempts. The disabled social routers receive no budget
+   because they remain unmounted.
+3. **Proxy-aware addressing (item 3, partial).** `TRUST_PROXY_HOPS` drives
+   `app.set('trust proxy', …)` and defaults to 0, which ignores
+   `X-Forwarded-For` entirely. A test proves a rotating forged header buys no
+   new budget at the default, and that a genuine second client behind one
+   trusted proxy keeps its own budget at `TRUST_PROXY_HOPS=1`. The per-account
+   object/byte storage quotas in this item are part of the undelivered
+   storage-boundary slice.
+4. **Typed errors (item 4).** `AUTH_RATE_LIMITED` joins the existing typed auth
+   codes. The mounted activity-image controller no longer selects an HTTP
+   status by comparing `error.message` against exact English sentences: it
+   raises `ActivityImageServiceError` values carrying their own code and
+   status, and its unexpected-error branch now logs a category instead of the
+   error object, which could contain a presigned URL or object key.
+5. **Request ids and security events (item 5).** Every request receives a
+   server-minted `X-Request-Id`; an inbound header is ignored so a client
+   cannot forge or collide with another request's log trail. Rate-limit
+   rejections emit a single JSON `security_event` line assembled from a fixed
+   allowlisted field set — never a spread of caller input — with any
+   identifying value reduced to a truncated SHA-256 `subjectDigest`. No body,
+   token, link, signed URL, address, mailbox, or coordinate is written.
+9. **Restart and topology (item 9).** Documented in both the limiter module and
+   the backend README: counters live in this process's heap, are lost on
+   restart, and are not shared between replicas, so N replicas multiply every
+   limit by N. Restart is fail-open by construction, which is the correct trade
+   for a login endpoint but is why these budgets are defence-in-depth rather
+   than the primary control. Moving them to a shared store is a precondition
+   for a second replica, and the replica count is part of gate **MC-2.6**.
+
+**Not delivered by this slice**
+
+- Items 6–8: the enforceable storage-boundary upload grant for activity images
+  (avatars already carry an S3 POST policy with `content-length-range` from
+  IP-0.4), confirmation against actual `ContentType`/`ContentLength`/checksum,
+  per-user object/count/byte quotas, abandoned-upload lifecycle cleanup, and
+  presign/storage volume alarms. Changing the activity-image grant alters the
+  client upload contract and needs a coordinated Flutter change plus
+  real-storage proof, so it is scoped as a separate slice.
+- The corresponding test bullets ("an upload exceeding the declared size is
+  rejected by the storage policy…" and "wrong content type/checksum/ownership…
+  and abandoned objects expire") remain unmet.
+
 ### IP-2.7 — Protect retained local routes and photos at rest
 
 The app intentionally retains completed offline history across normal logout. Exact routes and photos therefore need a written device threat model and protection beyond hiding widgets.
@@ -630,7 +713,7 @@ The app intentionally retains completed offline history across normal logout. Ex
 
 ### IP-2.8 — Google identity extension (delivered out of sequence)
 
-This maintainer-selected extension is not an original audit closure and does not change the lowest-numbered unfinished canonical work: IP-2.4 account deletion remains the next selected slice after its retention/reauthentication decision gate. Password recovery's provider/domain prerequisite was resolved (D-018), its reusable token/email plumbing was delivered (IP-2.9), and the reset endpoints/UI are now delivered too (see the IP-2.4 2026-07-21 password-recovery subsection). If the deletion decision is unavailable, IP-2.6 is the next implementable package (IP-2.5 route privacy is now delivered and merged) without claiming IP-2.4 complete.
+This maintainer-selected extension is not an original audit closure and does not change the lowest-numbered unfinished canonical work: IP-2.4 account deletion remains the next selected slice after its retention/reauthentication decision gate. Password recovery's provider/domain prerequisite was resolved (D-018), its reusable token/email plumbing was delivered (IP-2.9), and the reset endpoints/UI are now delivered too (see the IP-2.4 2026-07-21 password-recovery subsection). If the deletion decision is unavailable, IP-2.6 is the next implementable package (IP-2.5 route privacy is now delivered and merged) without claiming IP-2.4 complete. That path was taken on 2026-07-27: the IP-2.6 abuse-control slice (CORS allowlist, request budgets, proxy-aware addressing, typed errors, request ids and security events) is delivered, while IP-2.6's storage-boundary items 6–8 and IP-2.4 account deletion both remain open.
 
 **Repository implementation state (2026-07-17)**
 
@@ -808,3 +891,4 @@ Checked repository items below record delivered code and automated evidence only
 | 2026-07-20 | IP-2.9 (email verification + safe linking) | Branch `feat/email-verification` (commits `7432e9c`…`4f0983f`, PR pending); Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM smoke; locked Flutter restore, full suite, analyzer/counted baseline | Repository gates pass; provider/staging/device verification pending | Backend passed 347 Jest tests (7 real-PostgreSQL cases intentionally skipped); Flutter passed 343 tests, analyzer zero warnings/errors with the baseline accepted. Delivers `User.emailVerified` + hash-at-rest `VerificationToken` (additive migration backfilling only `googleSubject IS NOT NULL`), post-commit best-effort verification email behind an optional SMTP feature flag, idempotent public verify page + throttled resend, the emailVerified-gated Google auto-link (`AUTH_EMAIL_UNVERIFIED_CONFLICT` otherwise), and the Flutter banner/refresh. Resolves the email-provider decision (D-018) and unblocks the IP-2.4 recovery prerequisite. No real Brevo/SMTP delivery, sender-domain SPF/DKIM, staging verify-page, or on-device banner claim is made; those remain MC-2.5 (or an MC-2.4 extension). Counts supersede IP-2.8 only on merge. |
 | 2026-07-21 | IP-2.4 (password-recovery slice) | Branch `feat/email-verification` (backend `34a14a9`, frontend `6b7dc97`, PR pending); Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM smoke; locked Flutter restore, full suite, analyzer/counted baseline | Repository gates pass; provider/staging exposure pending | Backend passed 364 Jest tests (7 real-PostgreSQL cases intentionally skipped); Flutter passed 347 tests, analyzer zero warnings/errors with the baseline accepted. Reuses the IP-2.9 hashed-token store: additive `PASSWORD_RESET` enum migration (`20260721000000`), anti-enumerating `requestPasswordReset` (missing/Google-only/60s-cooldown all generic, post-commit best-effort email, token/recipient never logged), one-transaction `resetPassword` (single-use 30-minute digest, all-session revocation, refuses to add a password to a Google-only account, all failures collapse to `AUTH_VERIFICATION_TOKEN_INVALID`), a deep-link-free backend web form (tightened CSP + `no-referrer`), and a Flutter `forgot_password` screen wired from the login link. Address-dimension rate limiting remains IP-2.6; production exposure + real provider/staging delivery remain MC-2.5 (extended for recovery). Account deletion remains undelivered. Counts supersede IP-2.9 only on merge. |
 | 2026-07-21 | IP-2.5 (route privacy) | Branch `feat/route-privacy` (`bd78d9a`), merged to main via PR #165; Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM smoke | Repository gates pass; migration application pending | Backend passed 290 Jest tests (9 new; 6 real-PostgreSQL cases intentionally skipped). `Activity.isPublic` defaults false with a forward migration (`20260721120000`) backfilling existing rows to private; `createActivity` forces private and `updateActivity` cannot change visibility; `getActivityById` is owner-only so no cross-user route/image/identity is returned (list/update/delete/image routes were already owner-scoped); friend/comment/like routers unmounted (`404`); backend README/seed corrected. No Flutter change required (client already sent `isPublic: false`, no social UI). An adversarial self-check confirmed `getActivityById` was the only cross-user leak. Migration must be applied on staging/production as a deploy step; published policy pages still to qualify. |
+| 2026-07-27 | IP-2.6 (abuse-control slice) | Branch `feat/api-abuse-controls`; Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM production smoke; locked Flutter restore and full suite | Repository gates pass; deployed edge configuration pending | Backend passed 452 Jest tests (7 real-PostgreSQL cases intentionally skipped), up from 373 on main; Flutter passed 349 tests, up from 347. Delivers IP-2.6 items 1, 2, 4, 5, 9 and the account/address dimension of item 3: an exact-match `CORS_ALLOWED_ORIGINS` allowlist that is required and https-only under `NODE_ENV=production` and validated before the listener binds (the production smoke now supplies it, proving the built artifact reads it); `TRUST_PROXY_HOPS` driving `trust proxy`, defaulting to 0 so a forged `X-Forwarded-For` cannot select a limiter key; in-process sliding-window budgets on login, register, Google exchange, password-reset request and submit, password change, and verification resend, charged on admission and refunded when a `client_failures` response is not 4xx (an adversarial review probe showed response-time charging admitted 40 concurrent guesses against a limit of 5), plus an added 20-failures-per-address login ceiling that closes credential spraying, which the account+address key alone does not bound; a typed `AUTH_RATE_LIMITED` 429 with `Retry-After` and a message identical across endpoints; typed `ActivityImageServiceError` replacing exact-message branching in the mounted image controller, whose 500 branch no longer logs the error object; server-minted `X-Request-Id` that ignores any inbound header; and fixed-field `security_event` lines carrying only a truncated SHA-256 subject digest. A matching `AUTH_RATE_LIMITED` arm was added to the Flutter error handler, without which a 429 surfaced the raw `HttpStatusException(429): …` string. Storage-boundary items 6-8 (enforceable activity-image upload grant, real ContentType/ContentLength/checksum confirmation, per-user quotas, abandoned-upload cleanup, volume alarms) are NOT delivered and IP-2.6 stays `In progress`. Deployed proxy depth, production origins, fail-closed boot, live 429 recovery, and the single-replica assumption are gated by the new MC-2.6. |

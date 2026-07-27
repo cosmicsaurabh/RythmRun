@@ -5,6 +5,7 @@ import os from 'node:os';
 import {
   loadAndValidateEnvironment,
   validateEmailEnvironment,
+  validateHttpSecurityEnvironment,
 } from './config/env.js';
 import type { DatabaseRuntime } from './config/database.js';
 import type { ActivityImageService } from './services/activity-image.service.js';
@@ -113,6 +114,9 @@ export async function startServer(
   const environment = loadAndValidateEnvironment();
   // Optional feature config; null disables email delivery without blocking boot.
   const emailConfig = validateEmailEnvironment(process.env);
+  // Fails closed in production: a missing CORS allowlist stops the boot rather
+  // than falling back to the permissive policy this app used before IP-2.6.
+  const httpSecurity = validateHttpSecurityEnvironment(process.env);
   const port = getPort(options.port);
   let database: DatabaseRuntime | undefined;
 
@@ -146,15 +150,21 @@ export async function startServer(
       import('./routes/like.routes.js'),
     ]);
 
-    const app = createApp({
-      users: userRoutes,
-      friends: friendRoutes,
-      avatar: avatarRoutes,
-      activityImages: activityImageRoutes,
-      activities: activityRoutes,
-      comments: commentRoutes,
-      likes: likeRoutes,
-    });
+    const app = createApp(
+      {
+        users: userRoutes,
+        friends: friendRoutes,
+        avatar: avatarRoutes,
+        activityImages: activityImageRoutes,
+        activities: activityRoutes,
+        comments: commentRoutes,
+        likes: likeRoutes,
+      },
+      {
+        allowedOrigins: httpSecurity.allowedOrigins,
+        trustProxyHops: httpSecurity.trustProxyHops,
+      },
+    );
 
     let server!: Server;
     await new Promise<void>((resolve, reject) => {

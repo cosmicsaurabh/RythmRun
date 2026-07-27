@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
 import { injectable, inject } from 'tsyringe';
+import { ActivityImageServiceError } from '../errors/activity-image.error.js';
 import { ActivityImageService } from '../services/activity-image.service.js';
 import {
   ConfirmActivityImageUploadDto,
@@ -149,28 +150,20 @@ export class ActivityImageController {
   }
 
   private handleError(error: any, res: Response, logMessage: string) {
-    if (error?.message === 'Activity not found or unauthorized') {
-      return res.status(404).json({
+    // IP-2.6 item 4: the status and stable code travel with the error, so a
+    // reworded message can no longer silently turn a 400 into a 500.
+    if (error instanceof ActivityImageServiceError) {
+      return res.status(error.statusCode).json({
         status: 'error',
+        error: error.code,
         message: error.message,
       });
     }
 
-    if (
-      error?.message === 'Unsupported image content type' ||
-      error?.message === 'Image file too large' ||
-      error?.message === 'Invalid client image ID' ||
-      error?.message === 'Invalid checksum' ||
-      error?.message === 'Invalid image key' ||
-      error?.message === 'Uploaded image size mismatch'
-    ) {
-      return res.status(400).json({
-        status: 'error',
-        message: error.message,
-      });
-    }
-
-    console.error(logMessage, error);
+    // Log the category only. The error object can carry a presigned URL, an
+    // object key, or a driver payload, none of which belong in the log.
+    const category = error instanceof Error ? error.name : 'UnknownError';
+    console.error(`${logMessage} (${category})`);
     return res.status(500).json({
       status: 'error',
       message: 'Internal server error',

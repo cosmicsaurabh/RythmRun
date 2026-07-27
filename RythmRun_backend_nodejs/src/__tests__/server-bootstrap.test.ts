@@ -64,6 +64,10 @@ jest.unstable_mockModule('../config/env.js', () => ({
     };
   }),
   validateEmailEnvironment: jest.fn(() => null),
+  validateHttpSecurityEnvironment: jest.fn(() => {
+    mockEvents.push('validate-http-security');
+    return { allowedOrigins: [], trustProxyHops: 0 };
+  }),
 }));
 
 jest.unstable_mockModule('../app.js', () => {
@@ -142,6 +146,17 @@ describe('server bootstrap', () => {
     expect(mockEvents).toContain('app-import');
     expect(mockEvents).toContain('container-import');
     expect(mockEvents[mockEvents.length - 1]).toBe('listen');
+    // IP-2.6: the browser allowlist is required in production, so it has to be
+    // validated before any consumer module is evaluated and before the socket
+    // binds — otherwise a misconfigured production process would serve traffic
+    // first and only fail afterwards.
+    expect(mockEvents.indexOf('validate-http-security')).toBeGreaterThan(-1);
+    expect(mockEvents.indexOf('validate-http-security')).toBeLessThan(
+      mockEvents.indexOf('app-import'),
+    );
+    expect(mockEvents.indexOf('validate-http-security')).toBeLessThan(
+      mockEvents.indexOf('listen'),
+    );
     expect(mockListen).toHaveBeenCalledWith(8091, expect.any(Function));
 
     const sensitiveMessage = 'storage details that must not be logged';

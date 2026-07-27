@@ -1,8 +1,10 @@
 import {
   EnvironmentValidationError,
+  MAX_TRUST_PROXY_HOPS,
   MINIMUM_JWT_SECRET_LENGTH,
   getJwtSecrets,
   validateEmailEnvironment,
+  validateHttpSecurityEnvironment,
   validateJwtSecrets,
   validateServerEnvironment,
 } from '../config/env.js';
@@ -247,5 +249,112 @@ describe('email environment validation', () => {
     expect(() =>
       validateEmailEnvironment({ ...validEmailEnvironment, SMTP_SECURE: 'yes' }),
     ).toThrow('SMTP_SECURE');
+  });
+});
+
+describe('HTTP security environment validation', () => {
+  const PRODUCTION = { NODE_ENV: 'production' };
+
+  it('defaults to an empty allowlist and no trusted proxy outside production', () => {
+    expect(validateHttpSecurityEnvironment({})).toEqual({
+      allowedOrigins: [],
+      trustProxyHops: 0,
+    });
+  });
+
+  it('requires an explicit allowlist in production', () => {
+    expect(() => validateHttpSecurityEnvironment(PRODUCTION)).toThrow(
+      'CORS_ALLOWED_ORIGINS environment variable is required in production',
+    );
+    expect(() =>
+      validateHttpSecurityEnvironment({
+        ...PRODUCTION,
+        CORS_ALLOWED_ORIGINS: '  ,  ',
+      }),
+    ).toThrow('CORS_ALLOWED_ORIGINS environment variable is required in production');
+  });
+
+  it('parses, trims, and de-duplicates a comma-separated allowlist', () => {
+    expect(
+      validateHttpSecurityEnvironment({
+        CORS_ALLOWED_ORIGINS:
+          'https://app.example.com, https://admin.example.com ,https://app.example.com',
+      }).allowedOrigins,
+    ).toEqual(['https://app.example.com', 'https://admin.example.com']);
+  });
+
+  it('normalises an entry to its origin, discarding a default port', () => {
+    expect(
+      validateHttpSecurityEnvironment({
+        CORS_ALLOWED_ORIGINS: 'https://app.example.com:443',
+      }).allowedOrigins,
+    ).toEqual(['https://app.example.com']);
+    expect(
+      validateHttpSecurityEnvironment({
+        CORS_ALLOWED_ORIGINS: 'http://localhost:3000',
+      }).allowedOrigins,
+    ).toEqual(['http://localhost:3000']);
+  });
+
+  it('rejects a wildcard origin', () => {
+    expect(() =>
+      validateHttpSecurityEnvironment({ CORS_ALLOWED_ORIGINS: '*' }),
+    ).toThrow('must not contain a wildcard origin');
+  });
+
+  it.each([
+    'app.example.com',
+    'ftp://app.example.com',
+    'https://app.example.com/dashboard',
+    'https://app.example.com/?tenant=1',
+    'https://app.example.com/#fragment',
+    'https://user:pass@app.example.com',
+    'REPLACE_WITH_FRONTEND_ORIGIN',
+  ])('rejects an unusable allowlist entry: %s', (origin) => {
+    expect(() =>
+      validateHttpSecurityEnvironment({ CORS_ALLOWED_ORIGINS: origin }),
+    ).toThrow('CORS_ALLOWED_ORIGINS');
+  });
+
+  it('refuses a plaintext origin in production but allows it in development', () => {
+    expect(() =>
+      validateHttpSecurityEnvironment({
+        ...PRODUCTION,
+        CORS_ALLOWED_ORIGINS: 'http://app.example.com',
+      }),
+    ).toThrow('must use https in production');
+    expect(
+      validateHttpSecurityEnvironment({
+        CORS_ALLOWED_ORIGINS: 'http://app.example.com',
+      }).allowedOrigins,
+    ).toEqual(['http://app.example.com']);
+  });
+
+  it('accepts a proxy hop count within the supported range', () => {
+    expect(
+      validateHttpSecurityEnvironment({ TRUST_PROXY_HOPS: '1' }).trustProxyHops,
+    ).toBe(1);
+    expect(
+      validateHttpSecurityEnvironment({ TRUST_PROXY_HOPS: '  2 ' })
+        .trustProxyHops,
+    ).toBe(2);
+    expect(
+      validateHttpSecurityEnvironment({ TRUST_PROXY_HOPS: '' }).trustProxyHops,
+    ).toBe(0);
+  });
+
+  it.each(['-1', '1.5', 'two', String(MAX_TRUST_PROXY_HOPS + 1)])(
+    'rejects an unusable TRUST_PROXY_HOPS: %s',
+    (hops) => {
+      expect(() =>
+        validateHttpSecurityEnvironment({ TRUST_PROXY_HOPS: hops }),
+      ).toThrow('TRUST_PROXY_HOPS');
+    },
+  );
+
+  it('raises a typed configuration error', () => {
+    expect(() =>
+      validateHttpSecurityEnvironment({ CORS_ALLOWED_ORIGINS: '*' }),
+    ).toThrow(EnvironmentValidationError);
   });
 });
