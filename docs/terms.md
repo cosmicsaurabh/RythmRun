@@ -1,6 +1,6 @@
 # RythmRun Terms of Service
 
-**Last Updated: October 2025**
+**Last Updated: July 27, 2026**
 
 ## Agreement to Terms
 
@@ -10,9 +10,12 @@ By accessing or using the RythmRun mobile application ("App"), you agree to be b
 
 RythmRun is a fitness tracking application that allows users to:
 - Record and track fitness activities (running, walking, cycling, etc.)
-- Share fitness activities with friends
-- Connect with other users
+- Keep synchronized activities and routes private to their account
+- Attach profile and activity images
 - Monitor fitness progress over time
+
+Friends, likes, comments, public activities, and route sharing are not
+currently available.
 
 ## User Accounts
 
@@ -73,10 +76,12 @@ You may NOT:
 - The App and its code are protected by copyright and trade secret laws
 
 ### Your Rights
-- You retain ownership of content you create (activities, comments, photos)
-- By posting content, you grant us a license to display it in the App
+- You retain ownership of content you create (activities, descriptions, photos)
+- By storing content, you grant us the limited permission needed to host,
+  process, and display it back to you through the App
 - You can delete your content at any time
-- Deleted content may take up to 30 days to remove fully
+- Deleted activity content may remain temporarily while queued cleanup or
+  provider backup retention completes
 
 ## Privacy
 
@@ -91,9 +96,9 @@ Your privacy is important to us. Our Privacy Policy governs how we collect, use,
 - We discontinue the service
 
 ### You May Delete Your Account:
-- At any time through app settings
-- By contacting support
-- This will remove your personal data per our Privacy Policy
+- By contacting support using the details below
+- In-app self-service account deletion is not currently available
+- Requests are handled according to our Privacy Policy and applicable law
 
 ## Disclaimers
 
@@ -133,7 +138,9 @@ We reserve the right to modify these Terms at any time. Changes will be effectiv
 
 ## Third-Party Services
 
-The App may use or display third-party services (maps, analytics, etc.). We are not responsible for third-party services, their content, or their privacy practices.
+The App may use or display third-party services for maps, identity, email,
+database/object storage, and advertising when enabled. We are not responsible
+for third-party services, their content, or their privacy practices.
 
 ## Dispute Resolution
 
@@ -152,10 +159,10 @@ The App may be accessed internationally. You are responsible for compliance with
 ## Account Deletion
 
 ### Upon Account Deletion:
-- Your personal data will be deleted per our Privacy Policy
-- Your posts and activities will be removed from public view
-- Backup data may be retained for disaster recovery
-- Some data may be anonymized for analytics
+- Contact support to request deletion; the App does not yet provide a
+  self-service deletion control
+- Account data and activities will be handled according to our Privacy Policy,
+  applicable law, and provider backup-retention requirements
 
 ## Force Majeure
 
@@ -182,7 +189,5 @@ By using RythmRun, you acknowledge that you have read, understood, and agree to 
 
 ---
 
-**Last Updated**: October 2025
-**Effective Date**: [01-June-2025]
-
-
+**Last Updated**: July 27, 2026
+**Effective Date**: July 27, 2026
