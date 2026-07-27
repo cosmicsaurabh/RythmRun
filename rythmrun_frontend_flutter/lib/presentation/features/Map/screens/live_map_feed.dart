@@ -10,6 +10,7 @@ import 'package:rythmrun_frontend_flutter/core/utils/location_error_handler.dart
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/tracking_segment_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/widgets/open_street_map_attribution.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/map_controller_button.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_segment_builder.dart';
@@ -434,6 +435,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
                     PolylineLayer(polylines: _solidPolylines),
                     PolylineLayer(polylines: _dashedPolylines),
                     MarkerLayer(markers: _markers),
+                    const OpenStreetMapAttribution(),
                   ],
                 ),
 

@@ -14,6 +14,7 @@ void main() {
   Future<void> pumpSettings(
     WidgetTester tester, {
     required bool hasPassword,
+    Future<bool> Function(Uri uri)? externalUrlLauncher,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -34,7 +35,9 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: SettingsScreen()),
+        child: MaterialApp(
+          home: SettingsScreen(externalUrlLauncher: externalUrlLauncher),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -52,6 +55,36 @@ void main() {
     await pumpSettings(tester, hasPassword: false);
 
     expect(find.text('Change Password'), findsNothing);
+  });
+
+  testWidgets('opens the public account deletion request page', (tester) async {
+    Uri? launchedUri;
+    await pumpSettings(
+      tester,
+      hasPassword: true,
+      externalUrlLauncher: (uri) async {
+        launchedUri = uri;
+        return true;
+      },
+    );
+
+    await tester.ensureVisible(find.text('Delete Account').first);
+    await tester.tap(find.text('Delete Account').first);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('RythmRun account deletion page'),
+      findsOneWidget,
+    );
+    expect(find.text('Account deletion feature coming soon!'), findsNothing);
+
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
+    expect(
+      launchedUri,
+      Uri.parse('https://cosmicsaurabh.github.io/RythmRun/delete-account'),
+    );
   });
 }
 
