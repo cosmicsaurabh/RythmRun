@@ -68,6 +68,14 @@ Replace every placeholder in `.env`; startup validates the database, JWT, and R2
 
 Two edge variables gate the browser surface (IP-2.6). `CORS_ALLOWED_ORIGINS` is a comma-separated list of exact origins and is **required when `NODE_ENV=production`** — a production process without it exits before listening, and every production entry must use https. Outside production it may be omitted, which leaves the allowlist empty and grants no browser origin; the mobile app sends no `Origin` header and is unaffected. `TRUST_PROXY_HOPS` is the number of reverse proxies in front of the process and defaults to `0`. It must match the real deployment: set higher than the true proxy depth, a client can forge `X-Forwarded-For` to choose its own rate-limit key and escape every address-keyed limit.
 
+The current Render service uses
+`CORS_ALLOWED_ORIGINS=https://rythmrun.onrender.com`. Render supplies
+`NODE_ENV=production` automatically at runtime; do not persist
+`NODE_ENV=development` on the live service. If a deployment exposes
+`NODE_ENV=production` during dependency installation, use
+`npm ci --include=dev --no-audit` so the TypeScript compiler and Prisma CLI
+remain available to the build and migration stages.
+
 Set `GOOGLE_SERVER_CLIENT_ID` to the OAuth 2.0 web/server client ID from Google Cloud. The Flutter app must receive that exact same value as its `GOOGLE_SERVER_CLIENT_ID` build define so Google puts the expected audience in the ID token. The exchange contract is:
 
 ```http
@@ -116,7 +124,7 @@ The PostgreSQL integration suite proves migration application, adapter-backed au
 Build and migration stages require development dependencies because the Prisma CLI and TypeScript compiler are development tools. A deployment pipeline should use one reviewed Node.js 22 toolchain and this order:
 
 ```bash
-npm ci --no-audit
+npm ci --include=dev --no-audit
 npx --no-install prisma validate
 npm run build
 npm run migrate:deploy

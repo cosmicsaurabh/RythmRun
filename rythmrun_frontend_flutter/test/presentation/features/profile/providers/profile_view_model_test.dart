@@ -82,4 +82,8 @@ class _FakeAvatarRepository implements AvatarRepository {
       mimeType: 'image/jpeg',
     );
   }
+
+  @override
+  Future<Uri> getAvatarReadUrl() =>
+      Future.value(Uri.parse('https://signed.example.test/avatar.jpg'));
 }

@@ -17,7 +17,6 @@ export interface ServerEnvironment {
   R2_SECRET_ACCESS_KEY: string;
   R2_BUCKET_AVATARS: string;
   R2_BUCKET_ACTIVITY_IMAGES: string;
-  R2_PUBLIC_URL: string;
 }
 
 /**
@@ -83,7 +82,6 @@ export const REQUIRED_SERVER_ENVIRONMENT_VARIABLES = [
   'R2_SECRET_ACCESS_KEY',
   'R2_BUCKET_AVATARS',
   'R2_BUCKET_ACTIVITY_IMAGES',
-  'R2_PUBLIC_URL',
 ] as const satisfies ReadonlyArray<keyof ServerEnvironment>;
 
 export class EnvironmentValidationError extends Error {
@@ -101,7 +99,8 @@ const PLACEHOLDER_SECRET_PATTERNS = [
   /^placeholder$/i,
 ];
 
-const DOCUMENTED_CONFIGURATION_PLACEHOLDER = /REPLACE[_-]?WITH/i;
+const DOCUMENTED_CONFIGURATION_PLACEHOLDER =
+  /(?:REPLACE[_-]?WITH|^your[-_])/i;
 
 function requireEnvironmentVariable(
   source: EnvironmentSource,
@@ -236,10 +235,6 @@ export function validateServerEnvironment(
     R2_BUCKET_ACTIVITY_IMAGES: requireConfiguredEnvironmentVariable(
       source,
       'R2_BUCKET_ACTIVITY_IMAGES',
-    ),
-    R2_PUBLIC_URL: requireConfiguredEnvironmentVariable(
-      source,
-      'R2_PUBLIC_URL',
     ),
   };
 }

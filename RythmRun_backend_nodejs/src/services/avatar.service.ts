@@ -76,7 +76,7 @@ export class AvatarService {
     });
 
     try {
-      const authorization = await this.s3.getPresignedPost({
+      const authorization = await this.s3.getPresignedAvatarPutUrl({
         key: intent.key,
         contentType: intent.contentType,
         sizeBytes: intent.sizeBytes,
@@ -85,8 +85,11 @@ export class AvatarService {
 
       return {
         uploadUrl: authorization.uploadUrl,
-        uploadMethod: 'POST' as const,
-        fields: authorization.fields,
+        uploadMethod: 'PUT' as const,
+        requiredHeaders: {
+          'Content-Type': intent.contentType,
+          'Content-Length': intent.sizeBytes.toString(),
+        },
         key: intent.key,
         expiresAt: intent.expiresAt.toISOString(),
       };
@@ -234,6 +237,31 @@ export class AvatarService {
       contentType: intent.contentType,
       alreadyConfirmed: false,
     };
+  }
+
+  async getReadUrl(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { profilePicturePath: true },
+    });
+    const key = user?.profilePicturePath;
+
+    if (!key || !this.isKeyOwnedByUser(key, userId)) {
+      throw new AvatarServiceError('Avatar not found', 404);
+    }
+
+    try {
+      const readUrl = await this.s3.getAvatarReadUrl(key);
+      return {
+        key,
+        ...readUrl,
+      };
+    } catch {
+      throw new AvatarServiceError(
+        'Avatar storage is temporarily unavailable',
+        503,
+      );
+    }
   }
 
   private async createIntentWithinLimits(input: {
@@ -443,7 +471,7 @@ export class AvatarService {
 
   private async getUploadedObjectMetadata(key: string) {
     try {
-      return await this.s3.headObject(key);
+      return await this.s3.headObject(key, 'R2_BUCKET_AVATARS');
     } catch (error) {
       if (this.isMissingObjectError(error)) {
         throw new AvatarServiceError('Uploaded avatar was not found', 400);
@@ -506,7 +534,7 @@ export class AvatarService {
         return;
       }
 
-      await this.s3.deleteObject(key);
+      await this.s3.deleteObject(key, 'R2_BUCKET_AVATARS');
       await this.prisma.avatarUploadIntent.updateMany({
         where: {
           id: intentId,

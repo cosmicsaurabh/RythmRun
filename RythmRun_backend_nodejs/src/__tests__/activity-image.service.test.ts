@@ -8,7 +8,6 @@ jest.unstable_mockModule('../services/s3.service.js', () => ({
     getPresignedPutUrl: jest.fn(async ({ key }: { key: string }) => ({
       uploadUrl: `https://upload.example.com/${key}`,
       key,
-      publicUrl: `https://cdn.example.com/${key}`,
     })),
     getActivityImageReadUrl: jest.fn((key: string) => ({
       url: `https://signed.example.com/${key}`,

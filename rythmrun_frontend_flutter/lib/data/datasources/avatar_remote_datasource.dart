@@ -10,31 +10,32 @@ abstract class AvatarRemoteDataSource {
     int sizeBytes,
   );
   Future<void> confirmUpload(String key, String contentType);
+  Future<Uri> getReadUrl();
 }
 
 class AvatarUploadAuthorization {
   final Uri uploadUri;
   final String key;
-  final Map<String, String> fields;
+  final Map<String, String> requiredHeaders;
 
   const AvatarUploadAuthorization({
     required this.uploadUri,
     required this.key,
-    required this.fields,
+    required this.requiredHeaders,
   });
 
   factory AvatarUploadAuthorization.fromJson(Map<String, dynamic> json) {
     final uploadUrl = json['uploadUrl'];
     final uploadMethod = json['uploadMethod'];
     final key = json['key'];
-    final rawFields = json['fields'];
+    final rawRequiredHeaders = json['requiredHeaders'];
 
     if (uploadUrl is! String ||
         uploadMethod is! String ||
-        uploadMethod.toUpperCase() != 'POST' ||
+        uploadMethod.toUpperCase() != 'PUT' ||
         key is! String ||
         key.isEmpty ||
-        rawFields is! Map) {
+        rawRequiredHeaders is! Map) {
       throw const FormatException('Invalid avatar upload authorization');
     }
 
@@ -45,22 +46,27 @@ class AvatarUploadAuthorization {
       throw const FormatException('Invalid avatar upload destination');
     }
 
-    final fields = <String, String>{};
-    for (final entry in rawFields.entries) {
+    final requiredHeaders = <String, String>{};
+    for (final entry in rawRequiredHeaders.entries) {
       if (entry.key is! String || entry.value is! String) {
-        throw const FormatException('Invalid avatar upload fields');
+        throw const FormatException('Invalid avatar upload headers');
       }
-      fields[entry.key as String] = entry.value as String;
+      requiredHeaders[entry.key as String] = entry.value as String;
     }
 
-    if (fields['key'] != key) {
-      throw const FormatException('Avatar upload key mismatch');
+    final contentType = requiredHeaders['Content-Type'];
+    if (contentType == null || contentType.isEmpty) {
+      throw const FormatException('Avatar upload content type is missing');
+    }
+    final contentLength = int.tryParse(requiredHeaders['Content-Length'] ?? '');
+    if (contentLength == null || contentLength < 1) {
+      throw const FormatException('Avatar upload content length is missing');
     }
 
     return AvatarUploadAuthorization(
       uploadUri: uploadUri,
       key: key,
-      fields: Map.unmodifiable(fields),
+      requiredHeaders: Map.unmodifiable(requiredHeaders),
     );
   }
 }
@@ -114,5 +120,36 @@ class AvatarRemoteDataSourceImpl implements AvatarRemoteDataSource {
             maxRetries: 0,
           ),
     );
+  }
+
+  @override
+  Future<Uri> getReadUrl() async {
+    final response = await authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
+      request:
+          (authHeaders) => httpClient.get(
+            AppConfig.getUrl('/avatar/read-url'),
+            headers: authHeaders,
+          ),
+    );
+
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Expected a JSON object');
+      }
+
+      final rawUrl = decoded['url'];
+      if (rawUrl is! String) {
+        throw const FormatException('Avatar read URL is missing');
+      }
+      final url = Uri.tryParse(rawUrl);
+      if (url == null || url.scheme != 'https' || url.host.isEmpty) {
+        throw const FormatException('Invalid avatar read URL');
+      }
+      return url;
+    } on FormatException {
+      throw Exception('Invalid response from avatar read endpoint');
+    }
   }
 }

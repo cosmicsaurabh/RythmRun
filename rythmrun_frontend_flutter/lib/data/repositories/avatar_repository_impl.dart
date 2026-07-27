@@ -87,13 +87,16 @@ class AvatarRepositoryImpl implements AvatarRepository {
         mimeType,
         declaredSizeBytes,
       );
+      if (authorization.requiredHeaders['Content-Type'] != mimeType ||
+          authorization.requiredHeaders['Content-Length'] !=
+              declaredSizeBytes.toString()) {
+        throw Exception('Avatar upload authorization does not match the file');
+      }
 
-      await httpClient.postMultipart(
+      await httpClient.put(
         authorization.uploadUri.toString(),
-        fields: authorization.fields,
-        fileField: 'file',
-        fileBytes: fileBytes,
-        filename: 'avatar.$extension',
+        headers: authorization.requiredHeaders,
+        body: fileBytes,
         maxRetries: 0,
       );
 
@@ -111,4 +114,7 @@ class AvatarRepositoryImpl implements AvatarRepository {
       operationLease?.release();
     }
   }
+
+  @override
+  Future<Uri> getAvatarReadUrl() => remoteDataSource.getReadUrl();
 }

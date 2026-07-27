@@ -15,7 +15,6 @@ Object.assign(process.env, {
   R2_SECRET_ACCESS_KEY: 'runtime-smoke-secret-key',
   R2_BUCKET_AVATARS: 'runtime-smoke-avatars',
   R2_BUCKET_ACTIVITY_IMAGES: 'runtime-smoke-activity-images',
-  R2_PUBLIC_URL: 'https://runtime-smoke.example.com',
   // Required under NODE_ENV=production since IP-2.6: a production process with
   // no browser allowlist exits before listening. Supplying it here is part of
   // what this smoke proves — the built artifact reads the variable and boots.

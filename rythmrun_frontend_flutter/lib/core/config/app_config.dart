@@ -24,14 +24,6 @@ class AppConfig {
     'prod': 'https://rythmrun.onrender.com/api', //Render API
   };
 
-  static const Map<String, String> _r2Domains = {
-    'dev':
-        'https://dev-account-id.r2.cloudflarestorage.com', // R2 dev (update with your dev R2 account)
-    'staging':
-        'https://staging-account-id.r2.cloudflarestorage.com', // R2 staging
-    'prod': 'https://your-account-id.r2.cloudflarestorage.com', // R2 prod
-  };
-
   static const Map<String, int> _timeouts = {
     'dev': 30000, // 30 seconds for dev
     'staging': 15000, // 15 seconds for staging
@@ -59,19 +51,6 @@ class AppConfig {
     }
     return url;
   }
-
-  /// Get the R2 domain for the current environment
-  static String get r2Domain {
-    final env = _environment;
-    final domain = _r2Domains[env];
-    if (domain == null || domain.isEmpty) {
-      throw Exception('No R2 domain configured for environment: $env');
-    }
-    return domain;
-  }
-
-  /// Legacy: CloudFront domain (now points to R2)
-  static String get cloudfrontDomain => r2Domain;
 
   /// Get the timeout duration for HTTP requests
   static Duration get timeout {
@@ -148,7 +127,6 @@ class AppConfig {
       log('=== App Configuration ===');
       log('Environment: $environment');
       log('Base URL: $baseUrl');
-      log('R2 Domain: $r2Domain');
       log('Timeout: ${timeout.inSeconds} seconds');
       log('Debug Mode: $isDebug');
       log('Release Mode: $isRelease');

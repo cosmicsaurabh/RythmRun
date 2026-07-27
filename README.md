@@ -315,12 +315,17 @@ The API listens on port `8080` by default. The development command regenerates a
 | JWT | `JWT_SECRET`, `REFRESH_TOKEN_SECRET` |
 | R2 account/credentials | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` |
 | R2 buckets | `R2_BUCKET_AVATARS`, `R2_BUCKET_ACTIVITY_IMAGES` |
-| R2 delivery | `R2_PUBLIC_URL` |
 | Browser edge | `CORS_ALLOWED_ORIGINS` (required in production), `TRUST_PROXY_HOPS` |
 | Email delivery (optional all-or-none group) | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `PUBLIC_APP_URL`; optional `SMTP_PORT`, `SMTP_SECURE` |
 | Runtime | `PORT`, `NODE_ENV` |
 
-Use least-privilege R2 credentials scoped to the reviewed buckets and delivery configuration. The validator rejects documented placeholders, short or identical JWT secrets, and missing configuration. In production, `CORS_ALLOWED_ORIGINS` must contain exact HTTPS origins and `TRUST_PROXY_HOPS` must match the real reverse-proxy depth. Keep exactly one backend replica while request-budget counters remain process-local.
+Use least-privilege R2 credentials scoped to the reviewed private buckets. The
+API issues short-lived presigned URLs for uploads and reads; Flutter does not
+need an R2 hostname. The validator rejects documented placeholders, short or
+identical JWT secrets, and missing configuration. In production,
+`CORS_ALLOWED_ORIGINS` must contain exact HTTPS origins and
+`TRUST_PROXY_HOPS` must match the real reverse-proxy depth. Keep exactly one
+backend replica while request-budget counters remain process-local.
 
 ### Flutter client
 
@@ -332,7 +337,7 @@ flutter pub get --enforce-lockfile
 flutter run
 ```
 
-The checked-in development URL is a LAN address and will not work on another machine unchanged. Google sign-in requires the same web OAuth client ID in the backend and Flutter build, and its ID-token exchange refuses cleartext HTTP; use an HTTPS development endpoint or tunnel. Android and iOS OAuth registration, build defines, and the iOS callback scheme are documented in [`CONFIGURATION.md`](rythmrun_frontend_flutter/CONFIGURATION.md#google-sign-in-configuration). Checked-in staging/production API URLs use Render, while the R2 domain entries remain placeholders that must be configured before media verification. Android is the primary exercised target; iOS contains project scaffolding but is not documented as release-ready.
+The checked-in development URL is a LAN address and will not work on another machine unchanged. Google sign-in requires the same web OAuth client ID in the backend and Flutter build, and its ID-token exchange refuses cleartext HTTP; use an HTTPS development endpoint or tunnel. Android and iOS OAuth registration, build defines, and the iOS callback scheme are documented in [`CONFIGURATION.md`](rythmrun_frontend_flutter/CONFIGURATION.md#google-sign-in-configuration). Checked-in staging/production API URLs use Render. Media access is authorized by the backend with presigned URLs rather than a Flutter-side R2 origin. Android is the primary exercised target; iOS contains project scaffolding but is not documented as release-ready.
 
 ### Run the verification suite
 

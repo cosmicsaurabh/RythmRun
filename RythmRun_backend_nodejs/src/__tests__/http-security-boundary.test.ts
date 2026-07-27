@@ -17,6 +17,7 @@ const mockProductionController = {
   changePassword: jest.fn(),
   getUploadUrl: jest.fn(),
   confirmUpload: jest.fn(),
+  getReadUrl: jest.fn(),
 };
 
 jest.unstable_mockModule('../config/container.js', () => ({
@@ -129,6 +130,7 @@ describe('HTTP security boundaries', () => {
   const avatarService = {
     requestUpload: jest.fn(),
     confirmUpload: jest.fn(),
+    getReadUrl: jest.fn(),
   };
   const authenticate = jest.fn(
     (req: Request, res: Response, next: NextFunction) => {
@@ -434,6 +436,7 @@ describe('HTTP security boundaries', () => {
       { key: AVATAR_KEY, contentType: 'image/jpeg' },
       'confirmUpload',
     ],
+    ['GET', '/api/avatar/read-url', undefined, 'getReadUrl'],
   ])(
     'rejects unauthenticated %s %s before service dispatch',
     async (method, path, body, serviceMethod) => {
@@ -582,14 +585,13 @@ describe('HTTP security boundaries', () => {
     },
   );
 
-  it('returns the valid multipart grant and both confirmation states', async () => {
+  it('returns the valid PUT grant and both confirmation states', async () => {
     const grant = {
       uploadUrl: 'https://uploads.example.com',
-      uploadMethod: 'POST',
-      fields: {
-        key: AVATAR_KEY,
-        Policy: 'signed-policy',
-        'X-Amz-Signature': 'signature',
+      uploadMethod: 'PUT',
+      requiredHeaders: {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': '1024',
       },
       key: AVATAR_KEY,
       expiresAt: '2026-07-10T10:05:00.000Z',
@@ -662,5 +664,25 @@ describe('HTTP security boundaries', () => {
         contentType: 'image/jpeg',
       }),
     );
+  });
+
+  it('returns only the authenticated current user signed avatar URL', async () => {
+    const signedRead = {
+      key: AVATAR_KEY,
+      url: 'https://signed.example.com/avatar',
+      urlExpiresAt: '2026-07-10T10:15:00.000Z',
+    };
+    avatarService.getReadUrl.mockResolvedValueOnce(signedRead);
+
+    const response = await requestJson(
+      server,
+      'GET',
+      '/api/avatar/read-url',
+      undefined,
+      { authorization: AUTHORIZATION },
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: signedRead });
+    expect(avatarService.getReadUrl).toHaveBeenCalledWith(USER_ID);
   });
 });

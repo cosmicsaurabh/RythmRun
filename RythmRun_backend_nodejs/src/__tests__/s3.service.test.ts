@@ -17,7 +17,6 @@ const REQUIRED_ENVIRONMENT = [
   'R2_SECRET_ACCESS_KEY',
   'R2_BUCKET_AVATARS',
   'R2_BUCKET_ACTIVITY_IMAGES',
-  'R2_PUBLIC_URL',
 ] as const;
 const originalEnvironment = Object.fromEntries(
   REQUIRED_ENVIRONMENT.map(name => [name, process.env[name]]),
@@ -26,17 +25,13 @@ const originalEnvironment = Object.fromEntries(
 describe('S3Service AWS SDK v3 adapter', () => {
   const send = jest.fn();
   const presignS3Request = jest.fn();
-  const createS3PresignedPost = jest.fn();
-  const signCloudFrontUrl = jest.fn();
   const s3Client = { send } as unknown as S3Client;
 
   function createService() {
     return new S3Service({
       s3Client,
       presignS3Request,
-      createS3PresignedPost,
-      signCloudFrontUrl,
-    } as any);
+    });
   }
 
   beforeEach(() => {
@@ -46,7 +41,6 @@ describe('S3Service AWS SDK v3 adapter', () => {
     process.env.R2_SECRET_ACCESS_KEY = 'test-secret-key';
     process.env.R2_BUCKET_AVATARS = 'test-avatars-bucket';
     process.env.R2_BUCKET_ACTIVITY_IMAGES = 'test-activity-images-bucket';
-    process.env.R2_PUBLIC_URL = 'https://assets.example.com';
   });
 
   afterEach(() => {
@@ -84,6 +78,7 @@ describe('S3Service AWS SDK v3 adapter', () => {
       Bucket: 'test-activity-images-bucket',
       Key: ACTIVITY_IMAGE_KEY,
       ContentType: 'image/jpeg',
+      ContentLength: undefined,
     });
     expect(options).toEqual({
       expiresIn: 120,
@@ -92,7 +87,40 @@ describe('S3Service AWS SDK v3 adapter', () => {
     expect(result).toEqual({
       uploadUrl: 'https://storage-test-bucket.s3.example.com/upload',
       key: ACTIVITY_IMAGE_KEY,
-      publicUrl: `https://assets.example.com/${ACTIVITY_IMAGE_KEY}`,
+    });
+  });
+
+  it('presigns avatar PUTs against the avatar bucket', async () => {
+    presignS3Request.mockResolvedValue(
+      'https://test-avatars-bucket.test-account-id.r2.cloudflarestorage.com/upload',
+    );
+    const service = createService();
+
+    const result = await service.getPresignedAvatarPutUrl({
+      key: AVATAR_KEY,
+      contentType: 'image/jpeg',
+      sizeBytes: 1024,
+      expiresSeconds: 300,
+    });
+
+    expect(presignS3Request).toHaveBeenCalledTimes(1);
+    const [client, command, options] = presignS3Request.mock.calls[0];
+    expect(client).toBe(s3Client);
+    expect(command).toBeInstanceOf(PutObjectCommand);
+    expect(command.input).toEqual({
+      Bucket: 'test-avatars-bucket',
+      Key: AVATAR_KEY,
+      ContentType: 'image/jpeg',
+      ContentLength: 1024,
+    });
+    expect(options).toEqual({
+      expiresIn: 300,
+      signableHeaders: new Set(['content-type', 'content-length']),
+    });
+    expect(result).toEqual({
+      uploadUrl:
+        'https://test-avatars-bucket.test-account-id.r2.cloudflarestorage.com/upload',
+      key: AVATAR_KEY,
     });
   });
 
@@ -113,49 +141,22 @@ describe('S3Service AWS SDK v3 adapter', () => {
     );
   });
 
-  it('pins key, content type, and exact object size in the POST policy', async () => {
-    createS3PresignedPost.mockResolvedValue({
-      url: 'https://storage-test-bucket.s3.example.com',
-      fields: {
-        key: AVATAR_KEY,
-        'Content-Type': 'image/jpeg',
-        Policy: 'signed-policy',
-        'X-Amz-Signature': 'signature',
-      },
-    });
-    const service = createService();
+  it('binds avatar content type and exact length in a real presigned PUT URL', async () => {
+    const service = new S3Service();
 
-    const result = await service.getPresignedPost({
+    const result = await service.getPresignedAvatarPutUrl({
       key: AVATAR_KEY,
       contentType: 'image/jpeg',
       sizeBytes: 1024,
       expiresSeconds: 300,
     });
 
-    expect(createS3PresignedPost).toHaveBeenCalledWith(s3Client, {
-      Bucket: 'test-avatars-bucket',
-      Key: AVATAR_KEY,
-      Fields: {
-        key: AVATAR_KEY,
-        'Content-Type': 'image/jpeg',
-      },
-      Conditions: [
-        ['eq', '$key', AVATAR_KEY],
-        ['eq', '$Content-Type', 'image/jpeg'],
-        ['content-length-range', 1024, 1024],
-      ],
-      Expires: 300,
-    });
-    expect(result).toEqual({
-      uploadUrl: 'https://storage-test-bucket.s3.example.com',
-      fields: {
-        key: AVATAR_KEY,
-        'Content-Type': 'image/jpeg',
-        Policy: 'signed-policy',
-        'X-Amz-Signature': 'signature',
-      },
-      key: AVATAR_KEY,
-    });
+    const query = new URL(result.uploadUrl).searchParams;
+    expect(query.get('X-Amz-SignedHeaders')?.split(';')).toEqual(
+      expect.arrayContaining(['content-length', 'content-type']),
+    );
+    expect(query.has('x-amz-checksum-crc32')).toBe(false);
+    expect(query.has('x-amz-sdk-checksum-algorithm')).toBe(false);
   });
 
   it('dispatches HeadObjectCommand and returns its metadata', async () => {
@@ -167,13 +168,15 @@ describe('S3Service AWS SDK v3 adapter', () => {
     send.mockResolvedValue(metadata);
     const service = createService();
 
-    await expect(service.headObject(AVATAR_KEY)).resolves.toBe(metadata);
+    await expect(
+      service.headObject(AVATAR_KEY, 'R2_BUCKET_AVATARS'),
+    ).resolves.toBe(metadata);
 
     expect(send).toHaveBeenCalledTimes(1);
     const command = send.mock.calls[0][0];
     expect(command).toBeInstanceOf(HeadObjectCommand);
     expect(command.input).toEqual({
-      Bucket: 'test-activity-images-bucket',
+      Bucket: 'test-avatars-bucket',
       Key: AVATAR_KEY,
     });
   });
@@ -182,13 +185,15 @@ describe('S3Service AWS SDK v3 adapter', () => {
     send.mockResolvedValue({ $metadata: { httpStatusCode: 204 } });
     const service = createService();
 
-    await expect(service.deleteObject(AVATAR_KEY)).resolves.toBeUndefined();
+    await expect(
+      service.deleteObject(AVATAR_KEY, 'R2_BUCKET_AVATARS'),
+    ).resolves.toBeUndefined();
 
     expect(send).toHaveBeenCalledTimes(1);
     const command = send.mock.calls[0][0];
     expect(command).toBeInstanceOf(DeleteObjectCommand);
     expect(command.input).toEqual({
-      Bucket: 'test-activity-images-bucket',
+      Bucket: 'test-avatars-bucket',
       Key: AVATAR_KEY,
     });
   });
@@ -213,6 +218,32 @@ describe('S3Service AWS SDK v3 adapter', () => {
     expect(options).toEqual({ expiresIn: 900 });
     expect(result).toEqual({
       url: `https://test-account-id.r2.cloudflarestorage.com/${ACTIVITY_IMAGE_KEY}?X-Amz-Signature=signed`,
+      urlExpiresAt: '2026-07-10T10:15:00.123Z',
+    });
+  });
+
+  it('generates avatar read URLs from the avatar bucket', async () => {
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(new Date('2026-07-10T10:00:00.123Z').getTime());
+    presignS3Request.mockResolvedValue(
+      `https://test-avatars-bucket.test-account-id.r2.cloudflarestorage.com/${AVATAR_KEY}?X-Amz-Signature=signed`,
+    );
+    const service = createService();
+
+    const result = await service.getAvatarReadUrl(AVATAR_KEY, 900);
+
+    expect(presignS3Request).toHaveBeenCalledTimes(1);
+    const [client, command, options] = presignS3Request.mock.calls[0];
+    expect(client).toBe(s3Client);
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    expect(command.input).toEqual({
+      Bucket: 'test-avatars-bucket',
+      Key: AVATAR_KEY,
+    });
+    expect(options).toEqual({ expiresIn: 900 });
+    expect(result).toEqual({
+      url: `https://test-avatars-bucket.test-account-id.r2.cloudflarestorage.com/${AVATAR_KEY}?X-Amz-Signature=signed`,
       urlExpiresAt: '2026-07-10T10:15:00.123Z',
     });
   });

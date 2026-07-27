@@ -228,3 +228,11 @@ final profileViewModelProvider =
         operationGate: ref.watch(userScopeOperationGateProvider),
       );
     });
+
+/// The storage key is only a cache identity. The backend remains authoritative
+/// and returns a short-lived signed URL for the authenticated user's avatar.
+final profileAvatarUrlProvider = FutureProvider.autoDispose.family<Uri, String>(
+  (ref, _) {
+    return ref.watch(avatarRepositoryProvider).getAvatarReadUrl();
+  },
+);

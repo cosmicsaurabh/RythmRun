@@ -33,6 +33,15 @@ export class AvatarController {
     }
   };
 
+  getReadUrl = async (req: Request, res: Response) => {
+    try {
+      const result = await this.avatarService.getReadUrl(req.user!.id);
+      return res.status(200).json(result);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  };
+
   private handleError(error: unknown, res: Response) {
     if (error instanceof DtoValidationError) {
       return res.status(400).json({ message: error.message });

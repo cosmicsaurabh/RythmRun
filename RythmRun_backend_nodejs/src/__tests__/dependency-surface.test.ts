@@ -67,7 +67,6 @@ describe('backend production dependency surface', () => {
     expect(dependencies).toEqual(
       expect.objectContaining({
         '@aws-sdk/client-s3': expect.any(String),
-        '@aws-sdk/s3-presigned-post': expect.any(String),
         '@aws-sdk/s3-request-presigner': expect.any(String),
       }),
     );

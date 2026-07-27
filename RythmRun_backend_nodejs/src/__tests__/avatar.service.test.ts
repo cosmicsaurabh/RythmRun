@@ -50,17 +50,13 @@ function createMockPrisma() {
 
 function createMockS3() {
   return {
-    getPresignedPost: jest.fn(
+    getPresignedAvatarPutUrl: jest.fn(
       async ({ key }: { key: string }) => ({
         uploadUrl: 'https://uploads.example.com',
-        fields: {
-          key,
-          Policy: 'signed-policy',
-          'X-Amz-Signature': 'signature',
-        },
         key,
       }),
     ),
+    getAvatarReadUrl: jest.fn(),
     headObject: jest.fn(),
     deleteObject: jest.fn(),
   };
@@ -92,7 +88,7 @@ describe('AvatarService upload authorization', () => {
     jest.useRealTimers();
   });
 
-  it('creates a user-bound intent and returns the multipart POST contract', async () => {
+  it('creates a user-bound intent and returns the presigned PUT contract', async () => {
     const { prisma } = createMockPrisma();
     const s3 = createMockS3();
     prisma.avatarUploadIntent.count
@@ -120,7 +116,7 @@ describe('AvatarService upload authorization', () => {
     expect(createdData.key).toMatch(
       /^avatars\/1\/[0-9a-f-]{36}\.jpg$/,
     );
-    expect(s3.getPresignedPost).toHaveBeenCalledWith({
+    expect(s3.getPresignedAvatarPutUrl).toHaveBeenCalledWith({
       key: createdData.key,
       contentType: 'image/jpeg',
       sizeBytes: 1024,
@@ -128,11 +124,10 @@ describe('AvatarService upload authorization', () => {
     });
     expect(result).toEqual({
       uploadUrl: 'https://uploads.example.com',
-      uploadMethod: 'POST',
-      fields: {
-        key: createdData.key,
-        Policy: 'signed-policy',
-        'X-Amz-Signature': 'signature',
+      uploadMethod: 'PUT',
+      requiredHeaders: {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': '1024',
       },
       key: createdData.key,
       expiresAt: '2026-07-10T10:05:00.000Z',
@@ -155,7 +150,7 @@ describe('AvatarService upload authorization', () => {
       service.requestUpload(USER_ID, { contentType, ext, sizeBytes: 1024 }),
     ).rejects.toMatchObject({ statusCode: 400 });
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(s3.getPresignedPost).not.toHaveBeenCalled();
+    expect(s3.getPresignedAvatarPutUrl).not.toHaveBeenCalled();
   });
 
   it('requires a compatibility extension to match the MIME type', async () => {
@@ -208,7 +203,7 @@ describe('AvatarService upload authorization', () => {
       statusCode: 429,
     });
     expect(prisma.avatarUploadIntent.create).not.toHaveBeenCalled();
-    expect(s3.getPresignedPost).not.toHaveBeenCalled();
+    expect(s3.getPresignedAvatarPutUrl).not.toHaveBeenCalled();
   });
 
   it('enforces the active pending-intent limit', async () => {
@@ -231,7 +226,7 @@ describe('AvatarService upload authorization', () => {
     expect(prisma.avatarUploadIntent.create).not.toHaveBeenCalled();
   });
 
-  it('removes the pending intent if POST signing fails', async () => {
+  it('removes the pending intent if PUT signing fails', async () => {
     const { prisma } = createMockPrisma();
     const s3 = createMockS3();
     const intent = buildIntent();
@@ -240,7 +235,9 @@ describe('AvatarService upload authorization', () => {
       .mockResolvedValueOnce(0);
     prisma.avatarUploadIntent.create.mockResolvedValue(intent);
     prisma.avatarUploadIntent.delete.mockResolvedValue(intent);
-    s3.getPresignedPost.mockRejectedValueOnce(new Error('signing failed'));
+    s3.getPresignedAvatarPutUrl.mockRejectedValueOnce(
+      new Error('signing failed'),
+    );
     const service = new AvatarService(prisma as any, s3 as any);
 
     await expect(
@@ -337,7 +334,10 @@ describe('AvatarService confirmation', () => {
 
     const result = await service.confirmUpload(USER_ID, confirmation);
 
-    expect(s3.headObject).toHaveBeenCalledWith(intent.key);
+    expect(s3.headObject).toHaveBeenCalledWith(
+      intent.key,
+      'R2_BUCKET_AVATARS',
+    );
     expect(prisma.avatarUploadIntent.updateMany).toHaveBeenCalledWith({
       where: {
         id: intent.id,
@@ -360,7 +360,10 @@ describe('AvatarService confirmation', () => {
         profilePictureType: intent.contentType,
       },
     });
-    expect(s3.deleteObject).toHaveBeenCalledWith(PREVIOUS_AVATAR_KEY);
+    expect(s3.deleteObject).toHaveBeenCalledWith(
+      PREVIOUS_AVATAR_KEY,
+      'R2_BUCKET_AVATARS',
+    );
     expect(prisma.avatarUploadIntent.updateMany).toHaveBeenCalledWith({
       where: {
         id: intent.id,
@@ -457,7 +460,10 @@ describe('AvatarService confirmation', () => {
       message: 'Avatar upload intent has expired',
       statusCode: 410,
     });
-    expect(s3.deleteObject).toHaveBeenCalledWith(AVATAR_KEY);
+    expect(s3.deleteObject).toHaveBeenCalledWith(
+      AVATAR_KEY,
+      'R2_BUCKET_AVATARS',
+    );
     expect(s3.headObject).not.toHaveBeenCalled();
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
@@ -475,7 +481,10 @@ describe('AvatarService confirmation', () => {
     await expect(
       service.confirmUpload(USER_ID, confirmation),
     ).rejects.toThrow('Uploaded avatar metadata does not match');
-    expect(s3.deleteObject).toHaveBeenCalledWith(AVATAR_KEY);
+    expect(s3.deleteObject).toHaveBeenCalledWith(
+      AVATAR_KEY,
+      'R2_BUCKET_AVATARS',
+    );
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
@@ -598,7 +607,10 @@ describe('AvatarService confirmation', () => {
     await service.retryPendingCleanup(USER_ID);
 
     expect(s3.deleteObject).toHaveBeenCalledTimes(2);
-    expect(s3.deleteObject).toHaveBeenLastCalledWith(PREVIOUS_AVATAR_KEY);
+    expect(s3.deleteObject).toHaveBeenLastCalledWith(
+      PREVIOUS_AVATAR_KEY,
+      'R2_BUCKET_AVATARS',
+    );
     expect(prisma.avatarUploadIntent.updateMany).toHaveBeenCalledWith({
       where: {
         id: intent.id,
@@ -646,7 +658,10 @@ describe('AvatarService confirmation', () => {
         cleanupKey: expiredIntent.key,
       },
     });
-    expect(s3.deleteObject).toHaveBeenCalledWith(expiredIntent.key);
+    expect(s3.deleteObject).toHaveBeenCalledWith(
+      expiredIntent.key,
+      'R2_BUCKET_AVATARS',
+    );
     expect(prisma.avatarUploadIntent.findMany).toHaveBeenCalledTimes(1);
   });
 
@@ -664,6 +679,66 @@ describe('AvatarService confirmation', () => {
   });
 });
 
+describe('AvatarService signed reads', () => {
+  it('signs only the current user selected avatar', async () => {
+    const { prisma } = createMockPrisma();
+    const s3 = createMockS3();
+    prisma.user.findUnique.mockResolvedValue({
+      profilePicturePath: AVATAR_KEY,
+    });
+    s3.getAvatarReadUrl.mockResolvedValue({
+      url: 'https://signed.example.com/avatar',
+      urlExpiresAt: '2026-07-10T10:15:00.000Z',
+    });
+    const service = new AvatarService(prisma as any, s3 as any);
+
+    await expect(service.getReadUrl(USER_ID)).resolves.toEqual({
+      key: AVATAR_KEY,
+      url: 'https://signed.example.com/avatar',
+      urlExpiresAt: '2026-07-10T10:15:00.000Z',
+    });
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: USER_ID },
+      select: { profilePicturePath: true },
+    });
+    expect(s3.getAvatarReadUrl).toHaveBeenCalledWith(AVATAR_KEY);
+  });
+
+  it.each([
+    null,
+    '../../private/key',
+    'avatars/2/123e4567-e89b-42d3-a456-426614174000.jpg',
+  ])('does not sign an absent or unowned selected avatar: %p', async key => {
+    const { prisma } = createMockPrisma();
+    const s3 = createMockS3();
+    prisma.user.findUnique.mockResolvedValue({ profilePicturePath: key });
+    const service = new AvatarService(prisma as any, s3 as any);
+
+    await expect(service.getReadUrl(USER_ID)).rejects.toMatchObject({
+      message: 'Avatar not found',
+      statusCode: 404,
+    });
+    expect(s3.getAvatarReadUrl).not.toHaveBeenCalled();
+  });
+
+  it('maps signing failures to a safe retryable error', async () => {
+    const { prisma } = createMockPrisma();
+    const s3 = createMockS3();
+    prisma.user.findUnique.mockResolvedValue({
+      profilePicturePath: AVATAR_KEY,
+    });
+    s3.getAvatarReadUrl.mockRejectedValue(
+      new Error('raw storage credential detail'),
+    );
+    const service = new AvatarService(prisma as any, s3 as any);
+
+    await expect(service.getReadUrl(USER_ID)).rejects.toMatchObject({
+      message: 'Avatar storage is temporarily unavailable',
+      statusCode: 503,
+    });
+  });
+});
+
 describe('AvatarController contract', () => {
   function createResponse() {
     const response = {
@@ -675,11 +750,14 @@ describe('AvatarController contract', () => {
     return response;
   }
 
-  it('returns the top-level multipart POST authorization expected by clients', async () => {
+  it('returns the top-level presigned PUT authorization expected by clients', async () => {
     const authorization = {
       uploadUrl: 'https://uploads.example.com',
-      uploadMethod: 'POST',
-      fields: { key: AVATAR_KEY, Policy: 'signed-policy' },
+      uploadMethod: 'PUT',
+      requiredHeaders: {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': '1024',
+      },
       key: AVATAR_KEY,
       expiresAt: '2026-07-10T10:05:00.000Z',
     };
@@ -759,6 +837,30 @@ describe('AvatarController contract', () => {
     expect(response.json).toHaveBeenCalledWith({
       message: 'Avatar storage verification is temporarily unavailable',
     });
+  });
+
+  it('returns the authenticated current-user signed read URL', async () => {
+    const signedRead = {
+      key: AVATAR_KEY,
+      url: 'https://signed.example.com/avatar',
+      urlExpiresAt: '2026-07-10T10:15:00.000Z',
+    };
+    const avatarService = {
+      getReadUrl: jest.fn().mockResolvedValue(signedRead),
+    };
+    const controller = new AvatarController(avatarService as any);
+    const response = createResponse();
+
+    await controller.getReadUrl(
+      {
+        user: { id: USER_ID },
+      } as any,
+      response as any,
+    );
+
+    expect(avatarService.getReadUrl).toHaveBeenCalledWith(USER_ID);
+    expect(response.status).toHaveBeenCalledWith(200);
+    expect(response.json).toHaveBeenCalledWith(signedRead);
   });
 });
 
