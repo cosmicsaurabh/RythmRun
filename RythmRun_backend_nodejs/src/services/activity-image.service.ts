@@ -1,6 +1,15 @@
 import { injectable, inject } from 'tsyringe';
 import type { ActivityImage, PrismaClient } from '../generated/prisma/client.js';
 import {
+  activityNotFoundError,
+  imageTooLargeError,
+  invalidChecksumError,
+  invalidClientImageIdError,
+  invalidImageKeyError,
+  unsupportedContentTypeError,
+  uploadedSizeMismatchError,
+} from '../errors/activity-image.error.js';
+import {
   ConfirmActivityImageUploadDto,
   RequestActivityImageUploadUrlDto,
 } from '../models/dto/activity-image.dto.js';
@@ -105,7 +114,7 @@ export class ActivityImageService {
 
     const head = await s3Service.headObject(dto.key);
     if (head.ContentLength && head.ContentLength !== dto.sizeBytes) {
-      throw new Error('Uploaded image size mismatch');
+      throw uploadedSizeMismatchError();
     }
 
     const image = await this.prisma.activityImage.upsert({
@@ -207,7 +216,7 @@ export class ActivityImageService {
     });
 
     if (!activity) {
-      throw new Error('Activity not found or unauthorized');
+      throw activityNotFoundError();
     }
 
     return activity;
@@ -215,22 +224,22 @@ export class ActivityImageService {
 
   private validateImageMetadata(dto: RequestActivityImageUploadUrlDto) {
     if (!ALLOWED_CONTENT_TYPES.has(dto.contentType)) {
-      throw new Error('Unsupported image content type');
+      throw unsupportedContentTypeError();
     }
 
     if (dto.sizeBytes > MAX_IMAGE_SIZE_BYTES) {
-      throw new Error('Image file too large');
+      throw imageTooLargeError();
     }
 
     if (!/^[A-Za-z0-9_-]{8,160}$/.test(dto.clientImageId)) {
-      throw new Error('Invalid client image ID');
+      throw invalidClientImageIdError();
     }
 
     if (
       dto.checksumSha256 &&
       !/^[a-fA-F0-9]{64}$/.test(dto.checksumSha256)
     ) {
-      throw new Error('Invalid checksum');
+      throw invalidChecksumError();
     }
   }
 
@@ -246,7 +255,7 @@ export class ActivityImageService {
     );
 
     if (!pattern.test(key)) {
-      throw new Error('Invalid image key');
+      throw invalidImageKeyError();
     }
   }
 
