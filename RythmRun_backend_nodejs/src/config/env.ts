@@ -37,6 +37,28 @@ export interface EmailEnvironment {
   publicAppUrl: string;
 }
 
+/**
+ * HTTP edge configuration. Browsers are the only clients CORS can constrain —
+ * the mobile app sends no `Origin` and is unaffected — so this allowlist is a
+ * defence for the web surface only and never replaces authentication.
+ *
+ * `trustProxyHops` is the number of proxies in front of this process. It must
+ * match the real deployment: too high lets a client forge `X-Forwarded-For`
+ * and escape every address-keyed rate limit, so the default is 0 (trust
+ * nothing, use the socket address).
+ */
+export interface HttpSecurityEnvironment {
+  allowedOrigins: readonly string[];
+  trustProxyHops: number;
+}
+
+export const HTTP_SECURITY_ENVIRONMENT_VARIABLES = [
+  'CORS_ALLOWED_ORIGINS',
+  'TRUST_PROXY_HOPS',
+] as const;
+
+export const MAX_TRUST_PROXY_HOPS = 10;
+
 export const EMAIL_ENVIRONMENT_VARIABLES = [
   'SMTP_HOST',
   'SMTP_PORT',
@@ -309,6 +331,113 @@ export function validateEmailEnvironment(
     publicAppUrl: parsePublicAppUrl(
       requireEnvironmentVariable(source, 'PUBLIC_APP_URL'),
     ),
+  };
+}
+
+function parseAllowedOrigin(raw: string, production: boolean): string {
+  if (raw === '*') {
+    throw new EnvironmentValidationError(
+      'CORS_ALLOWED_ORIGINS must not contain a wildcard origin',
+    );
+  }
+  if (DOCUMENTED_CONFIGURATION_PLACEHOLDER.test(raw)) {
+    throw new EnvironmentValidationError(
+      'CORS_ALLOWED_ORIGINS must not use a documented placeholder',
+    );
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new EnvironmentValidationError(
+      `CORS_ALLOWED_ORIGINS entry must be an absolute http(s) origin: ${raw}`,
+    );
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new EnvironmentValidationError(
+      `CORS_ALLOWED_ORIGINS entry must use the http or https scheme: ${raw}`,
+    );
+  }
+  // An origin is scheme+host+port only. Accepting a path here would silently
+  // widen the allowlist, because the browser only ever sends the origin.
+  if (parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '') {
+    throw new EnvironmentValidationError(
+      `CORS_ALLOWED_ORIGINS entry must not carry a path, query, or fragment: ${raw}`,
+    );
+  }
+  if (parsed.username !== '' || parsed.password !== '') {
+    throw new EnvironmentValidationError(
+      `CORS_ALLOWED_ORIGINS entry must not carry credentials: ${raw}`,
+    );
+  }
+  if (production && parsed.protocol !== 'https:') {
+    throw new EnvironmentValidationError(
+      `CORS_ALLOWED_ORIGINS entry must use https in production: ${raw}`,
+    );
+  }
+
+  return parsed.origin;
+}
+
+function parseAllowedOrigins(
+  source: EnvironmentSource,
+  production: boolean,
+): readonly string[] {
+  const raw = source.CORS_ALLOWED_ORIGINS;
+  const entries =
+    raw === undefined
+      ? []
+      : raw
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0);
+
+  if (entries.length === 0) {
+    if (production) {
+      throw new EnvironmentValidationError(
+        'CORS_ALLOWED_ORIGINS environment variable is required in production',
+      );
+    }
+    // Outside production an empty allowlist is the safe default: no browser
+    // origin is granted access, and non-browser clients are unaffected.
+    return [];
+  }
+
+  const origins = entries.map((entry) => parseAllowedOrigin(entry, production));
+  return [...new Set(origins)];
+}
+
+function parseTrustProxyHops(source: EnvironmentSource): number {
+  const raw = source.TRUST_PROXY_HOPS;
+  if (raw === undefined || raw.trim().length === 0) {
+    return 0;
+  }
+
+  const hops = Number(raw.trim());
+  if (!Number.isInteger(hops) || hops < 0 || hops > MAX_TRUST_PROXY_HOPS) {
+    throw new EnvironmentValidationError(
+      `TRUST_PROXY_HOPS must be an integer between 0 and ${MAX_TRUST_PROXY_HOPS}`,
+    );
+  }
+
+  return hops;
+}
+
+/**
+ * Validates the browser-facing edge configuration. Production must name its
+ * allowed origins explicitly; every other environment defaults to an empty
+ * allowlist rather than the permissive wildcard the app used before IP-2.6.
+ */
+export function validateHttpSecurityEnvironment(
+  source: EnvironmentSource,
+): HttpSecurityEnvironment {
+  const production = source.NODE_ENV === 'production';
+
+  return {
+    allowedOrigins: parseAllowedOrigins(source, production),
+    trustProxyHops: parseTrustProxyHops(source),
   };
 }
 
