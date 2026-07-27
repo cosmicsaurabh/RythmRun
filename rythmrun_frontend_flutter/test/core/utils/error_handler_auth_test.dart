@@ -26,4 +26,32 @@ void main() {
     expect(message, contains('already exists for this email'));
     expect(message, contains('original method'));
   });
+
+  test('maps a backend rate limit to a wait-and-retry message', () {
+    final message = ErrorHandler.getErrorMessage(
+      HttpStatusException(
+        429,
+        'Too many requests. Please wait and try again.',
+        code: 'AUTH_RATE_LIMITED',
+        retryable: true,
+      ),
+    );
+
+    expect(message, contains('Too many attempts'));
+    // The raw exception string must never reach the user.
+    expect(message, isNot(contains('HttpStatusException')));
+    expect(message, isNot(contains('429')));
+  });
+
+  test('maps a rate-limited sign-in delivered as a 401-family exception', () {
+    final message = ErrorHandler.getErrorMessage(
+      UnauthorizedException(
+        'Too many requests. Please wait and try again.',
+        code: 'AUTH_RATE_LIMITED',
+      ),
+    );
+
+    expect(message, contains('Too many attempts'));
+    expect(message, isNot(contains('Unauthorized')));
+  });
 }

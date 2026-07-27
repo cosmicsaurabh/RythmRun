@@ -21,6 +21,11 @@ class ErrorHandler {
           return 'This verification link is invalid or has expired. Request a new one.';
         case 'AUTH_VERIFICATION_RATE_LIMITED':
           return 'Please wait a moment before requesting another verification email.';
+        case 'AUTH_RATE_LIMITED':
+          // IP-2.6 abuse controls. Without this arm a 429 falls through to the
+          // generic path and surfaces the raw 'HttpStatusException(429): ...'
+          // string, because 429 has no dedicated exception type.
+          return 'Too many attempts. Please wait a few minutes and try again.';
       }
     }
 
