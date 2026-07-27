@@ -22,7 +22,6 @@ const validServerEnvironment = {
   R2_SECRET_ACCESS_KEY: 'test-secret-access-key',
   R2_BUCKET_AVATARS: 'test-avatars-bucket',
   R2_BUCKET_ACTIVITY_IMAGES: 'test-activity-images-bucket',
-  R2_PUBLIC_URL: 'https://test-account-id.r2.cloudflarestorage.com',
 };
 
 describe('JWT environment validation', () => {
@@ -123,7 +122,6 @@ describe('server environment validation', () => {
     'R2_SECRET_ACCESS_KEY',
     'R2_BUCKET_AVATARS',
     'R2_BUCKET_ACTIVITY_IMAGES',
-    'R2_PUBLIC_URL',
   ] as const)('rejects a missing %s', (name) => {
     const source: Record<string, string | undefined> = {
       ...validServerEnvironment,
@@ -142,6 +140,9 @@ describe('server environment validation', () => {
     ['R2_ACCESS_KEY_ID', 'REPLACE_WITH_ACCESS_KEY_ID'],
     ['R2_SECRET_ACCESS_KEY', 'REPLACE_WITH_SECRET_ACCESS_KEY'],
     ['R2_BUCKET_AVATARS', 'REPLACE_WITH_BUCKET_NAME'],
+    ['R2_ACCOUNT_ID', 'your-account-id'],
+    ['R2_ACCESS_KEY_ID', 'your-access-key-id'],
+    ['R2_SECRET_ACCESS_KEY', 'your-secret-access-key'],
   ] as const)('rejects a documented %s placeholder', (name, value) => {
     expect(() =>
       validateServerEnvironment({

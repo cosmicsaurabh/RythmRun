@@ -5,7 +5,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
-import 'package:rythmrun_frontend_flutter/core/config/app_config.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/user_scope_teardown_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/session/user_scope_teardown.dart';
@@ -1024,70 +1023,80 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
   }
 
-  /// Get the CloudFront URL for the profile picture
-  String? _getCloudFrontUrl(String? profilePicturePath) {
-    if (profilePicturePath == null) return null;
-    return 'https://${AppConfig.cloudfrontDomain}/$profilePicturePath';
-  }
-
   /// Build profile avatar with loading state
   Widget _buildProfileAvatar(String? profilePicturePath) {
-    final cloudFrontUrl = _getCloudFrontUrl(profilePicturePath);
-
-    if (cloudFrontUrl != null) {
-      return CircleAvatar(
-        radius: 58,
-        backgroundColor: CustomAppColors.colorA.withValues(alpha: 0.3),
-        child: ClipOval(
-          child: Image.network(
-            cloudFrontUrl,
-            width: 116,
-            height: 116,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) {
-                // Image loaded successfully
-                return child;
-              }
-              // Show Cupertino loading indicator while loading
-              return Container(
-                width: 116,
-                height: 116,
-                decoration: BoxDecoration(
-                  color: CustomAppColors.colorA.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: CupertinoActivityIndicator(
-                    color: CustomAppColors.white,
-                    radius: 15,
-                  ),
-                ),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              // Show error placeholder if image fails to load
-              log('[pfp-ui] Avatar image load failed', name: 'ProfileScreen');
-              return Container(
-                width: 116,
-                height: 116,
-                decoration: BoxDecoration(
-                  color: CustomAppColors.colorA.withValues(alpha: 0.3),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.error_outline,
-                  size: 40,
-                  color: CustomAppColors.white,
-                ),
-              );
-            },
-          ),
-        ),
-      );
+    if (profilePicturePath == null || profilePicturePath.trim().isEmpty) {
+      return _buildDefaultAvatar();
     }
 
-    // No profile picture - show default placeholder
+    final avatarUrl = ref.watch(profileAvatarUrlProvider(profilePicturePath));
+    return avatarUrl.when(
+      loading: _buildAvatarLoading,
+      error: (error, stackTrace) {
+        log('[pfp-ui] Avatar URL load failed', name: 'ProfileScreen');
+        return _buildAvatarError();
+      },
+      data:
+          (url) => CircleAvatar(
+            radius: 58,
+            backgroundColor: CustomAppColors.colorA.withValues(alpha: 0.3),
+            child: ClipOval(
+              child: Image.network(
+                url.toString(),
+                width: 116,
+                height: 116,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return _buildAvatarLoading();
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  log(
+                    '[pfp-ui] Avatar image load failed',
+                    name: 'ProfileScreen',
+                  );
+                  return _buildAvatarError();
+                },
+              ),
+            ),
+          ),
+    );
+  }
+
+  Widget _buildAvatarLoading() {
+    return Container(
+      width: 116,
+      height: 116,
+      decoration: BoxDecoration(
+        color: CustomAppColors.colorA.withValues(alpha: 0.1),
+        shape: BoxShape.circle,
+      ),
+      child: const Center(
+        child: CupertinoActivityIndicator(
+          color: CustomAppColors.white,
+          radius: 15,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatarError() {
+    return Container(
+      width: 116,
+      height: 116,
+      decoration: BoxDecoration(
+        color: CustomAppColors.colorA.withValues(alpha: 0.3),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(
+        Icons.error_outline,
+        size: 40,
+        color: CustomAppColors.white,
+      ),
+    );
+  }
+
+  Widget _buildDefaultAvatar() {
     return CircleAvatar(
       radius: 58,
       backgroundColor: CustomAppColors.colorA.withValues(alpha: 0.3),

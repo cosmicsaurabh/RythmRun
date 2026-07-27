@@ -11,7 +11,6 @@ This document outlines the migration from AWS S3 and CloudFront to Cloudflare R2
 **Benefits**: 
 - Zero egress fees (AWS charges $0.09/GB)
 - S3-compatible API (minimal code changes)
-- Built-in CDN via Cloudflare
 - Free tier: 10GB storage + unlimited bandwidth
 
 ## 🔄 Code Changes Made
@@ -20,7 +19,8 @@ This document outlines the migration from AWS S3 and CloudFront to Cloudflare R2
 - **Removed**: CloudFront signing logic and dependencies
 - **Updated**: S3 client to use R2 endpoint
 - **New**: Uses R2 credentials (Account ID, Access Key, Secret Key)
-- **Changed**: `getActivityImageReadUrl()` now async, returns R2 signed URLs instead of CloudFront URLs
+- **Changed**: Activity images and avatars use short-lived R2 presigned PUT
+  and GET URLs instead of CloudFront or public-bucket URLs
 
 ### 2. Dependencies (`package.json`)
 - **Removed**: `@aws-sdk/cloudfront-signer` (no longer needed)
@@ -28,7 +28,7 @@ This document outlines the migration from AWS S3 and CloudFront to Cloudflare R2
 
 ### 3. Environment Variables (`.env.example`)
 - **Removed**: AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET, CLOUDFRONT_DOMAIN, CLOUDFRONT_KEY_PAIR_ID, CLOUDFRONT_PRIVATE_KEY
-- **Added**: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_AVATARS, R2_BUCKET_ACTIVITY_IMAGES, R2_PUBLIC_URL
+- **Added**: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_AVATARS, R2_BUCKET_ACTIVITY_IMAGES
 
 ### 4. Documentation (`README.md`)
 - Updated all references from AWS S3/CloudFront to Cloudflare R2
@@ -78,7 +78,6 @@ R2_ACCESS_KEY_ID="your-access-key-here"
 R2_SECRET_ACCESS_KEY="your-secret-key-here"
 R2_BUCKET_AVATARS="rythmrun-avatars"
 R2_BUCKET_ACTIVITY_IMAGES="rythmrun-activity-images"
-R2_PUBLIC_URL="https://your-account-id.r2.cloudflarestorage.com"
 ```
 
 **Production** (Render/Railway dashboard):
@@ -118,13 +117,16 @@ After deployment, test the following:
 
 ### Avatar Upload Flow
 1. Frontend requests upload URL from `/api/avatar/upload-url`
-2. Backend generates R2 presigned POST URL (valid for 5 minutes)
-3. Frontend uploads directly to R2 via presigned URL
+2. Backend generates an R2 presigned PUT URL (valid for 5 minutes)
+3. Frontend uploads the exact bytes and required content-type directly to R2
 4. Frontend confirms upload via `/api/avatar/confirm`
-5. Backend stores avatar key in user profile
+5. Backend verifies the object in the avatar bucket and stores its opaque key
+6. Frontend requests `/api/avatar/read-url` when it needs to display the
+   authenticated user's current avatar
 
 ### Image Delivery Flow
-1. When returning image URLs, backend calls `getActivityImageReadUrl()`
+1. The backend validates that the requested object belongs to the authenticated
+   user
 2. Backend generates R2 presigned GET URL (valid for 15 minutes)
 3. Frontend receives signed URL in API response
 4. Frontend displays image via signed URL
@@ -145,7 +147,7 @@ After deployment, test the following:
 |-------|----------|
 | "NoSuchBucket" error | Verify bucket names match R2 dashboard exactly |
 | "Invalid credentials" error | Double-check R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY |
-| Signed URLs not working | Ensure R2_PUBLIC_URL format is correct: `https://account-id.r2.cloudflarestorage.com` |
+| Signed URLs not working | Verify the R2 account ID, bucket-specific token scope, and server clock |
 | Images not displaying in app | Verify signed URLs haven't expired (default 15 minutes) |
 | Permission denied errors | Check API token has "Object Read & Write" permission for selected buckets |
 
@@ -168,16 +170,17 @@ But since you don't have existing production images, you can skip this step.
 
 ## 📝 API Changes
 
-**No breaking changes!** APIs remain identical:
-- `POST /api/avatar/upload-url` - Still returns presigned upload URL
-- `POST /api/avatar/confirm` - Still confirms upload
-- `GET /api/activities` - Still returns signed image URLs
+The app and API must be deployed together because the avatar upload
+authorization now explicitly uses PUT:
 
-The only change is internal: URLs now come from R2 instead of CloudFront.
+- `POST /api/avatar/upload-url` - Returns a presigned PUT URL and required headers
+- `POST /api/avatar/confirm` - Still confirms upload
+- `GET /api/avatar/read-url` - Returns a short-lived URL for the current avatar
+- `GET /api/activities` - Still returns signed image URLs
 
 ## 🚀 Future Improvements
 
-1. Add custom domain for R2 (e.g., `cdn.rhythmrun.app`)
+1. Add an authenticated image-resizing proxy if thumbnail variants are needed
 2. Implement image optimization (resize, compression)
 3. Add WebP format support for better compression
 4. Monitor R2 usage dashboard for cost optimization

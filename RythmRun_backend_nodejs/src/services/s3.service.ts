@@ -6,35 +6,21 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import type { HeadObjectCommandOutput } from '@aws-sdk/client-s3';
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { getSignedUrl as getS3SignedUrl } from '@aws-sdk/s3-request-presigner';
 
 type PresignedPutUrlInput = {
   key: string;
   contentType: string;
+  sizeBytes?: number;
   expiresSeconds?: number;
 };
 
-type PresignedPutUrlResult = {
+type PresignedPutAuthorization = {
   uploadUrl: string;
   key: string;
-  publicUrl: string;
 };
 
-export type PresignedPostInput = {
-  key: string;
-  contentType: string;
-  sizeBytes: number;
-  expiresSeconds?: number;
-};
-
-export type PresignedPostResult = {
-  uploadUrl: string;
-  fields: Record<string, string>;
-  key: string;
-};
-
-type ActivityImageReadUrlResult = {
+type ObjectReadUrlResult = {
   url: string;
   urlExpiresAt: string;
 };
@@ -42,14 +28,11 @@ type ActivityImageReadUrlResult = {
 type S3ServiceDependencies = {
   s3Client?: S3Client;
   presignS3Request?: typeof getS3SignedUrl;
-  createS3PresignedPost?: typeof createPresignedPost;
 };
 
 export class S3Service {
   private readonly s3: S3Client;
   private readonly presignS3Request: typeof getS3SignedUrl;
-  private readonly createS3PresignedPost: typeof createPresignedPost;
-  private readonly r2PublicUrl: string;
 
   constructor(dependencies: S3ServiceDependencies = {}) {
     this.s3 =
@@ -66,67 +49,78 @@ export class S3Service {
         requestChecksumCalculation: 'WHEN_REQUIRED',
       });
     this.presignS3Request = dependencies.presignS3Request ?? getS3SignedUrl;
-    this.createS3PresignedPost =
-      dependencies.createS3PresignedPost ?? createPresignedPost;
-    this.r2PublicUrl = this.getRequiredEnv('R2_PUBLIC_URL');
   }
 
   public async getPresignedPutUrl(
     input: PresignedPutUrlInput,
-  ): Promise<PresignedPutUrlResult> {
+  ): Promise<PresignedPutAuthorization> {
+    return this.getPresignedPutUrlForBucket(
+      input,
+      'R2_BUCKET_ACTIVITY_IMAGES',
+    );
+  }
+
+  public async getPresignedAvatarPutUrl(
+    input: PresignedPutUrlInput,
+  ): Promise<PresignedPutAuthorization> {
+    return this.getPresignedPutUrlForBucket(input, 'R2_BUCKET_AVATARS');
+  }
+
+  private async getPresignedPutUrlForBucket(
+    input: PresignedPutUrlInput,
+    bucketEnvironmentVariable:
+      | 'R2_BUCKET_AVATARS'
+      | 'R2_BUCKET_ACTIVITY_IMAGES',
+  ): Promise<PresignedPutAuthorization> {
     const command = new PutObjectCommand({
-      Bucket: this.getRequiredEnv('R2_BUCKET_ACTIVITY_IMAGES'),
+      Bucket: this.getRequiredEnv(bucketEnvironmentVariable),
       Key: input.key,
       ContentType: input.contentType,
+      ContentLength: input.sizeBytes,
     });
 
+    const signableHeaders = new Set(['content-type']);
+    if (input.sizeBytes !== undefined) {
+      signableHeaders.add('content-length');
+    }
     const uploadUrl = await this.presignS3Request(this.s3, command, {
       expiresIn: input.expiresSeconds ?? 300,
-      signableHeaders: new Set(['content-type']),
+      signableHeaders,
     });
 
     return {
       uploadUrl,
       key: input.key,
-      publicUrl: this.getPublicUrl(input.key),
     };
-  }
-
-  public async getPresignedPost(
-    input: PresignedPostInput,
-  ): Promise<PresignedPostResult> {
-    const post = await this.createS3PresignedPost(this.s3, {
-      Bucket: this.getRequiredEnv('R2_BUCKET_AVATARS'),
-      Key: input.key,
-      Fields: {
-        key: input.key,
-        'Content-Type': input.contentType,
-      },
-      Conditions: [
-        ['eq', '$key', input.key],
-        ['eq', '$Content-Type', input.contentType],
-        ['content-length-range', input.sizeBytes, input.sizeBytes],
-      ],
-      Expires: input.expiresSeconds ?? 300,
-    });
-
-    return {
-      uploadUrl: post.url,
-      fields: { ...post.fields },
-      key: input.key,
-    };
-  }
-
-  public getPublicUrl(key: string): string {
-    return `${this.r2PublicUrl}/${key}`;
   }
 
   public async getActivityImageReadUrl(
     key: string,
     expiresSeconds = 900,
-  ): Promise<ActivityImageReadUrlResult> {
+  ): Promise<ObjectReadUrlResult> {
+    return this.getObjectReadUrl(
+      key,
+      'R2_BUCKET_ACTIVITY_IMAGES',
+      expiresSeconds,
+    );
+  }
+
+  public async getAvatarReadUrl(
+    key: string,
+    expiresSeconds = 900,
+  ): Promise<ObjectReadUrlResult> {
+    return this.getObjectReadUrl(key, 'R2_BUCKET_AVATARS', expiresSeconds);
+  }
+
+  private async getObjectReadUrl(
+    key: string,
+    bucketEnvironmentVariable:
+      | 'R2_BUCKET_AVATARS'
+      | 'R2_BUCKET_ACTIVITY_IMAGES',
+    expiresSeconds: number,
+  ): Promise<ObjectReadUrlResult> {
     const command = new GetObjectCommand({
-      Bucket: this.getRequiredEnv('R2_BUCKET_ACTIVITY_IMAGES'),
+      Bucket: this.getRequiredEnv(bucketEnvironmentVariable),
       Key: key,
     });
 

@@ -9,4 +9,7 @@ class AvatarUploadResult {
 
 abstract class AvatarRepository {
   Future<AvatarUploadResult> uploadAvatar(XFile image);
+
+  /// Returns a short-lived URL for the authenticated user's current avatar.
+  Future<Uri> getAvatarReadUrl();
 }

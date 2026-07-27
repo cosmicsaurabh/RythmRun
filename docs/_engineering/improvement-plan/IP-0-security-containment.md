@@ -264,8 +264,14 @@ Later phases require staging, so a minimal isolated environment is a program pre
 1. Add one configuration module that loads environment variables before the container, Prisma, or S3 client is imported/constructed.
 2. Require `JWT_SECRET` and `REFRESH_TOKEN_SECRET`; reject missing values, documented placeholders, values below the chosen entropy/length floor, and identical access/refresh secrets.
 3. Remove every `|| 'your-secret-key'` and equivalent executable fallback.
-4. Standardize the refresh secret name. The current code mixes `REFRESH_TOKEN_SECRET` and `JWT_REFRESH_SECRET`; this phase adopts the name documented in `.env.example`, while IP-2 redesigns refresh behavior.
-5. A full server environment currently mounts avatar/activity-image routes, so require the AWS region, bucket, CloudFront domain/key pair/private key, and database URL. If an emergency feature flag disables those routes, validate the flag explicitly, leave routes fail-closed, and do not construct their clients. Error messages name the missing variable but never print its value.
+4. Standardize on `REFRESH_TOKEN_SECRET`; the legacy `JWT_REFRESH_SECRET`
+   name is intentionally ignored and must not appear in deployment
+   configuration.
+5. A full server environment mounts avatar/activity-image routes, so require
+   the R2 account ID, least-privilege API credentials, both private bucket
+   names, and the database URL. Media access uses short-lived presigned URLs;
+   no public R2 delivery origin is required. Error messages name a missing
+   variable but never print its value.
 6. Split application construction from `listen` and allow integration tests to inject fake dependencies/config explicitly; tests do not become ambiguous by inheriting developer AWS variables. Keep the full server lifecycle work for IP-5.
 
 **How to verify**

@@ -163,6 +163,11 @@ class _FakeAvatarRepository implements AvatarRepository {
   Future<AvatarUploadResult> uploadAvatar(XFile image) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<Uri> getAvatarReadUrl() {
+    throw UnimplementedError();
+  }
 }
 
 class _FakeAuthRepository implements AuthRepository {

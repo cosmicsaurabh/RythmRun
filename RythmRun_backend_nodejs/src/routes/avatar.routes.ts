@@ -7,6 +7,7 @@ import { authMiddleware } from '../middleware/auth.middleware.js';
 export interface AvatarRouteController {
   getUploadUrl: RequestHandler;
   confirmUpload: RequestHandler;
+  getReadUrl: RequestHandler;
 }
 
 export interface AvatarRouterDependencies {
@@ -23,6 +24,7 @@ export function createAvatarRouter({
 
   router.post('/upload-url', authenticate, controller.getUploadUrl);
   router.post('/confirm', authenticate, controller.confirmUpload);
+  router.get('/read-url', authenticate, controller.getReadUrl);
 
   return router;
 }
