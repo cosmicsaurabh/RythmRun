@@ -1,14 +1,21 @@
-# Email Verification & Safe Google Account Linking
+# Email Verification, Password Recovery & Safe Google Account Linking
 
-Operational guide for the email-verification feature and the safe automatic
-account linking it enables.
+Operational guide for the shared email-token delivery feature, including email
+verification, password recovery, and the safe automatic account linking that
+verification enables.
 
-## What this feature does
+## What these features do
 
 A Google sign-in whose email matches an existing local account is **merged
 automatically only if that account has already proven control of the email**
 (`emailVerified = true`). Any other collision is refused with
 `AUTH_EMAIL_UNVERIFIED_CONFLICT` (409).
+
+A password-capable account can also request a single-use, 30-minute password
+reset link. The request response is identical whether the account exists, is
+Google-only, is cooling down, or receives an email. Consuming a valid link
+changes the existing password and revokes every active session in the same
+transaction; it never adds a password to a Google-only account.
 
 ### Why the gate exists
 
@@ -32,7 +39,8 @@ this, because the attacker can never read the victim's inbox to flip the flag.
 
 ## Scope (deliberate non-goals)
 
-Verification gates **only** the automatic merge.
+Verification gates **only** the automatic merge. Password recovery rotates an
+existing password but does not itself set `emailVerified`.
 
 - Login and registration **succeed normally for unverified users**, who keep
   full access to the app behind a non-blocking banner.
@@ -41,9 +49,9 @@ Verification gates **only** the automatic merge.
 
 ## Configuration
 
-All email variables are an **optional group** (see `.env.example`). Leave them
-unset and the app boots with delivery disabled; set any and all required ones
-must be present.
+All email variables are an **optional group** shared by verification and
+password recovery (see `.env.example`). Leave them unset and the app boots with
+delivery disabled; set any and all required ones must be present.
 
 | Variable | Required when enabled | Notes |
 | --- | --- | --- |
@@ -88,8 +96,8 @@ PUBLIC_APP_URL="http://localhost:8080"
 
 Neither `npm start` nor `npm run build` applies migrations, and this repo has
 no `render.yaml`. **Migrations must run as a release step**, or new code will
-query an `emailVerified` column that does not exist and return 500 on every
-auth response.
+query an `emailVerified` column or token purpose that does not exist and fail
+the verification/recovery paths.
 
 1. **Set Render's Pre-Deploy Command to `npm run migrate:deploy`.** Confirm it
    runs before the new image serves traffic.
@@ -97,10 +105,10 @@ auth response.
 3. Deploy the API.
 4. Release the mobile client last.
 
-The migration is additive with a DB-level default, so an API rollback is safe:
-older code simply ignores the new column.
+Both migrations are additive. The email column has a DB-level default, and
+older code ignores the new column and token-purpose value.
 
-### What the migration does
+### What the migrations do
 
 - Adds `User.emailVerified` (`NOT NULL DEFAULT false`).
 - Backfills `emailVerified = true` **only** where `googleSubject IS NOT NULL`
@@ -109,6 +117,9 @@ older code simply ignores the new column.
   flow.
 - Creates `VerificationToken`, which stores only a SHA-256 digest, with one
   outstanding token per user per purpose.
+- Adds the `PASSWORD_RESET` token purpose without creating a second token
+  table; the unique `(userId, purpose)` key keeps verification and recovery
+  tokens independent.
 
 ## Endpoints
 
@@ -116,6 +127,9 @@ older code simply ignores the new column.
 | --- | --- | --- |
 | `GET /api/users/verify-email?token=…` | public | Consumes a token and renders an HTML result page |
 | `POST /api/users/verify-email/resend` | required | Re-sends the link to the signed-in owner |
+| `POST /api/users/password-reset/request` | public | Accepts an email and always returns the same generic acknowledgement |
+| `GET /api/users/password-reset?token=…` | public | Renders the same-origin password-reset form |
+| `POST /api/users/password-reset` | public | Consumes the token, changes the existing password, and revokes all sessions |
 
 `GET /verify-email` is **idempotent**: re-presenting a consumed token for an
 already-verified user renders success, not an error. This matters because
@@ -124,9 +138,13 @@ burn a single-use token before the human clicks it. The page is served with a
 tightened CSP and `Referrer-Policy: no-referrer` so the token in the URL
 cannot leak.
 
-Resend is owner-only (the user id comes from the access token, never the
-request body) and throttled per account in the database, since an in-process
-limiter would not hold across multiple Render instances.
+Verification resend is owner-only (the user id comes from the access token,
+never the request body) and has both a database cooldown and an in-process
+per-account request budget. Password-reset requests have the same database
+cooldown plus an account+client-address budget; reset submissions have a
+client-address budget. The in-process layer is defence in depth only: it clears
+on restart and is not shared between Render instances, so MC-2.6 requires a
+single replica until the counters move to shared storage or the edge.
 
 ## Operating notes
 
@@ -146,9 +164,11 @@ limiter would not hold across multiple Render instances.
 - **The merge is inert for legacy accounts** until they verify. Pre-existing
   password users still receive a 409 on Google sign-in; the intended recovery
   journey is *sign in with password → verify via the banner → retry Google*.
-- **No self-service recovery for a pre-hijack victim.** The gate correctly
-  blocks the bad merge, but with no password-reset flow in the app, someone
-  whose email was squatted needs manual support intervention. The
-  `VerificationToken` table already carries a `purpose` enum so a password
-  reset can reuse it.
+- **Recovery does not silently verify an email.** A mailbox owner who cannot
+  sign in can use *forgot password → reset → sign in → verify via the banner →
+  retry Google*. Keeping reset and verification as separate token purposes
+  preserves the explicit linking gate.
+- **Production delivery remains unverified.** MC-2.5 still requires the real
+  SMTP/provider, sender-domain authentication, staging verification/reset
+  delivery, one-use behavior, session revocation, and on-device flows.
 - **English only.** The verification email and result page have no i18n.

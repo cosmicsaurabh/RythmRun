@@ -1,6 +1,6 @@
 # RythmRun Privacy Policy
 
-**Last Updated: October 2025**
+**Last Updated: July 27, 2026**
 
 ## Introduction
 
@@ -24,27 +24,26 @@ By using RythmRun, you agree to the collection and use of information in accorda
 - Workout type, duration, distance, speed, calories
 - Start and end times of activities
 - Descriptive text and activity routes
-- Social interactions (likes, comments on activities)
-
-### Social Data
-- Friend relationships and friend requests
-- Likes, comments, and social interactions on activities
+- Optional activity photos
+- The current service does not expose friends, likes, comments, public
+  activities, or route sharing
 
 ### Technical Information
-- Device information (device type, OS version)
-- App usage data
-- Error logs and crash reports
-- Network information
+- Network request metadata needed to serve and rate-limit requests
+- Server-minted request identifiers and privacy-minimized security event
+  categories
+- Device, OS, app-version, and error details when you choose to send them to
+  support
 
 ## How We Use Your Information
 
 ### Purpose of Data Collection
 - **Service Delivery**: To provide and maintain the App's features
 - **Activity Tracking**: To record and display your fitness activities
-- **Social Features**: To enable friend connections, likes, and comments
-- **App Improvement**: To analyze usage patterns and improve functionality
+- **Troubleshooting**: To diagnose errors and improve functionality using
+  minimized technical information
 - **Security**: To authenticate users and protect against fraud
-- **Communication**: To send you updates about the App (only if you opt-in)
+- **Account Communication**: To send verification and password-recovery emails
 
 ### Data Usage Limitations
 - We do not sell your personal information
@@ -58,39 +57,48 @@ By using RythmRun, you agree to the collection and use of information in accorda
 - Activity data is cached locally for offline access
 
 ### Cloud Storage
-- Your account information and activities are stored on secure servers
-- Profile pictures are stored on our servers
-- Data is encrypted in transit and at rest
+- Your account information, synchronized activities, and uploaded images are
+  stored through our database and object-storage providers
+- Network traffic is protected in transit with HTTPS/TLS
+- Passwords are stored as hashes and refresh credentials are stored as digests
+- Retained routes and activity photos on the device are app-private but do not
+  yet have an additional app-level encryption layer
 
 ### Retention Period
 - Your account data is retained as long as your account is active
-- Deleted activities are removed from active databases within 30 days
-- Backups may retain deleted data for up to 90 days for disaster recovery
+- Deleted activities are removed from active views while queued cleanup
+  completes; provider backups may retain data for their configured retention
+  period
+- Self-service account deletion is not yet available. Contact support for an
+  account or data-removal request
 
 ## Sharing Your Information
 
 ### We Share Data With:
-- **Your Friends**: Activities marked as public are visible to your friends
-- **Public Activities**: If you mark activities as public, anyone using the App can see them
-- **Service Providers**: Third-party services necessary for app functionality (only as needed)
+- **Service Providers**: Infrastructure and email providers necessary for app
+  functionality, only as needed to provide the service
 
 ### We Do NOT Share:
-- Location data with third parties
+- Activities or exact routes with other RythmRun users; the current product
+  keeps activities private and exact activity details owner-only
 - Personal contact information
-- Private activity data with non-friends
+- Your personal information for sale
 
 ## Your Privacy Rights
 
-### You Have The Right To:
+### Requests You May Make:
+
+Depending on applicable law, you may ask for:
+
 - **Access**: Request a copy of your personal data
 - **Correction**: Update your information at any time through app settings
-- **Deletion**: Delete your account and request data removal
+- **Deletion**: Request account and data removal through support
 - **Portability**: Request data in a portable format
-- **Opt-out**: Disable location tracking or social features
+- **Opt-out**: Disable location tracking
 
 ### How to Exercise Rights:
 - Update profile: Use in-app settings
-- Delete account: Contact support at [saurabh.iiitk.job@gmail.com]
+- Account deletion or data removal: Contact support at [saurabh.iiitk.job@gmail.com]; in-app self-service deletion is not currently available
 - Data request: Email us at [saurabh.iiitk.job@gmail.com]
 
 ## Location Privacy
@@ -99,12 +107,12 @@ By using RythmRun, you agree to the collection and use of information in accorda
 - We only collect location data when you actively start a workout
 - Location tracking can be disabled in app settings at any time
 - Location data is stored to recreate your workout route
-- You can choose to make activities private (friends only) or public
+- Activities are private in the current service
 
 ### Location Sharing
 - Your exact location is never shared with other users in real-time
-- Only workout routes (after completion) are visible to friends
-- Start/end locations are approximate, not exact addresses
+- Exact completed routes are owner-only; the current service exposes no
+  friend/public route-sharing journey
 
 ## Children's Privacy
 
@@ -116,7 +124,7 @@ Our App is not intended for children under 13 years of age. We do not knowingly 
 - All data transmission is encrypted using HTTPS/TLS
 - Passwords are hashed using industry-standard bcrypt
 - Authentication uses secure JWT tokens
-- Regular security audits and updates
+- Security controls are reviewed and updated as the service changes
 
 ### While we use commercially acceptable means to protect your data, no method of transmission over the Internet or electronic storage is 100% secure. We cannot guarantee absolute security.
 
@@ -126,9 +134,9 @@ Your information may be transferred to and maintained on servers located outside
 
 ## Changes to This Policy
 
-We may update this Privacy Policy from time to time. We will notify you of any changes by:
+We may update this Privacy Policy from time to time. We may notify you of changes by:
 - Posting the new Privacy Policy in the App
-- Sending you an email notification (if you're subscribed)
+- Sending an account email when appropriate and email delivery is configured
 - Updating the "Last Updated" date
 
 You are advised to review this Privacy Policy periodically.
@@ -139,20 +147,12 @@ If you have questions about this Privacy Policy, please contact us:
 - **Email**: [saurabh.iiitk.job@gmail.com]
 - **Website**: [https://github.com/cosmicsaurabh]
 
-## Compliance
+## Privacy Requests
 
-This Privacy Policy is designed to comply with:
-- General Data Protection Regulation (GDPR) - EU
-- California Consumer Privacy Act (CCPA) - California
-- Children's Online Privacy Protection Act (COPPA)
-
-## Data Protection Officer
-
-If you have privacy concerns or wish to file a complaint, contact our Data Protection Officer at [saurabh.iiitk.job@gmail.com].
+Privacy rights vary by jurisdiction. To ask a question, exercise an applicable
+right, or raise a concern, contact [saurabh.iiitk.job@gmail.com].
 
 ---
 
 **Your acceptance of these terms**
 By using RythmRun, you signify your acceptance of this Privacy Policy. If you do not agree to this policy, please do not use our App.
-
-

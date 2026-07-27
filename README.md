@@ -77,7 +77,7 @@ Synchronization is intentionally tied to app-observable events: workout completi
 
 The backend is a strict-TypeScript Express modular monolith running as native Node.js ESM, with route, middleware, controller, service, DTO, and Prisma boundaries. This keeps transactions and deployment topology simple while the workload does not justify microservices, Kafka, Redis, or Kubernetes.
 
-`createApp` is separate from listener, retry-loop, and signal-handling startup, which keeps imports side-effect-free and HTTP-boundary tests deterministic. Startup validates database, JWT, and R2 configuration before infrastructure clients are constructed. Prisma 7.8's `prisma-client` generator writes ESM TypeScript into `src/generated/prisma`; the ordinary TypeScript build emits that client with the application. One `PrismaPg` adapter-backed `PrismaClient` is created for the process, registered once in the TSyringe child container, injected into every database-using service, and disconnected through the server's idempotent shutdown path.
+`createApp` is separate from listener, retry-loop, and signal-handling startup, which keeps imports side-effect-free and HTTP-boundary tests deterministic. Startup validates database, JWT, R2, and browser-edge configuration before infrastructure clients are constructed. Prisma 7.8's `prisma-client` generator writes ESM TypeScript into `src/generated/prisma`; the ordinary TypeScript build emits that client with the application. One `PrismaPg` adapter-backed `PrismaClient` is created for the process, registered once in the TSyringe child container, injected into every database-using service, and disconnected through the server's idempotent shutdown path.
 
 ### Data, identity, and storage
 
@@ -240,7 +240,9 @@ Known performance limits include image transforms on the Flutter UI isolate, eag
 - Avatar cleanup rechecks the currently selected object before deleting an older one.
 - Refresh tokens rotate inside bounded session families and are stored only as digests; protected access checks active session state so logout/password revocation does not wait for JWT expiry.
 - Flutter stores each access/refresh pair as one verified secure-storage envelope, coordinates refresh through one revision-safe flight, and permits bounded offline access only after server verification.
-- Google Sign-In verifies the provider token only on the backend, binds accounts to the stable provider subject without implicit email linking, and then uses the same first-party RythmRun session lifecycle.
+- Google Sign-In verifies the provider token only on the backend, binds accounts to the stable provider subject, auto-links only an existing password account whose email is already verified, and then uses the same first-party RythmRun session lifecycle.
+- Activities default to private, exact activity details are owner-only, and unfinished friend/comment/like routers remain unmounted.
+- Browser CORS uses an exact production allowlist; authentication and recovery routes carry endpoint-specific request budgets, typed `429` responses, server-minted request IDs, and privacy-minimized security events.
 - The tracked backend and Flutter workflows use read-only GitHub permissions, immutable action SHAs, pinned runners/toolchains, timeouts, non-persisted checkout credentials, and concurrency cancellation.
 
 ### Open risks
@@ -248,7 +250,8 @@ Known performance limits include image transforms on the Flutter UI isolate, eag
 - SQLite route data and retained activity-photo files are not yet encrypted at rest; IP-2.7 owns the threat model, key design, migration, and performance gate.
 - Secure-storage/session behavior is repository-tested but still lacks the MC-2.1 through MC-2.3 hosted PostgreSQL, destructive-cutover, physical-device, backup, clock, and release-log evidence.
 - Google identity is repository-delivered, but its non-rolling database migration, real OAuth/signing configuration, provider/device lifecycle, release branding, and optional-iOS policy remain MC-2.4.
-- CORS is currently unrestricted, general API rate limiting is absent, and public activity defaults require a privacy review.
+- The CORS/rate-limit implementation is repository-tested, but the production origin allowlist, real proxy depth, live `429` recovery, fail-closed boot, and single-replica assumption still require MC-2.6 deployment evidence. Counters are process-local, clear on restart, and do not support horizontal scaling.
+- Private-by-default activity behavior still needs its migration applied in staging/production. The policy pages now describe the repository behavior, but IP-5.6 still requires qualified review against a deployed release candidate.
 - Authenticated activity create/PATCH routes now have bounded nested validation, capped error output, an explicit 3 MiB parser, and interim per-user/process admission; deployed proxy alignment, resource limits, real PostgreSQL rollback/concurrency, and prior-client compatibility still require MC-1.8 staging proof.
 - Activity-image confirmation does not yet verify MIME type and checksum end to end; stale pending server uploads need orphan cleanup.
 - Hosted CI, dependency/security scanning, credential rotation evidence, infrastructure policy, backup/restore, and staging verification are not proven by source tests.
@@ -257,22 +260,23 @@ These gaps are tracked as release work rather than hidden behind a blanket “se
 
 ## Verification
 
-Current-tree local verification on **2026-07-17**. Backend dependencies were already installed for this audit, so a fresh `npm ci` is not claimed; the Flutter lockfile restore was rerun with enforcement.
+Current-tree local verification on **2026-07-27**. Backend dependencies were already installed, so a fresh `npm ci` is not claimed; the Flutter lockfile restore was rerun with enforcement.
 
 | Check | Result |
 | --- | --- |
-| Backend dependency state | Node 22.22.3 existing locked installation used; run `npm ci --no-audit` in hosted/clean verification before release |
-| Backend Jest suite | 19 executable native-ESM suites and 307 tests passed; the seven-test real-PostgreSQL suite was intentionally skipped locally |
+| Backend dependency state | Existing locked installation exercised on the available Node 26.3.0 host; the project targets Node 22.x and hosted CI pins 22.23.1, so run `npm ci --no-audit` on that authoritative toolchain before release |
+| Backend Jest suite | 25 executable native-ESM suites and 452 tests passed; the seven-test real-PostgreSQL suite was intentionally skipped locally |
 | TypeScript | `npm run typecheck` passed with NodeNext resolution, explicit `.js` specifiers, and generated-client type imports |
-| Prisma schema/client | Prisma 7.8 schema validation and generated-client build passed; applying the Google identity migration remains hosted/MC-2.4 proof |
+| Prisma schema/client | Prisma 7.8 schema validation and generated-client build passed; applying the pending release migrations remains hosted/staging proof |
 | Backend build/runtime smoke | The clean production build passed; the emitted runtime started, returned `200` from `/health`, rejected an unauthenticated protected request with `401`, and shut down cleanly |
 | Flutter locked restore | `flutter pub get --enforce-lockfile` passed |
-| Flutter tests | 330/330 tests passed |
-| Flutter analyzer | 0 errors, 0 warnings, 9 informational findings; the baseline accepted all 9 and reported 11 previous allowed findings removed |
-| Changed Dart formatting | All 29 Google-auth changed/new Dart files passed with zero changes |
-| Android debug package | `flutter build apk --debug --no-pub` passed; physical-device and signed-release proof remains manual |
+| Flutter tests | 355/355 tests passed |
+| Flutter analyzer | 0 errors, 0 warnings, and 9 existing informational findings |
+| Changed Dart formatting | Both Dart files changed on `feat/api-abuse-controls` passed with zero changes |
+| Android package | Not rebuilt for this branch; the earlier debug-package result does not replace physical-device, signed-release, or current release-candidate proof |
+| Mobile release identity | `pubspec.yaml` remains `1.1.0+20`; increment the build number before an app-store submission unless the release pipeline supplies a reviewed override |
 
-The repository contains separate stable `Backend security` and `Flutter CI` workflows. The latter pins Flutter 3.44.1/Dart 3.12.1, enforces the lockfile, checks merge-base-changed Dart formatting, rejects warning/error analysis, compares the informational multiset baseline, and runs all Flutter tests. These files and local results are source evidence only: hosted success, independent failure probes, protected CI-control review, and required default-branch checks remain MC-0.7 through MC-0.9 and MC-1.9 through MC-1.11. Local backend verification used Node 22.22.3; the workflow's exact Node 22.23.1 path still needs hosted proof.
+The repository contains separate stable `Backend security` and `Flutter CI` workflows. The latter pins Flutter 3.44.1/Dart 3.12.1, enforces the lockfile, checks merge-base-changed Dart formatting, rejects warning/error analysis, compares the informational multiset baseline, and runs all Flutter tests. These files and local results are source evidence only: hosted success, independent failure probes, protected CI-control review, and required default-branch checks remain MC-0.7 through MC-0.9 and MC-1.9 through MC-1.11. Local backend verification used Node 26.3.0; the workflow's exact Node 22.23.1 plus PostgreSQL path still needs hosted proof.
 
 ## Getting started
 
@@ -302,7 +306,7 @@ npm run prisma:migrate
 npm run dev
 ```
 
-The API listens on port `8080` by default. The development command regenerates and compiles the native-ESM backend before starting it; production startup uses the same built `dist/main.js` entry point. Required configuration is grouped by responsibility:
+The API listens on port `8080` by default. The development command regenerates and compiles the native-ESM backend before starting it; production startup uses the same built `dist/main.js` entry point. Configuration is grouped by responsibility:
 
 | Responsibility | Variables |
 | --- | --- |
@@ -312,9 +316,11 @@ The API listens on port `8080` by default. The development command regenerates a
 | R2 account/credentials | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` |
 | R2 buckets | `R2_BUCKET_AVATARS`, `R2_BUCKET_ACTIVITY_IMAGES` |
 | R2 delivery | `R2_PUBLIC_URL` |
+| Browser edge | `CORS_ALLOWED_ORIGINS` (required in production), `TRUST_PROXY_HOPS` |
+| Email delivery (optional all-or-none group) | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `PUBLIC_APP_URL`; optional `SMTP_PORT`, `SMTP_SECURE` |
 | Runtime | `PORT`, `NODE_ENV` |
 
-Use least-privilege R2 credentials scoped to the reviewed buckets and delivery configuration. The validator rejects documented placeholders, short or identical JWT secrets, and missing configuration.
+Use least-privilege R2 credentials scoped to the reviewed buckets and delivery configuration. The validator rejects documented placeholders, short or identical JWT secrets, and missing configuration. In production, `CORS_ALLOWED_ORIGINS` must contain exact HTTPS origins and `TRUST_PROXY_HOPS` must match the real reverse-proxy depth. Keep exactly one backend replica while request-budget counters remain process-local.
 
 ### Flutter client
 
@@ -355,11 +361,11 @@ dart run tool/ci/analyzer_baseline.dart check \
 The next steps are ordered by risk rather than feature visibility:
 
 1. **Close the operational release gate:** verify credential rotation, migrations, hosted CI, storage/CDN policy, staging behavior, backups, rollback, and deployment provenance.
-2. **Finish account and privacy hardening:** implement durable account deletion (password recovery remains provider-blocked), make exact routes private, disable unfinished social paths, restrict CORS/rate-limit sensitive routes, enforce upload integrity, and encrypt retained local routes/photos.
+2. **Finish account and privacy hardening:** implement durable account deletion, deploy and verify the private-route and abuse-control slices, enforce storage-boundary upload size/type/integrity and cleanup, obtain qualified review of the updated policy text against the release candidate, and encrypt retained local routes/photos.
 3. **Persist active workouts:** checkpoint the tracking timeline and accepted route so process death, reboot, and OS suspension can recover safely; add Android foreground-service behavior where required.
 4. **Add server-to-client restore:** introduce cursors, revisions, tombstones, chunked route transfer, and a documented conflict policy before calling synchronization bidirectional.
-5. **Externalize asynchronous cleanup:** replace process-local polling with leased durable work, readiness checks, graceful shutdown, structured logs, request IDs, metrics, and alerts.
-6. **Raise the verification bar:** add PostgreSQL integration and migration tests, device-level offline/restart tests, storage lifecycle tests, load baselines, API contracts, and release/device CI evidence.
+5. **Externalize asynchronous cleanup:** replace process-local polling with leased durable work, add dependency-aware readiness and bounded graceful shutdown, and expand the current request IDs/security events into release metrics and alerts.
+6. **Raise the verification bar:** run the existing PostgreSQL integration suite and full migration chain in required hosted CI, then add device-level offline/restart proof, storage lifecycle tests, load baselines, API contracts, and release/device evidence.
 
 AI summaries, social expansion, microservices, and additional infrastructure remain deliberately out of scope until the core durability, privacy, and operational evidence is complete.
 
