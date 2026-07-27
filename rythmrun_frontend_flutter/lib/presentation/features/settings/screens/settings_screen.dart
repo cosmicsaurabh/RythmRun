@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../const/custom_app_colors.dart';
 import '../../../../core/models/app_settings.dart';
@@ -10,7 +11,13 @@ import '../../../shared/widgets/connectivity_badge.dart';
 import '../providers/change_password_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.externalUrlLauncher});
+
+  static final Uri _deleteAccountUri = Uri.parse(
+    'https://cosmicsaurabh.github.io/RythmRun/delete-account',
+  );
+
+  final Future<bool> Function(Uri uri)? externalUrlLauncher;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -110,7 +117,7 @@ class SettingsScreen extends ConsumerWidget {
                   'Delete Account',
                   'Permanently delete your account',
                   deleteForeverIcon,
-                  () => _showDeleteAccountDialog(context, ref),
+                  () => _showDeleteAccountDialog(context),
                   isDestructive: true,
                 ),
               ],
@@ -504,74 +511,67 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showDeleteAccountDialog(BuildContext context, WidgetRef ref) {
-    final confirmationController = TextEditingController();
-
+  void _showDeleteAccountDialog(BuildContext context) {
     showDialog(
       context: context,
       builder:
-          (context) => StatefulBuilder(
-            builder:
-                (context, setState) => AlertDialog(
-                  title: Row(
-                    children: [
-                      Icon(warningIcon, color: CustomAppColors.statusError),
-                      const SizedBox(width: spacingSm),
-                      const Text('Delete Account'),
-                    ],
-                  ),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'This action cannot be undone. All your data will be permanently deleted.',
-                        style: TextStyle(color: CustomAppColors.statusError),
+          (dialogContext) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(warningIcon, color: CustomAppColors.statusError),
+                const SizedBox(width: spacingSm),
+                const Text('Delete Account'),
+              ],
+            ),
+            content: const Text(
+              'Continue to the RythmRun account deletion page to request '
+              'permanent deletion of your account and associated data. '
+              'You will verify account ownership by email before the request '
+              'is processed.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  final launched = await _openDeleteAccountPage();
+                  if (!context.mounted || launched) return;
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text(
+                        'Could not open the account deletion page. Please try '
+                        'again.',
                       ),
-                      const SizedBox(height: spacingLg),
-                      const Text('Type "DELETE" to confirm:'),
-                      const SizedBox(height: spacingSm),
-                      TextField(
-                        controller: confirmationController,
-                        decoration: const InputDecoration(
-                          hintText: 'DELETE',
-                          border: OutlineInputBorder(),
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
+                      backgroundColor: CustomAppColors.statusError,
+                      behavior: SnackBarBehavior.floating,
                     ),
-                    ElevatedButton(
-                      onPressed:
-                          confirmationController.text == 'DELETE'
-                              ? () {
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: const Text(
-                                      'Account deletion feature coming soon!',
-                                    ),
-                                    backgroundColor:
-                                        CustomAppColors.statusError,
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                              }
-                              : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: CustomAppColors.statusError,
-                      ),
-                      child: const Text('Delete Account'),
-                    ),
-                  ],
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: CustomAppColors.statusError,
                 ),
+                child: const Text('Continue'),
+              ),
+            ],
           ),
     );
+  }
+
+  Future<bool> _openDeleteAccountPage() async {
+    try {
+      final launcher = externalUrlLauncher ?? _launchExternalUrl;
+      return await launcher(_deleteAccountUri);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> _launchExternalUrl(Uri uri) {
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   void _showResetDialog(BuildContext context, WidgetRef ref) {

@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:rythmrun_frontend_flutter/const/custom_app_colors.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/widgets/map_controller_button.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/widgets/open_street_map_attribution.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_feed_helper.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/Map/screens/live_map_segment_builder.dart';
 import 'package:rythmrun_frontend_flutter/theme/app_theme.dart';
@@ -400,6 +401,8 @@ class _WorkoutHistoryMapViewerState
 
                 // Markers
                 MarkerLayer(markers: _markers),
+
+                if (_showMapTiles) const OpenStreetMapAttribution(),
               ],
             ),
 
