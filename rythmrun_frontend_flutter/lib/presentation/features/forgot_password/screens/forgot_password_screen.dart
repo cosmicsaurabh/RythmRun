@@ -43,9 +43,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(spacingXl),
-          child: state.isSent
-              ? _buildSentConfirmation(context)
-              : _buildForm(context, state, notifier),
+          child:
+              state.isSent
+                  ? _buildSentConfirmation(context)
+                  : _buildForm(context, state, notifier),
         ),
       ),
     );
@@ -90,13 +91,14 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           width: double.infinity,
           child: ElevatedButton(
             onPressed: state.isLoading ? null : notifier.submit,
-            child: state.isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Send reset link'),
+            child:
+                state.isLoading
+                    ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                    : const Text('Send reset link'),
           ),
         ),
       ],

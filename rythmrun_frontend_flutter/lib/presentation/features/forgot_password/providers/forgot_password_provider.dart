@@ -6,12 +6,9 @@ import 'forgot_password_notifier.dart';
 
 export 'forgot_password_notifier.dart' show ForgotPasswordNotifier;
 
-final forgotPasswordProvider =
-    StateNotifierProvider.autoDispose<
-      ForgotPasswordNotifier,
-      ForgotPasswordState
-    >((ref) {
-      return ForgotPasswordNotifier(
-        ref.watch(requestPasswordResetUsecaseProvider),
-      );
-    });
+final forgotPasswordProvider = StateNotifierProvider.autoDispose<
+  ForgotPasswordNotifier,
+  ForgotPasswordState
+>((ref) {
+  return ForgotPasswordNotifier(ref.watch(requestPasswordResetUsecaseProvider));
+});

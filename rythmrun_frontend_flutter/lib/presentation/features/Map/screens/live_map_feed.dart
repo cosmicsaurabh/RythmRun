@@ -78,9 +78,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
 
     // Get current location for initial camera position
     final currentLocation =
-        await ref
-            .read(liveTrackingRepositoryProvider)
-            .getCurrentLocation();
+        await ref.read(liveTrackingRepositoryProvider).getCurrentLocation();
     if (currentLocation != null && mounted) {
       final newCenter = LatLng(
         currentLocation.latitude,
@@ -331,8 +329,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
           currentSession != null &&
           currentSession.status != WorkoutStatus.completed &&
           (previousSession == null ||
-              previousSession.trackingPoints !=
-                  currentSession.trackingPoints ||
+              previousSession.trackingPoints != currentSession.trackingPoints ||
               previousSession.status != currentSession.status);
       if (routeOrStatusChanged) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -375,10 +372,7 @@ class _LiveMapFeedState extends ConsumerState<LiveMapFeed>
             if (next == null || next == previous) return;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
-              _onAcceptedLocationUpdate(
-                next,
-                ref.read(liveTrackingProvider),
-              );
+              _onAcceptedLocationUpdate(next, ref.read(liveTrackingProvider));
             });
           },
         );

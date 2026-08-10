@@ -201,7 +201,10 @@ class CalculatorResultsWidget extends ConsumerWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [color.withValues(alpha: 0.2), color.withValues(alpha: 0.1)],
+                    colors: [
+                      color.withValues(alpha: 0.2),
+                      color.withValues(alpha: 0.1),
+                    ],
                   ),
                   borderRadius: BorderRadius.circular(radiusSm),
                 ),

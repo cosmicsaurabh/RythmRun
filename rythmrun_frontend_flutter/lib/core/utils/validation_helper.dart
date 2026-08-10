@@ -2,7 +2,6 @@ import 'package:email_validator/email_validator.dart';
 
 class ValidationHelper {
   static String? validateEmail(String? email) {
-   
     if (email == null || email.isEmpty || !EmailValidator.validate(email)) {
       return 'Please enter a valid email address';
     }
@@ -35,8 +34,9 @@ class ValidationHelper {
     String? password,
     String? confirmPassword,
   ) {
-   
-    if (confirmPassword == null || confirmPassword.isEmpty || password != confirmPassword) {
+    if (confirmPassword == null ||
+        confirmPassword.isEmpty ||
+        password != confirmPassword) {
       return 'Passwords do not match';
     }
     return null;
