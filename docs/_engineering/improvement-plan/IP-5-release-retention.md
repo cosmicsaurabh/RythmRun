@@ -262,7 +262,7 @@ An iOS project folder compiling is not evidence of store readiness.
   document under this item rather than a review of that one.
 - `rythmrun_frontend_flutter/CONFIGURATION.md`
 - `docs/privacy-policy.md`, `docs/delete-account.md`, `docs/terms.md`, `docs/index.md`
-- Existing image HLD/LLD documents
+- ~~Existing image HLD/LLD documents~~ — no longer present in the repository as of the 2026-08-11 survey. Item 5 below therefore has nothing to mark historical; if these are reconstructed, they are new documents.
 - New architecture/runbook/ADR documentation
 
 **Implementation**

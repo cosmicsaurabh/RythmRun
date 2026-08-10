@@ -20,7 +20,7 @@ After this phase, an HTTP client cannot write a local filesystem path or arbitra
 
 This file is a plan, not proof that production is safe.
 
-All hosted and human-operated gates are mirrored in the [manual verification register](./MANUAL-CHECKS.md). Keep them open until that register contains dated, independently reviewed evidence.
+Every hosted and human-operated gate lives in [ACTION-REQUIRED.md](./ACTION-REQUIRED.md). Keep them open until they carry dated, independently reviewed evidence.
 
 ## Merged implementation checkpoint
 
@@ -28,11 +28,17 @@ Commit `e33f314`, merged into `origin/main` by merge commit `54a5b26`, contains 
 
 - strict DTO allowlists plus explicit Prisma write mappings;
 - removal of the local filesystem avatar routes, handlers, middleware, and Multer dependency;
-- an authenticated, expiring, single-use avatar intent with a storage-enforced multipart POST policy, ownership/type/size verification, quotas, atomic confirmation, and durable bounded cleanup retries;
-- a coordinated Flutter multipart client with size/type checks and redacted avatar logging; and
+- an authenticated, expiring, single-use avatar intent with ownership, type, and size verification, quotas, atomic confirmation, and durable bounded cleanup retries;
+- a coordinated Flutter upload client with size/type checks and redacted avatar logging; and
 - environment validation before infrastructure imports, with no executable JWT fallback secrets.
 
-This merged checkpoint is repository evidence, not deploy authorization or production verification. The additive database migration must precede the backend, older PUT-based clients require a coordinated/forced update, the independent S3 lifecycle rule still needs infrastructure evidence, and IP-0.1/IP-0.6 plus staging/production checks remain open.
+> The upload mechanism in `e33f314` was a multipart POST policy. **Cloudflare R2
+> does not support presigned POST**, so its `content-length-range` never bound.
+> `76fa16f` replaced it with a presigned PUT carrying a signed `content-length`
+> — see [the IP-0.4 correction](#the-ip-04-upload-grant-correction-2026-07-28-76fa16f)
+> below. Any client or evidence written against the POST mechanism is obsolete.
+
+This merged checkpoint is repository evidence, not deploy authorization or production verification. The additive database migration must precede the backend, older clients require a coordinated or forced update, the independent bucket lifecycle rule still needs infrastructure evidence, and IP-0.1/IP-0.6 plus staging and production checks remain open.
 
 ## Audit evidence at discovery time
 
@@ -87,7 +93,9 @@ If any required access is unavailable, keep affected endpoints restricted and ma
 5. Startup configuration is validated once before Prisma/S3/JWT consumers are constructed. There are no development fallback secrets in executable code.
 6. Rollback never restores the vulnerable routes. When a deployment fails, containment stays in place while the application rolls back.
 
-## Ordered work packages
+## Ordered work packages — what remains
+
+All four are operational. Delivered packages are summarized further down.
 
 ### IP-0.1 — Contain production and preserve evidence
 
@@ -132,183 +140,6 @@ Later phases require staging, so a minimal isolated environment is a program pre
 **Acceptance**
 
 - A clean staging deploy can run migrations, security tests, and the valid avatar lifecycle without any production credential/data access.
-
-### IP-0.2 — Enforce explicit writable-field allowlists
-
-**Primary files**
-
-- `RythmRun_backend_nodejs/src/middleware/validation.middleware.ts`
-- `RythmRun_backend_nodejs/src/models/dto/user.dto.ts`
-- `RythmRun_backend_nodejs/src/controllers/user.controller.ts`
-- `RythmRun_backend_nodejs/src/services/user.service.ts`
-- New focused tests under `RythmRun_backend_nodejs/src/__tests__/`
-
-**Implementation**
-
-1. Make the shared DTO helper validate with `whitelist: true`, `forbidNonWhitelisted: true`, and `forbidUnknownValues: true`. Use the current `class-transformer` API and return a typed validation error without echoing sensitive input.
-2. Keep client-writable user fields intentionally small:
-   - registration: `username`, `password`, optional `firstname`, optional `lastname`;
-   - profile update: optional `firstname`, optional `lastname`;
-   - never accept `id`, `password` on profile update, `profilePicturePath`, `profilePictureType`, timestamps, roles, token fields, or relations.
-3. In `UserService.register`, remove `...registerDto`; construct the Prisma object field by field and set only the server-created password hash.
-4. In `UserService.updateProfile`, construct the update object field by field. Treat an empty update as a validation error rather than a successful no-op if that is the agreed API behavior.
-5. Keep avatar persistence behind a dedicated server method that accepts a verified server-owned avatar object, not `UpdateProfileDto`.
-
-**How to verify**
-
-- Registration/profile requests containing each forbidden field return `400` and do not call Prisma create/update.
-- Nested unexpected objects and prototype-like field names are rejected safely.
-- Valid registration and first/last-name updates still work.
-- Unit tests inspect the exact Prisma `data` object and prove forbidden keys are absent.
-
-**Acceptance**
-
-- A future field added to the Prisma `User` model does not automatically become client-writable.
-
-### IP-0.3 — Retire unsafe local filesystem avatars
-
-**Primary files**
-
-- `RythmRun_backend_nodejs/src/routes/user.routes.ts`
-- `RythmRun_backend_nodejs/src/controllers/user.controller.ts`
-- `RythmRun_backend_nodejs/src/middleware/file-upload.middleware.ts`
-- `RythmRun_backend_nodejs/src/config/upload.config.ts`
-- `RythmRun_backend_nodejs/package.json`
-- `rythmrun_frontend_flutter/lib/data/datasources/avatar_remote_datasource.dart`
-- `rythmrun_frontend_flutter/lib/data/repositories/avatar_repository_impl.dart`
-
-**Implementation**
-
-1. Confirm the current supported mobile build uses `/api/avatar`; the Flutter avatar data source is the compatibility reference.
-2. Remove or permanently disable the local `POST /profile-picture` and `GET /profile-picture/:id` routes. Do not leave an unauthenticated legacy read path.
-3. Stop calling `path.join`, `sendFile`, or `unlink` with a database-derived avatar string.
-4. After the supported-client check, remove the local upload middleware/configuration and Multer if no other route uses it. This also removes the known exposed Multer path instead of merely increasing a limit.
-5. Inventory existing user rows:
-   - recognize server-generated local basenames separately from S3 keys;
-   - quarantine absolute paths, traversal segments, encoded traversal, separators where a basename is expected, control characters, and keys outside the approved avatar prefix;
-   - set unsafe values to `NULL` only after the backup and incident query are recorded;
-   - migrate legitimate local avatars to S3 only through a one-off controlled script that is reviewed separately and never accepts client input.
-6. If a short compatibility window absolutely requires local reads, use an authenticated endpoint and a single helper that accepts only a generated basename, resolves under a fixed upload root, rejects separators/absolute paths, checks real-path containment including symlinks, and never deletes on lookup. This is a temporary exception and does not change Decision D-005.
-
-**How to verify**
-
-- Route enumeration shows no public local-avatar read or local upload handler.
-- Repository search shows no `sendFile`/`unlink` target built from `profilePicturePath`.
-- A seeded legacy malicious row cannot cause a filesystem read or delete.
-- A supported mobile client can still display/upload an S3 avatar after IP-0.4.
-- The dependency scan confirms Multer is removed or upgraded and unreachable if temporary compatibility keeps it.
-
-**Acceptance**
-
-- The database contains an object key/asset reference, not a local path used in filesystem APIs.
-
-### IP-0.4 — Harden the S3 avatar pipeline
-
-**Primary files**
-
-- `RythmRun_backend_nodejs/src/controllers/avatar.controller.ts`
-- `RythmRun_backend_nodejs/src/routes/avatar.routes.ts`
-- `RythmRun_backend_nodejs/src/services/s3.service.ts`
-- `RythmRun_backend_nodejs/src/config/container.ts`
-- `RythmRun_backend_nodejs/src/models/dto/` (new avatar DTOs)
-- `RythmRun_backend_nodejs/src/services/` (new injected avatar service)
-- New `RythmRun_backend_nodejs/src/__tests__/avatar.service.test.ts`
-
-**Implementation**
-
-1. Replace controller-owned Prisma with an injected `AvatarService` using the shared Prisma client.
-2. Define request DTOs and reject unknown fields.
-3. Accept a content type from an allowlist such as JPEG/PNG/WebP. Derive the extension server-side; do not concatenate a raw `ext` supplied by the client. During the current-client compatibility window, accept `ext` only as a deprecated field, require it to match the canonical MIME mapping, and ignore it for key generation; remove it after a coordinated mobile rollout.
-4. Generate keys only as `avatars/{authenticatedUserId}/{serverGeneratedId}.{derivedExtension}`.
-5. Persist a short-lived, single-use pending upload intent containing the authenticated user, exact generated key, canonical content type, maximum bytes, expiry, and consumed state. Confirmation must reference and atomically consume this intent; prefix grammar alone does not prove the key was issued.
-6. Issue an upload grant that enforces exact key/type and a storage-boundary byte range. A post-upload `HeadObject` check alone does not prevent storage-cost abuse.
-
-   **Amended 2026-07-28 (`76fa16f`).** This item originally named an S3 POST
-   policy with `content-length-range` as the example mechanism, and the first
-   implementation used one. Cloudflare R2 does not support presigned POST, so
-   on this deployment that grant enforced nothing and the byte range existed
-   only in the plan. The delivered mechanism is a presigned **PUT** whose
-   signed header set contains both `content-type` and `content-length`: the
-   uploader must present exactly the signed values or storage rejects the
-   request, which is the boundary enforcement this item asks for. The
-   `HeadObject` confirmation check is retained as defense in depth, not as the
-   primary control.
-7. Confirmation must:
-   - match the exact user-owned key grammar;
-   - reject another user's prefix and all traversal/separator variants outside the grammar;
-   - match an unexpired, unconsumed server-issued intent;
-   - call `HeadObject`;
-   - verify `ContentType`, a deliberate maximum `ContentLength`, and expected key;
-   - update only the authenticated user's record and consume the intent atomically.
-8. Initial reopen limits: 10 MiB maximum object, at most 2 unconsumed intents per account, 10 intent requests per account per hour, and a five-minute intent expiry. Expired intents and rejected/abandoned/oversized objects enter cleanup immediately; an independent bucket lifecycle removes never-confirmed objects within 24 hours. Changing these values requires a recorded abuse/cost review.
-9. When replacing an avatar, delete the previous S3 object only if it matches that same user's approved prefix. Make DB update authoritative and object cleanup retryable so a transient S3 error cannot corrupt the profile.
-10. Update the Flutter avatar client for the enforced upload mechanism and redact current logs that expose local image paths, S3 response bodies, keys, or signed URLs. Return/log only safe status/error codes.
-11. Return an opaque avatar response. Do not expose bucket credentials or internal filesystem paths.
-
-**Delivered read path (added 2026-07-28, `76fa16f`)**
-
-12. Avatars are not served from a public origin. `R2_PUBLIC_URL` is removed from
-    the required environment and there is no public delivery domain to
-    configure. An authenticated `GET /avatar/read-url` returns a short-lived
-    presigned GET for the caller's own stored key, refusing any key that does
-    not match that user's approved prefix and answering `404` when no avatar is
-    stored. This keeps both R2 buckets private and makes item 11's opacity a
-    property of the storage configuration rather than of response shaping.
-13. Every avatar-side storage call names its bucket explicitly. `headObject` and
-    `deleteObject` previously fell back to a default bucket, which was the
-    activity-image bucket, so avatar confirmation and cleanup were addressing
-    the wrong bucket. Confirm and replace/cleanup now pass `R2_BUCKET_AVATARS`.
-
-**How to verify**
-
-- Another user's key, an unissued/expired/consumed intent, a valid-looking key with the wrong user ID, unsupported type, mismatched S3 metadata, zero/oversized object, encoded separator, and unknown field all fail before Prisma update.
-- Storage rejects an oversized upload before accepting the object; abandoned/rejected objects are removed by the tested cleanup/lifecycle path.
-- A generated key passes request → upload → confirm → read/display.
-- Current `ext`/`contentType` and `key`/`contentType` mobile payloads have explicit compatibility tests during the transition.
-- Repeating confirm is idempotent.
-- Replacing an avatar cannot delete another user's object.
-- Tests mock S3 and assert both positive behavior and absence of unsafe calls.
-
-**Acceptance**
-
-- Clients can select content but cannot select storage ownership or arbitrary key paths.
-
-### IP-0.5 — Fail closed on configuration and secret use
-
-**Primary files**
-
-- `RythmRun_backend_nodejs/src/app.ts`
-- `RythmRun_backend_nodejs/src/middleware/auth.middleware.ts`
-- `RythmRun_backend_nodejs/src/services/user.service.ts`
-- `RythmRun_backend_nodejs/src/services/s3.service.ts`
-- `RythmRun_backend_nodejs/.env.example`
-- New `RythmRun_backend_nodejs/src/config/env.ts` and its tests
-
-**Implementation**
-
-1. Add one configuration module that loads environment variables before the container, Prisma, or S3 client is imported/constructed.
-2. Require `JWT_SECRET` and `REFRESH_TOKEN_SECRET`; reject missing values, documented placeholders, values below the chosen entropy/length floor, and identical access/refresh secrets.
-3. Remove every `|| 'your-secret-key'` and equivalent executable fallback.
-4. Standardize on `REFRESH_TOKEN_SECRET`; the legacy `JWT_REFRESH_SECRET`
-   name is intentionally ignored and must not appear in deployment
-   configuration.
-5. A full server environment mounts avatar/activity-image routes, so require
-   the R2 account ID, least-privilege API credentials, both private bucket
-   names, and the database URL. Media access uses short-lived presigned URLs;
-   no public R2 delivery origin is required. Error messages name a missing
-   variable but never print its value.
-6. Split application construction from `listen` and allow integration tests to inject fake dependencies/config explicitly; tests do not become ambiguous by inheriting developer AWS variables. Keep the full server lifecycle work for IP-5.
-
-**How to verify**
-
-- A production-mode process with a missing, placeholder, short, or reused JWT secret exits non-zero before listening.
-- Valid configuration starts and signs/verifies tokens with only the configured values.
-- S3 is not constructed before environment loading.
-- `.env.example` lists every required name with non-secret examples and no real credentials.
-
-**Acceptance**
-
-- A misconfigured deploy fails visibly; it never becomes a service accepting forgeable tokens.
 
 ### IP-0.6 — Investigate exposure and rotate credentials
 
@@ -398,34 +229,53 @@ This is operational work. Store sensitive evidence in the approved incident syst
 - Node.js 22.x is explicit in package metadata, CI, and developer documentation.
 - Advisory closure, staging compatibility, deployed runtime, and production safety remain manual gates and are not inferred from this change.
 
-### IP-0.7a — Repository-delivered; hosted verification pending: Express HTTP security regressions and minimum backend CI
+## Delivered packages — IP-0.2, 0.3, 0.4, 0.5, 0.7-dep, 0.7a
 
-**Status**
+Merged and locally tested. Their step-by-step implementation text was removed on
+2026-08-11 as finished work; git history holds it. None of them is deployed or
+production-verified.
 
-- Repository implementation committed in `c52fb87`. Hosted success, intentional-failure, and branch-protection evidence remain open as MC-0.7 through MC-0.9. The merged IP-0.2 through IP-0.5 application slice remains undeployed and production-unverified.
-- No CI success is claimed until a GitHub Actions run URL demonstrates the committed workflow on the repository host.
+| Pkg | What it established | Still gated on |
+| --- | --- | --- |
+| IP-0.2 Writable-field allowlists | Unknown and server-managed fields are rejected at the DTO boundary, and the service constructs Prisma data explicitly as a second boundary — so a bypassed DTO cannot set `profilePicturePath`. Merged `e33f314` | Deployment; re-run under the 0.7 controlled reopen |
+| IP-0.3 Retire filesystem avatars | The local profile-picture routes and every filesystem sink are gone, and Multer is absent from the installed tree. One storage pipeline, not two | Production route-containment proof (MC-0.1); quarantine of suspicious legacy avatar rows (MC-0.4) |
+| IP-0.4 Harden the avatar pipeline | Server-derived keys under `avatars/{userId}/{serverId}.{ext}`, a single-use pending upload intent that confirmation atomically consumes, a content-type allowlist, `HeadObject` verification, and same-prefix-only deletion on replace. See the correction below | MC-0.11 against real R2 — **its earlier evidence is void**; plus per-account quota and a bucket-lifecycle rule |
+| IP-0.5 Fail closed on config and secrets | One configuration module loading before the container, Prisma, or the storage client is constructed; required `JWT_SECRET`/`REFRESH_TOKEN_SECRET` with placeholder, length, and reuse rejection; no executable fallbacks; application construction split from `listen` | A hosted deployment smoke proving a production process with a missing, placeholder, short, or reused secret exits non-zero *before* listening |
+| IP-0.7-dep Dependency-surface reduction | AWS SDK v2 replaced by modular v3; `joi`, `pg`, and `winston` removed. Committed `fc33dca` | MC-0.10 (blocked pending approval); hosted Node 22 confirmation |
+| IP-0.7a HTTP security regressions + minimum CI | Express-boundary regression suite and the `Backend security` workflow definition. Committed `c52fb87` | MC-0.7 run URL, MC-0.8 failure probe, MC-0.9 branch protection |
 
-**Implementation**
+### The IP-0.4 upload-grant correction (2026-07-28, `76fa16f`)
 
-1. Add Express-level regression tests that exercise the mounted routes, authentication boundary, DTO validation, controller mapping, and HTTP response instead of proving only service behavior.
-2. Cover registration and profile updates with undeclared/server-managed fields and assert a `400` response with no persistence mutation.
-3. Prove the retired local profile-picture read/write routes are not mounted and cannot reach filesystem behavior.
-4. Cover avatar request/confirm rejection at the HTTP boundary for invalid payloads and unauthenticated requests without exposing keys, signed URLs, paths, or secrets in test output.
-5. Keep S3, Prisma, and other external infrastructure deterministic through explicit test doubles; these tests are local regressions, not staging evidence.
-6. Add a minimum backend GitHub Actions workflow that performs a clean dependency install, Prisma validation/generation, TypeScript typecheck, and the backend test suite using non-secret test configuration.
-7. Keep dependency-advisory review explicit. A green test workflow does not satisfy the dated production-advisory gate unless the dependency scan is separately run, triaged, and recorded.
+Worth keeping in the working tree because it corrects something this phase
+recorded as delivered.
 
-**How to verify**
+IP-0.4 required a grant enforcing the byte range **at the storage boundary**,
+and named an S3 POST policy with `content-length-range` as the mechanism. The
+first implementation used exactly that. **Cloudflare R2 does not support
+presigned POST**, so on this deployment the grant enforced nothing and the byte
+bound existed only on paper.
 
-- Run the Express regression suite locally and record its exact test count together with the full backend-suite total.
-- Open a pull request or push the workflow through the normal protected path, then record the successful GitHub Actions run URL. File presence or local workflow inspection alone is not proof that CI is operational.
-- Deliberately break a security assertion on a temporary/non-merge revision and confirm the workflow fails, or record an equivalent intentional-failure probe.
-- Confirm no staging, production, advisory, incident-containment, credential-rotation, migration, mobile-rollout, or lifecycle-rule checkbox is closed by this package.
+What ships now:
 
-**Acceptance**
+- A presigned **PUT** whose signed header set contains both `content-type` and
+  `content-length`. The uploader must present exactly the signed values or
+  storage rejects the request. The `HeadObject` confirmation check remains as
+  defense in depth, not as the primary control.
+- **No public delivery origin.** `R2_PUBLIC_URL` is no longer a required
+  variable, and an authenticated `GET /avatar/read-url` returns a short-lived
+  presigned GET for the caller's own key — refusing any key outside that user's
+  prefix and answering `404` when nothing is stored. Both buckets stay private.
+- **Explicit buckets everywhere.** `headObject` and `deleteObject` previously
+  fell back to a default bucket, which was the *activity-image* bucket, so
+  avatar confirmation and cleanup were addressing the wrong one. Both now pass
+  `R2_BUCKET_AVATARS`.
+- The legacy `JWT_REFRESH_SECRET` name is retired in favor of
+  `REFRESH_TOKEN_SECRET` only, and documented-placeholder rejection now also
+  matches `your-*` values.
 
-- The relevant security boundaries have Express-level regression coverage and a successful hosted backend CI run is linked.
-- Completion of IP-0.7a does not authorize route reopen or mark IP-0 complete.
+None of this is proven against real R2. MC-0.11 must be re-run — the client
+mechanism changed from multipart POST to signed PUT — and MC-0.5 must confirm
+public delivery is *retired*, not merely unused.
 
 ## Rollback plan
 
