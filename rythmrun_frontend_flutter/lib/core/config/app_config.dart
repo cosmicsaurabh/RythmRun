@@ -32,6 +32,10 @@ class AppConfig {
 
   // Environment detection
   static String get _environment {
+    const appEnv = String.fromEnvironment('APP_ENV');
+    if (appEnv.isNotEmpty) {
+      return appEnv;
+    }
     // You can override this with a const or environment variable
     if (kDebugMode) {
       return 'dev';
