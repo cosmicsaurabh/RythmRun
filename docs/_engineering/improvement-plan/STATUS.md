@@ -39,6 +39,38 @@ clean; Flutter 359 passed; analyzer 9 issues, 0 warnings, 0 errors. The counted
 analyzer baseline is stamped Flutter 3.44.1 / Dart 3.12.1 to match CI, so it can
 only be checked on the pinned toolchain.
 
+## Deployment reality — corrected 2026-08-11
+
+**Render auto-deploys the backend from `main`.** Merging is deploying; there is
+no separate gate between the two. Earlier wording in this program — "merged; not
+deployed", "undeployed", "repository evidence, not deploy authorization" — was
+written on the assumption of a manual promotion step that does not exist. Those
+statements have been corrected where found; if more survive in the phase files,
+read them as "not *verified* in production" rather than "not running".
+
+What this changes:
+
+- **Backend security fixes are live**, not waiting. IP-0.2 through IP-0.5 and
+  the IP-2 auth work are serving traffic. That is good news for exposure, and it
+  does **not** close any manual check — running is not the same as proven, and
+  every `ACTION-REQUIRED.md` item still stands.
+- **The backend always runs newer than the installed app.** A Flutter change
+  needs a Play Store release; a backend change needs a merge. Backward
+  compatibility with the released app is therefore a hard rule, not a courtesy.
+  It has already broken once: `76fa16f` changed the avatar upload contract on
+  both sides, so the backend half went live immediately while the client half
+  waits on a release — an app older than `1.2.0+21` cannot upload an avatar.
+- **A merged migration is an applied-or-crashed decision, not a plan.** Two
+  migrations in this repository are deliberately not rolling-compatible (the
+  Google-auth nullable-password change and the auth-session rebuild) and both
+  assume old instances are drained first. Auto-deploy does not drain anything.
+
+**Open question worth confirming:** whether Render's configured build command
+also runs `npm run migrate:deploy`. There is no `render.yaml` in the repository,
+so the deploy sequence lives only in the Render dashboard. If the app deploys
+but migrations do not, a merged schema change ships code against an old schema.
+Confirm this before merging any migration.
+
 ## What's left, by package
 
 ### IP-0 — Security containment `In progress`
@@ -47,7 +79,7 @@ only be checked on the pinned toolchain.
 | --- | --- | --- | --- |
 | 0.1 Contain production, preserve evidence | Planned | ✗ | **Operational.** MC-0.1, MC-0.2 |
 | 0.1A Bootstrap isolated staging | Planned | ✗ | **Operational.** MC-0.6 — most other checks need this first |
-| 0.2 Writable-field allowlists | Verification | ✓ | Merged `e33f314`. Undeployed; re-runs under 0.7 controlled reopen |
+| 0.2 Writable-field allowlists | Verification | ✓ | Merged `e33f314`, and therefore live (see the deployment note below). Re-runs under the 0.7 controlled reopen |
 | 0.3 Retire filesystem avatars | Verification | ✓ | Production route-containment proof; quarantine of suspicious legacy avatar rows |
 | 0.4 Harden R2 avatar pipeline | Verification | ✓ | Re-hardened `76fa16f` — presigned PUT with a signed `content-length`, no public delivery origin, explicit bucket on confirm/cleanup. MC-0.11 **must be re-run**; the old evidence is void. Quota and bucket-lifecycle rule still open |
 | 0.5 Fail closed on config/secrets | Verification | ✓ | Hosted smoke proving a prod process with a bad JWT secret exits before listening |
@@ -187,7 +219,7 @@ until its package's manual checks carry dated evidence.
 | Multiple Prisma clients/pools | IP-1.6 centralized on one adapter-backed client; deployed connection measurement in MC-1.12/MC-1.13 |
 | Generic/string-matched backend errors | IP-2.6 delivered typed errors in the *mounted* image controller; the unmounted social controllers still branch on message strings |
 | `app.ts` listens and starts jobs on import | Seam added in IP-0.5, ownership in IP-1.6; deployed shutdown is MC-1.13, readiness maturity IP-5.1 |
-| Environment loads after imported R2 dependencies | Fixed in IP-0.5, not deployed; deployed smoke proof remains |
+| Environment loads after imported R2 dependencies | Fixed in IP-0.5 and live; a deployed fail-closed smoke is still owed (MC-0.5 area) |
 | Health ignores dependencies; cold start slow | IP-5.1 |
 | No proven operational CI; narrow HTTP security coverage | Definitions in IP-0.7a/IP-1.6; proof in MC-0.7–0.9, MC-1.9–1.11; expansion IP-5.3 |
 | 159 analyzer findings historically; 9 informational now | Baseline protection IP-1.6, reduction through IP-2, release gate IP-5.3 |

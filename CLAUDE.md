@@ -91,6 +91,25 @@ requirement.
 - Before finishing, make a simplification pass and remove indirection with no
   clear present benefit.
 
+**When asked to refactor, optimize for the reader.** RythmRun is a learning and
+portfolio project — the code is meant to be understood, not admired. A refactor
+succeeds when someone reading the file six months from now follows it faster
+than before. It fails when it is shorter but needs a second pass to decode.
+
+- Prefer an obvious loop, an early return, and a named intermediate variable
+  over a chained one-liner, a nested ternary, a clever reduce, or a dense
+  comprehension that packs three ideas into one expression.
+- Prefer explaining *why* in a short comment over encoding the reason in a
+  pattern the reader has to reverse-engineer.
+- Do not introduce a design pattern, generic type parameter, metaprogramming
+  trick, or layer of indirection because it is more "correct" in the abstract.
+  If the concrete problem does not demand it, it is a cost with no payer.
+- Line count is not the score. Fewer lines that take longer to read is a
+  regression; do not compress genuinely complex code to make it look tidy.
+- If a refactor changes behavior at all, say so explicitly — a refactor is
+  supposed to be behavior-preserving, and a silent change hidden inside a
+  cleanup diff is the hardest kind of bug to find later.
+
 ## Verification
 
 Run from the repository root. These are the gates; a change is not done until
@@ -242,12 +261,26 @@ deploy-time source of truth. Runtime bootstrap code is not a rollout mechanism.
 
 ## Deployment Compatibility
 
-Backend changes reach users as soon as the backend is deployed. Flutter changes
-reach users only through a Play Store release, which takes time and which users
-may not install. Unless a change is explicitly planned as a forced-upgrade
-release, keep backend APIs backward compatible with the currently released app:
-make new fields and parameters optional, preserve existing response shapes, and
-do not require client behavior that may not be live yet.
+**Merging to `main` deploys the backend.** Render auto-deploys from `main`, so
+a backend change is live in production the moment the PR merges — there is no
+separate deploy gate to catch a mistake. Flutter changes reach users only
+through a Play Store release, which takes time and which users may not install.
+
+The asymmetry is the hazard: **the backend always runs newer than the installed
+app.** Unless a change is explicitly planned as a forced-upgrade release where
+the merge waits until the new app version is live, keep backend APIs backward
+compatible with the currently released app — make new fields and parameters
+optional, preserve existing response shapes, and do not require client behavior
+that may not be live yet.
+
+This has already bitten once. `76fa16f` changed the avatar upload contract from
+a multipart POST to a presigned PUT on both sides at once; the backend half went
+live on merge while the client half waits on a store release, so an app older
+than `1.2.0+21` cannot upload an avatar until it updates.
+
+Two migrations are deliberately **not** rolling-compatible and must not simply
+be merged — the Google-auth migration and the auth-session rebuild both require
+draining old instances first. See "Backend Schema Changes" below.
 
 Where compatibility is intentionally broken, say so in the handoff and name the
 drain/promote order.
@@ -277,11 +310,20 @@ Advertising is off by default and the contract is compile-time
 - **Spacing and colors come from constants**, not magic numbers: `spacingXs`…
   `spacing2xl` in `lib/theme/app_theme.dart`, `CustomAppColors` in
   `lib/const/custom_app_colors.dart`.
-- **Icons**: `lib/theme/app_theme.dart` defines 61 semantic aliases
-  (`const trackChangesIcon = Icons.track_changes;`). Prefer an existing alias,
-  and add one there when a new icon earns a domain meaning. Raw `Icons.*` is
-  still common in older screens — match the file you are in rather than
-  converting it.
+- **Icons**: use the `hugeicons` package for new or modified UI — `HugeIcon`
+  with a `HugeIcons.strokeRounded...` glyph. Do not reach for Flutter's Material
+  `Icon` widget or `Icons.*` when a suitable HugeIcons glyph exists. Reuse the
+  glyph already assigned to the same domain or feature. Use a Material icon only
+  when HugeIcons has no suitable glyph or a framework API strictly requires
+  `IconData`, and keep that exception local.
+
+  The existing code predates this: `lib/theme/app_theme.dart` defines 61
+  semantic Material aliases (`const trackChangesIcon = Icons.track_changes;`)
+  and ~99 raw `Icons.*` uses remain across older screens. **Do not bulk-migrate
+  them** — that is an unrelated diff. Convert an icon when you are already
+  editing that widget, and give new domain glyphs a named alias in
+  `app_theme.dart` the same way, so the semantic-name convention survives the
+  package change.
 - Injectable seams over hard-wired globals for anything a test must observe: the
   settings screen takes an `externalUrlLauncher`, the attribution widget takes a
   `urlLauncher`. Follow that when adding a side effect.
