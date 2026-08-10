@@ -102,9 +102,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         children: [
           // Sits above the tab stack so it is visible from every tab.
           const EmailVerificationBanner(),
-          Expanded(
-            child: IndexedStack(index: currentIndex, children: screens),
-          ),
+          Expanded(child: IndexedStack(index: currentIndex, children: screens)),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(

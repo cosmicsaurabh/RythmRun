@@ -143,9 +143,11 @@ class _ProfileMenuItemState extends State<ProfileMenuItem>
                             style: Theme.of(
                               context,
                             ).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(
-                                context,
-                              ).textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                              color: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.color
+                                  ?.withValues(alpha: 0.6),
                               fontSize: 12,
                               letterSpacing: 0.2,
                             ),
@@ -172,9 +174,8 @@ class _ProfileMenuItemState extends State<ProfileMenuItem>
                           Icon(
                             arrowForwardIosIcon,
                             size: 14,
-                            color: Theme.of(
-                              context,
-                            ).textTheme.bodySmall?.color?.withValues(alpha: 0.4),
+                            color: Theme.of(context).textTheme.bodySmall?.color
+                                ?.withValues(alpha: 0.4),
                           ),
                     ),
                   ],

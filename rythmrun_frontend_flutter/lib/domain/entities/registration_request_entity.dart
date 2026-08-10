@@ -24,7 +24,6 @@ class RegistrationRequestEntity {
           password == other.password &&
           acceptedTerms == other.acceptedTerms;
 
-  
   @override
   String toString() {
     return 'RegistrationRequestEntity{firstName: $firstName, lastName: $lastName, email: $email, acceptedTerms: $acceptedTerms}';

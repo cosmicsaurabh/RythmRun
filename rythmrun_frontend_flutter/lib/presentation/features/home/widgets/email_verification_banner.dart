@@ -58,7 +58,8 @@ class _EmailVerificationBannerState
     if (!mounted) return;
 
     // If it worked, this widget stops rendering on the next build.
-    final stillUnverified = ref.read(currentUserProvider)?.emailVerified == false;
+    final stillUnverified =
+        ref.read(currentUserProvider)?.emailVerified == false;
     setState(() {
       _busy = false;
       _message =
@@ -71,10 +72,7 @@ class _EmailVerificationBannerState
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
-    if (_dismissed ||
-        user == null ||
-        user.emailVerified ||
-        !user.hasPassword) {
+    if (_dismissed || user == null || user.emailVerified || !user.hasPassword) {
       return const SizedBox.shrink();
     }
 
