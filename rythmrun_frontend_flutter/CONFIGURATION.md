@@ -151,7 +151,7 @@ flutter build apk --release \
 
 The post-activity placement is optional and is downstream of local durability. Finish must first return a newly saved local workout ID. Save-pending, failed, no-active-workout, or tracking-cleanup-pending outcomes show recovery UI and cannot request an ad. A single newly committed ID can reach the completion gate at most once. A save completed later through Retry deliberately does not request an ad. Eligibility is rechecked after asynchronous initialization and again immediately before provider display. Initialization/show waits are bounded, and timeout, SDK/load, or cooldown-storage failures cannot hang completion, show late, hide, roll back, or turn a saved workout into a failed completion.
 
-Repository tests cover this state/configuration contract. Follow MC-1.14 in `docs/_engineering/improvement-plan/MANUAL-CHECKS.md` for merged-manifest and supported-device proof. That check does not authorize live ads; IP-5.5 remains the release gate.
+Repository tests cover this state/configuration contract. Follow MC-1.14 in `docs/_engineering/improvement-plan/ACTION-REQUIRED.md` for merged-manifest and supported-device proof. That check does not authorize live ads; IP-5.5 remains the release gate.
 
 ### How to Change Configuration
 
