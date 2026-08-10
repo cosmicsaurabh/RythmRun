@@ -255,7 +255,11 @@ An iOS project folder compiling is not evidence of store readiness.
 
 - Root `README.md`
 - `RythmRun_backend_nodejs/README.md`
-- `rythmrun_frontend_flutter/frontend_readme.md`
+- ~~`rythmrun_frontend_flutter/frontend_readme.md`~~ — deleted from the working
+  tree before the 2026-08-11 reconciliation. It had decayed to a ten-line
+  fragment describing only the registration screen, including a "Terms and
+  conditions acceptance" feature. If a frontend README is wanted, it is a new
+  document under this item rather than a review of that one.
 - `rythmrun_frontend_flutter/CONFIGURATION.md`
 - `docs/privacy-policy.md`, `docs/delete-account.md`, `docs/terms.md`, `docs/index.md`
 - Existing image HLD/LLD documents
@@ -269,11 +273,25 @@ An iOS project folder compiling is not evidence of store readiness.
 4. Provide setup commands that a clean checkout proves, with environment variable names matching fail-closed config.
 5. Mark old design documents as historical when shipped behavior differs; link to the current architecture rather than letting contradictory HLD/LLD remain authoritative.
 6. Legal/privacy text must be reviewed by a qualified owner and match actual storage, encryption, ads, telemetry, account deletion, location handling, and retention. Engineering must supply verified facts, not legal conclusions.
+
+   **Open verified fact for that review (recorded 2026-08-11).** Both map
+   screens fetch tiles directly from `https://tile.openstreetmap.org/{z}/{x}/{y}.png`
+   (`live_map_feed.dart`, `workout_history_map_viewer.dart`). Displaying a map
+   therefore causes the device to contact a third party and reveal its IP
+   address together with the requested tile coordinates, which approximate the
+   user's location. `docs/privacy-policy.md` currently describes no third-party
+   contact of any kind and does not mention maps or tiles. This predates the
+   2026-08-11 attribution work — the attribution only made the dependency
+   visible in the UI. Engineering states the fact; whether and how the policy
+   must say it is the qualified reviewer's call, and no edit to the public
+   policy has been made on the basis of this note.
 7. Keep this improvement directory unpublished from the policy site and free of incident evidence/secrets.
+8. Meet third-party attribution and usage obligations on every surface that consumes a third-party source, and keep the list current as surfaces are added. Map tiles are the live case: OpenStreetMap requires visible credit wherever its tiles are displayed. Delivered on the live-tracking and history map screens on 2026-08-11 (`028d469`); a new tile surface inherits the same obligation, and tile-usage-policy limits (traffic, caching, user agent) are still unreviewed.
 
 **Acceptance**
 
 - Every documented command/route/feature is checked against a release candidate, and public policy pages agree with the application.
+- Every third-party source in the release candidate has its required attribution visible on each surface that uses it.
 
 ### IP-5.7 — Post-gate focused-retention epic
 
@@ -362,3 +380,4 @@ Any failure involving security, cross-account access, workout loss/duplication, 
 | Date | Work package | Evidence | Result | Notes |
 | --- | --- | --- | --- | --- |
 | — | — | No implementation evidence yet | Not started | Planning document only |
+| 2026-08-11 | Partial IP-5.6 behavior, arriving early | `028d469` on main (PR #171); `open_street_map_attribution_test.dart` and the extended `settings_screen_test.dart`; version `1.2.0+21` | Two documentation-truth surfaces corrected; IP-5 remains `Planned` | Recorded so the phase file does not stay at "nothing delivered" while shipped behavior has already moved. (1) **Map attribution.** Both map screens — live tracking and history viewer — now render an always-visible `OpenStreetMap contributors` credit that opens `openstreetmap.org/copyright`. This is a tile-licensing obligation that no work package in this program had an item for; it is now met on the two surfaces that display tiles, and any future tile surface inherits the obligation. (2) **Account-deletion claim.** The settings screen no longer shows a type-`DELETE` confirmation dialog ending in "Account deletion feature coming soon!"; it opens the public deletion-request page, so the app and `docs/delete-account.md` now say the same thing. That is IP-5.6 item 2 behavior on one surface and closes none of IP-5.6, whose acceptance requires every documented command/route/feature to be checked against a release candidate. **No IP-5 package changes status**, and the qualified legal/privacy review in item 6 is untouched. |

@@ -30,7 +30,7 @@ still owes at least one manual/hosted gate.
 | --- | --- | --- | --- | --- |
 | IP-0 Security containment (P0) | **In progress** | 6 of 10 (code); 4 operational packages not started | IP-0.1, 0.1A, 0.6, 0.7 (all operational) | MC-0.1–0.12 |
 | IP-1 Tracking correctness | **Verification** | 7 of 7 | — | MC-1.1–1.14 |
-| IP-2 Auth, account, privacy | **In progress** | 5 of 8 + IP-2.9 merged to main, plus the IP-2.6 abuse-control slice on branch (IP-2.4 account deletion and IP-2.6 storage boundary left) | IP-2.7 | MC-2.1–2.6 |
+| IP-2 Auth, account, privacy | **In progress** | 5 of 8 + IP-2.9, and the IP-2.6 abuse-control slice, all merged to main (IP-2.4 account deletion and IP-2.6 storage boundary left) | IP-2.7 | MC-2.1–2.6 |
 | IP-3 Workout durability | **Planned** | 0 of 5 | all | — |
 | IP-4 Sync & restore | **Planned** | 0 of 6 | all | — |
 | IP-5 Release readiness | **Planned** | 0 of 7 | all (5.7 Deferred) | — |
@@ -56,7 +56,7 @@ production, log, database, R2/CDN, and secret-store access.
 | IP-0.1A Bootstrap isolated security staging | Planned | ✗ | **Operational.** Stand up an isolated backend + Postgres + R2 prefix + secrets + synthetic accounts; run the same migration/build. |
 | IP-0.2 Writable-field allowlists | Verification | ✓ | Merged `e33f314`; both exit boxes checked. Undeployed; re-runs under IP-0.7 controlled reopen. |
 | IP-0.3 Retire filesystem avatars | Verification | ✓ | Route/sink removed + tested. Left: production route-containment proof; inventory/quarantine of suspicious legacy avatar rows (shared with IP-0.6). |
-| IP-0.4 Harden S3 avatar pipeline | Verification | ✓ | Ownership/key/intent/type/size proven in tests. Left: single-use + storage-enforced policy against **real S3**, quota, and an independent bucket-lifecycle cleanup rule. |
+| IP-0.4 Harden S3 avatar pipeline | Verification | ✓ | Ownership/key/intent/type/size proven in tests. Re-hardened `76fa16f` (2026-07-28): the presigned **POST** grant R2 does not support became a presigned **PUT** whose `content-type` *and* `content-length` are signed, so item 6's storage-boundary byte range is now actually enforceable; `R2_PUBLIC_URL` and public delivery are gone in favor of an authenticated `GET /avatar/read-url` short-lived presigned GET; confirm/cleanup now name the avatar bucket explicitly instead of inheriting the activity-image default. Left: the same policy proven against **real R2**, quota, and an independent bucket-lifecycle cleanup rule. MC-0.11 must be re-run because the client upload mechanism changed. |
 | IP-0.5 Fail closed on config/secrets | Verification | ✓ | Local fail-closed proven. Left: hosted deployment smoke proving a prod process with a missing/placeholder/short/reused JWT secret exits non-zero before listening. |
 | IP-0.6 Investigate exposure & rotate | Planned | ✗ | **Operational.** Query suspicious avatar paths; review logs; date earliest exposure; if not excludable, rotate DB/R2/CDN/JWT secrets + revoke sessions; tighten IAM; verify infra posture. |
 | IP-0.7 Regression, staging rollout, controlled reopen | In progress | ✗ | Regression corpus committed; the package itself is operational: MC-0.10 advisory scan, full staging sequence, backend security CI (MC-0.7–0.9), controlled reopen + 24h watch. |
@@ -86,7 +86,7 @@ All seven packages are repo-delivered; each waits on a device/staging/hosted gat
 | IP-2.3 Offline-session behavior | Verification | ✓ | 7-day fail-closed offline window + online-operation guard. Left: MC-2.3 device offline/rollback/airplane-vs-revocation proof. |
 | IP-2.4 Profile, password recovery, account deletion | **In progress** | partial | **Profile and password-recovery slices delivered and merged to main** (PR #164; backend `34a14a9` + frontend `6b7dc97`): anti-enumerating request, one-transaction single-use reset revoking all sessions + refusing Google-only accounts, backend web form, and the Flutter forgot-password screen — reusing the IP-2.9 hashed-token store. The account/address recovery budget is delivered by the IP-2.6 abuse-control slice; production exposure/staging delivery remains gated by MC-2.5. **Account deletion** still awaits the retention/reauth decision, then transactional revocation + durable object-cleanup outbox/runner + full local+remote purge. |
 | IP-2.5 Private routes; disable social | Verification | ✓ | **Delivered and merged to main** (PR #165; `bd78d9a`). `isPublic` defaults false + backfill migration to private, `getActivityById` owner-only (cross-user route/image/identity closed), friend/comment/like routers unmounted (`404`), README/seed corrected. Public policy pages were reconciled with the repository behavior on 2026-07-27. 290 backend tests. Left: apply the migration on staging/production and complete qualified IP-5.6 policy review against the release candidate. |
-| IP-2.6 API abuse controls & typed errors | **In progress** | partial | **Abuse-control slice delivered** on branch `feat/api-abuse-controls`: required-in-production exact-match CORS allowlist (fail-closed before listen, https-only), `TRUST_PROXY_HOPS`-driven `trust proxy` defaulting to 0, in-process sliding-window budgets on login/register/Google exchange/recovery request+submit/password change/verification resend returning a typed `AUTH_RATE_LIMITED` 429 with `Retry-After`, typed `ActivityImageServiceError` replacing exact-message branching in the mounted image controller, request IDs + fixed-field privacy-safe security events, and readable Flutter handling for rate limits and invalid credentials. 452 backend / 355 Flutter tests. Left: **storage-boundary items 6–8** (enforceable activity-image upload grant, real ContentType/ContentLength/checksum confirmation, per-user object/byte quotas, abandoned-upload lifecycle, volume alarms), the unmounted social controllers' message-string branching, and **MC-2.6** deployed edge configuration. |
+| IP-2.6 API abuse controls & typed errors | **In progress** | partial | **Abuse-control slice merged to main** (PRs #167/#169): required-in-production exact-match CORS allowlist (fail-closed before listen, https-only), `TRUST_PROXY_HOPS`-driven `trust proxy` defaulting to 0, in-process sliding-window budgets on login/register/Google exchange/recovery request+submit/password change/verification resend returning a typed `AUTH_RATE_LIMITED` 429 with `Retry-After`, typed `ActivityImageServiceError` replacing exact-message branching in the mounted image controller, request IDs + fixed-field privacy-safe security events, and readable Flutter handling for rate limits and invalid credentials. Left: **storage-boundary items 6–8** (enforceable activity-image upload grant, real ContentType/ContentLength/checksum confirmation, per-user object/byte quotas, abandoned-upload lifecycle, volume alarms), the unmounted social controllers' message-string branching, and **MC-2.6** deployed edge configuration. Item 6 got cheaper but no closer: `getPresignedPutUrl` can now sign `content-length` (IP-0.4 uses it), and the activity-image caller still does not pass `sizeBytes`. |
 | IP-2.7 Protect retained routes/photos at rest | Planned | ✗ | Not started; gated on an owner design spike (threat model, library/perf, backup/key-loss recovery) before migrating SQLite + photos to user-scoped at-rest protection. |
 | IP-2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. Left: MC-2.4 non-rolling migration, OAuth-console/signing, provider, device, staging, branding proof. **Note: its no-implicit-link behavior is superseded by IP-2.9 below.** |
 | IP-2.9 Email verification & safe linking | Verification | ✓ | **Merged to main** (PR #164). Delivers `emailVerified` + hashed token table, optional SMTP send, verify/resend, and the emailVerified-gated Google auto-link. Left: **MC-2.5** — real Brevo/SMTP + DKIM/SPF, staging delivery + verify page, on-device banner/resend. Resolves D-018; its hashed-token store is reused by the merged IP-2.4 password recovery. |
@@ -95,7 +95,9 @@ All seven packages are repo-delivered; each waits on a device/staging/hosted gat
 
 Nothing delivered. IP-3.1 durable engine + checkpoint DAO · IP-3.2 exactly-once
 finalize + recoverable failures · IP-3.3 current-user recovery UX · IP-3.4
-Android foreground/screen-off tracking (needs Gradle/AGP/Kotlin bumps) · IP-3.5
+Android foreground/screen-off tracking (the Gradle/AGP/Kotlin bumps it named as
+a prerequisite landed in `f6b9d0a`, but no build was run against them, so the
+prerequisite is declared rather than proven) · IP-3.5
 remove long-session quadratic UI. Gated on IP-1 metric engine + IP-2.1–2.3
 identity/offline core; at-rest checkpoint format gated on the IP-2.7 design.
 
@@ -217,6 +219,38 @@ CORS variable, so it proves the built artifact reads it.
 | **Adds one manual gate** | **MC-2.6**: recorded proxy depth tied to the real hosting proxy, recorded production origins with allow/deny probes, a fail-closed boot smoke, a live 429-and-recovery run, and confirmation the deployment still runs exactly one replica. The limiter is in-process, so restart clears counters and a second replica would multiply every limit. |
 | **Does NOT close IP-2.6** | Storage-boundary items 6–8 are untouched: the activity-image grant still cannot enforce size at the storage boundary (avatars already can, from IP-0.4), confirmation still trusts declared metadata, and there are no per-user object/byte quotas, abandoned-upload cleanup, or volume alarms. |
 
+## Recent delivery — reconciled into the plan 2026-08-11
+
+Five commits landed on `main` after the 2026-07-27 reconciliation and were not
+described anywhere in this plan. Current `main` gates: backend **464 passed / 7
+skipped / 471 total** across 26 suites (1 suite skipped), typecheck clean;
+Flutter **359** tests pass; `flutter analyze` reports **9 issues, zero warnings,
+zero errors**. None of them changes a package to `Complete`.
+
+| Commit | Impact |
+| --- | --- |
+| `76fa16f` **avatar presigned-PUT re-hardening** (merged PR #170) | The largest of the five and a genuine IP-0.4 correction. The grant was a presigned **POST** policy, which R2 does not support — so the `content-length-range` IP-0.4 item 6 relies on was never actually enforced in this deployment. It is now a presigned **PUT** with `content-type` *and* `content-length` in the signed header set, which R2 does enforce. Avatar delivery stops going through a public origin: `R2_PUBLIC_URL` is removed from the required environment and an authenticated `GET /avatar/read-url` returns a short-lived presigned GET, so both buckets stay private. `headObject`/`deleteObject` now take an explicit bucket — avatar confirm and cleanup were previously inheriting the activity-image bucket default. The legacy `JWT_REFRESH_SECRET` name is retired, and the documented-placeholder rejection also catches `your-*` values. |
+| `028d469` **release fixes** (merged PR #171) | Adds always-visible, tappable OpenStreetMap attribution to the live-tracking and history map screens — a tile-licensing obligation this plan never had an item for. Replaces the settings "Delete Account" dialog, which took a typed `DELETE` confirmation and then showed *"Account deletion feature coming soon!"*, with a link to the public deletion-request page. **This delivers no part of IP-2.4 account deletion**; it removes a UI claim that deletion existed, which is IP-5.6 item 2 behavior arriving early. App version `1.2.0+21`. |
+| `f6b9d0a` **toolchain bump** | Gradle 8.11.1 → 8.14, AGP 8.9.1 → 8.11.1, Kotlin 2.1.0 → 2.2.20. IP-3.4 named these bumps as its prerequisite, so that prerequisite is now nominally met — but no Android build was run as part of this reconciliation, so no packaging or device claim is made and MC-1.7/MC-1.14 are untouched. |
+| `de93182` **`APP_ENV` override** | `--dart-define=APP_ENV=<dev\|staging\|prod>` now takes precedence over build-mode detection when selecting the API base URL and timeout. It is scoped to those two values: `isDebug`/`isRelease` still come from `kDebugMode`/`kReleaseMode`, so it cannot weaken the IP-1.7 ads fail-closed contract, and `ADS_ENV` remains separate. Useful for pointing a release build at staging during MC runs. Documented in `CONFIGURATION.md`. |
+| `e17841f` **"fixes"** | `dart format` reflow under a newer formatter plus one unused field removal. No behavior change; recorded here only so the gap in the history is explained rather than left unaccounted. |
+
+**Gap this surfaced, not yet closed:** adding the attribution made the map-tile
+dependency visible and prompted a check of what the policy pages say about it.
+Both map screens fetch tiles straight from `tile.openstreetmap.org`, so
+displaying a map reveals the device IP and the requested tile coordinates to a
+third party, and `docs/privacy-policy.md` describes no third-party contact at
+all. This predates the attribution commit. The verified fact is recorded under
+IP-5.6 item 6 for the qualified reviewer; **the public policy page has not been
+edited** — that text is owner-reviewed by program rule, not engineering-edited.
+
+**Toolchain drift worth knowing:** CI pins Flutter 3.44.1 / Dart 3.12.1 and the
+analyzer baseline is stamped with that pair. The development machine is now on
+Flutter 3.44.9 / Dart 3.12.2, so `analyzer_baseline.dart check` refuses to run
+locally ("Baseline Dart 3.12.1 does not match the running Dart 3.12.2"). The
+raw analyzer result above is still reproducible; the *counted-baseline*
+comparison is currently evidencable only on the pinned CI toolchain.
+
 ## Next actionable repository work
 
 Lowest-numbered unblocked packages (operational IP-0 gates run in parallel but
@@ -235,10 +269,12 @@ are not substitutes):
 3. **IP-2.7 retained-data protection** — gated on the owner design spike
    (threat model, library/perf, backup/key-loss recovery).
 
-_Last regenerated: 2026-07-27 (from phase files at 2026-07-17; plan reconciled
+_Last regenerated: 2026-08-11 (from phase files at 2026-07-17; plan reconciled
 with the IP-2.9 delivery 2026-07-20, the IP-2.4 password-recovery + IP-2.5
-route-privacy deliveries 2026-07-21, and the IP-2.6 abuse-control slice
-2026-07-27). The IP-2.9 email-verification (PR #164) and IP-2.5 route-privacy
-(PR #165) branches are merged to main; the "branch / PR pending" wording in the
-dated snapshots above is historical (true at the snapshot date). The IP-2.6
-abuse-control slice is on branch `feat/api-abuse-controls` and not yet merged._
+route-privacy deliveries 2026-07-21, the IP-2.6 abuse-control slice 2026-07-27,
+and the five post-slice `main` commits 2026-08-11). Everything described above
+is now merged to main: IP-2.9 email verification (PR #164), IP-2.5 route privacy
+(PR #165), the IP-2.6 abuse-control slice (PRs #167/#169), avatar presigned-PUT
+re-hardening (PR #170), and the release fixes (PR #171). The "on branch / PR
+pending" wording inside the dated snapshots above is historical — it was true at
+the snapshot date and is deliberately left unedited._

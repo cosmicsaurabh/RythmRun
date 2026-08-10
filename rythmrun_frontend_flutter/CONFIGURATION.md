@@ -20,9 +20,29 @@ Profile Mode: false
 ```
 
 #### Method 2: Build Mode Detection
+Used only when `APP_ENV` is not supplied:
 - **Debug Mode** (`flutter run`): `dev` environment
 - **Profile Mode** (`flutter run --profile`): `staging` environment  
 - **Release Mode** (`flutter run --release`): `prod` environment
+
+#### Method 3: Explicit `APP_ENV` override
+`--dart-define=APP_ENV=<dev|staging|prod>` selects the environment directly and
+takes precedence over build-mode detection. It exists so a release-mode build
+can be pointed at the staging backend for the staging manual checks without
+shipping a debug binary.
+
+| Define | Accepted values | Default | Effect |
+| --- | --- | --- | --- |
+| `APP_ENV` | `dev`, `staging`, `prod` | unset (build mode decides) | Selects the API base URL and HTTP timeout only |
+
+Scope limits worth knowing:
+- It selects **base URL and timeout only**. `AppConfig.isDebug`/`isRelease`/
+  `isProfile` still derive from `kDebugMode`/`kReleaseMode`, so this define
+  cannot turn a release build into a debug build.
+- It does **not** affect advertising. `ADS_ENV` is a separate contract (below)
+  and does not accept `dev`/`prod`.
+- An unrecognized value has no base URL mapped, so the first request throws
+  rather than falling back to production.
 
 ### Current Configuration
 

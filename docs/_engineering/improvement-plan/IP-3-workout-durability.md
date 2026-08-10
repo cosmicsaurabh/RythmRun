@@ -236,6 +236,17 @@ All tables are user-reachable only through a parent checkpoint scoped by `user_i
 **Implementation**
 
 1. Preserve the duplicate-build-file resolution already delivered in `a9f2535` (`app/build.gradle` is authoritative). Before foreground-service changes, move beyond Flutter's current warning thresholds—Gradle 8.11.1 to at least 8.14, AGP 8.9.1 to at least 8.11.1, and Kotlin 2.1.0 to at least 2.2.20—evaluate built-in Kotlin compatibility for the app plus `location` and `package_info_plus`, and prove clean debug/release configuration without regressing signing, Google Sign-In, or ads fail-closed rules.
+
+   **Version half delivered 2026-08-11 (`f6b9d0a`), proof half not.** The
+   declared versions now sit exactly at the stated minimums: Gradle 8.14, AGP
+   8.11.1, Kotlin 2.2.20. Nothing else in this item is satisfied — no Android
+   build was run against the new toolchain during the 2026-08-11 plan
+   reconciliation, so plugin/Kotlin compatibility is unevaluated and clean
+   debug/release configuration, signing, Google Sign-In, and the IP-1.7 ads
+   fail-closed rules are unverified under it. **Before this package starts, run
+   a debug and a release configuration/build and record the result**; a prior
+   attempt in this program exhausted host disk, so budget for that. Treat the
+   bump as a prerequisite that is declared, not proven.
 2. Follow official Android and pinned location-plugin requirements for foreground location, foreground-service type, notification permission, and any background-location permission that the chosen behavior actually needs. Do not cargo-cult permissions from an older target SDK.
 3. Start the foreground service only from a user-initiated Start/Resume while the app is eligible to do so.
 4. Show a persistent notification containing non-sensitive state (workout type, elapsed time, pause/resume/stop actions if safely supported). Never show exact coordinates.

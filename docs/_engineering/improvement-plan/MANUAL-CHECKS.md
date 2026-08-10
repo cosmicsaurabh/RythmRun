@@ -26,13 +26,13 @@ Repository commits and local test results cannot change a manual check to `Verif
 | MC-0.2 | Evidence preservation and exposure disposition | Security owner | Pending | Restricted incident-ticket reference covering log window, snapshot, and disposition | — | — | — |
 | MC-0.3 | Credential/session rotation | Secret-store and database owners | Pending | Restricted rotation record plus proof that old credentials/sessions fail | — | — | — |
 | MC-0.4 | Database migration and unsafe avatar-value quarantine | Database owner | Pending | Backup reference, migration run, classified counts, and rollback record | — | — | — |
-| MC-0.5 | R2 access/delivery, database TLS, lifecycle, and backup posture | Infrastructure owner | Pending | Restricted configuration review and isolated restore reference | — | — | — |
+| MC-0.5 | R2 access/delivery, database TLS, lifecycle, and backup posture | Infrastructure owner | Pending | Restricted configuration review and isolated restore reference | — | — | As of 2026-07-28 the application requires no public delivery origin for either bucket — all media reads are short-lived presigned GETs. The review must therefore confirm both buckets have public access disabled and that any previously configured public/CDN origin has been retired, not merely that it is unused. |
 | MC-0.6 | Isolated security staging | Deployment owner | Pending | Environment/run reference proving isolation and non-production credentials/data | — | — | — |
 | MC-0.7 | Hosted `Backend security` success | Repository maintainer | Pending | Successful GitHub Actions run URL for the committed workflow | — | — | — |
 | MC-0.8 | Intentional CI failure probe | Repository maintainer | Pending | Failed run URL from a temporary non-merge revision and cleanup reference | — | — | — |
 | MC-0.9 | Required branch-protection check | Repository administrator | Pending | Ruleset reference showing stable `Backend security` check is required | — | — | — |
 | MC-0.10 | Dated production dependency advisory review | Security maintainer | Blocked | Full dated report and one decision per advisory | — | — | Explicit approval is required before sending the dependency inventory to npm. |
-| MC-0.11 | Supported mobile avatar lifecycle in staging | Mobile and QA owners | Pending | Build/version plus request, upload, confirm, display, replace, and logout run record | — | — | — |
+| MC-0.11 | Supported mobile avatar lifecycle in staging | Mobile and QA owners | Pending | Build/version plus request, upload, confirm, display, replace, and logout run record; an oversize-body probe against the presigned PUT; and an unauthenticated/expired-URL fetch probe | — | — | The upload and display mechanisms changed on 2026-07-28 (`76fa16f`): presigned PUT with signed `Content-Type`/`Content-Length` instead of multipart POST, and an authenticated short-lived presigned GET instead of a public origin. Any evidence recorded against the earlier mechanism is void. |
 | MC-0.12 | Controlled reopen and 24-hour observation | Deployment/on-call owner | Pending | Reopen timeline, dashboards, thresholds, rollback owner, and observation outcome | — | — | — |
 | MC-1.1 | Legacy metric sampling and classification | Product-data and database owners | Pending | Restricted sample showing distance/active-duration/stored-speed ratios and approved classification rules | — | — | Never copy user routes or row-level personal data into Git. |
 | MC-1.2 | Metric migration backups and staging exercise | Database and mobile owners | Pending | PostgreSQL/SQLite backup references, migration runs, version counts, and rollback rehearsal | — | — | Current repository migration only tags provenance; historic values are not rewritten. |
@@ -231,11 +231,13 @@ Pass condition: each row has a restricted evidence reference, dated owner sign-o
 
 ### MC-0.11 and MC-0.12 — Staged lifecycle and controlled reopen
 
-1. Exercise the supported Flutter build through avatar request, multipart upload, confirmation, display, replacement, and logout in isolated staging.
-2. Verify safe request IDs/error categories and confirm logs contain no secrets, signed URLs, raw object keys beyond operational need, filesystem paths, response bodies, or exact routes.
-3. Reopen registration/profile text paths first and avatar request/confirm only after storage policy, quota, intent, and cleanup checks pass.
-4. Define rollback thresholds for `4xx`, `5xx`, avatar-confirm, storage rejection, and R2 errors before reopening.
-5. Observe continuously for 24 hours with a named on-call owner. Reapply containment before rollback if a threshold or security invariant fails.
+1. Exercise the supported Flutter build through avatar request, upload, confirmation, display, replacement, and logout in isolated staging. **Re-run required (mechanism changed 2026-07-28, `76fa16f`).** The upload is no longer a multipart POST to a policy-signed form: it is a `PUT` to a presigned URL that must carry exactly the `Content-Type` and `Content-Length` the server signed. Display is no longer a public-origin fetch: it is an authenticated `GET /avatar/read-url` returning a short-lived presigned GET. Evidence gathered against the POST mechanism does not carry over.
+2. Prove the signed byte bound at the storage boundary, not just in application code: replay the presigned PUT with a body larger than the signed `Content-Length` and record that R2 rejects it before the object is accepted. This is the check that was never actually exercised, because the previous POST policy was unsupported by R2.
+3. Confirm no avatar is reachable without authentication: with the presigned read URL expired, and with no session, record that the object cannot be fetched from any public R2 or CDN origin.
+4. Verify safe request IDs/error categories and confirm logs contain no secrets, signed URLs, raw object keys beyond operational need, filesystem paths, response bodies, or exact routes.
+5. Reopen registration/profile text paths first and avatar request/confirm only after storage policy, quota, intent, and cleanup checks pass.
+6. Define rollback thresholds for `4xx`, `5xx`, avatar-confirm, storage rejection, and R2 errors before reopening.
+7. Observe continuously for 24 hours with a named on-call owner. Reapply containment before rollback if a threshold or security invariant fails.
 
 Pass condition: the valid lifecycle passes, negative probes remain contained, monitoring stays within approved thresholds, and the 24-hour result is recorded.
 

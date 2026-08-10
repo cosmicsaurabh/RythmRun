@@ -483,6 +483,34 @@ unaffected and still undelivered.
   Account deletion remains the last undelivered IP-2.4 slice, still gated on
   its retention/reauth decision.
 
+**Account-deletion UI state (2026-08-11, `028d469`) — not a delivery**
+
+The settings screen previously showed a full destructive-confirmation dialog —
+red warning, "This action cannot be undone. All your data will be permanently
+deleted", and a type-`DELETE`-to-confirm field — whose confirm button did
+nothing but display *"Account deletion feature coming soon!"*. It now opens the
+public deletion-request page (`docs/delete-account.md`, served from the policy
+site) in an external browser, and `SettingsScreen` takes an injectable
+`externalUrlLauncher` so the launch is testable.
+
+This is recorded here so the change cannot be misread later:
+
+- **None of the seven "Implementation: account deletion" items above is
+  delivered.** There is no deletion endpoint, no reauthentication step, no
+  `ObjectCleanupJob` outbox, no runner, and no local purge. The retention and
+  password-versus-fresh-Google reauthentication decision gate is still open, and
+  IP-2.4 is still the current canonical package.
+- What it does deliver is honesty in the UI: the app no longer presents a
+  confirmation ritual for a capability that does not exist. That is IP-5.6 item
+  2 ("remove or label unimplemented claims") arriving early on one surface, not
+  IP-2.4 progress.
+- The linked page states that deletion is a manual support process rather than
+  an automated flow, that device-local workouts and photos cannot be removed
+  remotely, and that support confirms scope before proceeding — so the public
+  text and the shipped behavior agree. Keeping them in agreement is an IP-5.6
+  obligation each time either side changes.
+- The "recovery, edit, delete" audit finding stays open.
+
 ### IP-2.5 — Make exact routes private and disable unfinished social paths
 
 **Primary files**
@@ -588,7 +616,7 @@ already sent `isPublic: false` and has no social UI).
 - An upload exceeding the declared size is rejected by the storage policy rather than accepted and merely rejected at confirmation.
 - Wrong content type/checksum/ownership cannot become an uploaded avatar/activity-image record, and abandoned objects expire.
 
-**Repository implementation state (2026-07-27) — abuse-control slice delivered**
+**Repository implementation state (2026-07-27) — abuse-control slice delivered; merged to main via PRs #167/#169**
 
 Implementation items 1, 2, 4, 5, and 9 are delivered, together with the
 account/address dimension of item 3. Items 6, 7, and 8 — the storage-boundary
@@ -714,7 +742,7 @@ The app intentionally retains completed offline history across normal logout. Ex
 
 ### IP-2.8 — Google identity extension (delivered out of sequence)
 
-This maintainer-selected extension is not an original audit closure and does not change the lowest-numbered unfinished canonical work: IP-2.4 account deletion remains the next selected slice after its retention/reauthentication decision gate. Password recovery's provider/domain prerequisite was resolved (D-018), its reusable token/email plumbing was delivered (IP-2.9), and the reset endpoints/UI are now delivered too (see the IP-2.4 2026-07-21 password-recovery subsection). If the deletion decision is unavailable, IP-2.6 is the next implementable package (IP-2.5 route privacy is now delivered and merged) without claiming IP-2.4 complete. That path was taken on 2026-07-27: the IP-2.6 abuse-control slice (CORS allowlist, request budgets, proxy-aware addressing, typed errors, request ids and security events) is delivered, while IP-2.6's storage-boundary items 6–8 and IP-2.4 account deletion both remain open.
+This maintainer-selected extension is not an original audit closure and does not change the lowest-numbered unfinished canonical work: IP-2.4 account deletion remains the next selected slice after its retention/reauthentication decision gate. Password recovery's provider/domain prerequisite was resolved (D-018), its reusable token/email plumbing was delivered (IP-2.9), and the reset endpoints/UI are now delivered too (see the IP-2.4 2026-07-21 password-recovery subsection). If the deletion decision is unavailable, IP-2.6 is the next implementable package (IP-2.5 route privacy is now delivered and merged) without claiming IP-2.4 complete. That path was taken on 2026-07-27: the IP-2.6 abuse-control slice (CORS allowlist, request budgets, proxy-aware addressing, typed errors, request ids and security events) is delivered and has since been merged to main via PRs #167/#169, while IP-2.6's storage-boundary items 6–8 and IP-2.4 account deletion both remain open.
 
 **Repository implementation state (2026-07-17)**
 
@@ -893,3 +921,4 @@ Checked repository items below record delivered code and automated evidence only
 | 2026-07-21 | IP-2.4 (password-recovery slice) | Branch `feat/email-verification` (backend `34a14a9`, frontend `6b7dc97`, PR pending); Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM smoke; locked Flutter restore, full suite, analyzer/counted baseline | Repository gates pass; provider/staging exposure pending | Backend passed 364 Jest tests (7 real-PostgreSQL cases intentionally skipped); Flutter passed 347 tests, analyzer zero warnings/errors with the baseline accepted. Reuses the IP-2.9 hashed-token store: additive `PASSWORD_RESET` enum migration (`20260721000000`), anti-enumerating `requestPasswordReset` (missing/Google-only/60s-cooldown all generic, post-commit best-effort email, token/recipient never logged), one-transaction `resetPassword` (single-use 30-minute digest, all-session revocation, refuses to add a password to a Google-only account, all failures collapse to `AUTH_VERIFICATION_TOKEN_INVALID`), a deep-link-free backend web form (tightened CSP + `no-referrer`), and a Flutter `forgot_password` screen wired from the login link. Address-dimension rate limiting remains IP-2.6; production exposure + real provider/staging delivery remain MC-2.5 (extended for recovery). Account deletion remains undelivered. Counts supersede IP-2.9 only on merge. |
 | 2026-07-21 | IP-2.5 (route privacy) | Branch `feat/route-privacy` (`bd78d9a`), merged to main via PR #165; Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM smoke | Repository gates pass; migration application pending | Backend passed 290 Jest tests (9 new; 6 real-PostgreSQL cases intentionally skipped). `Activity.isPublic` defaults false with a forward migration (`20260721120000`) backfilling existing rows to private; `createActivity` forces private and `updateActivity` cannot change visibility; `getActivityById` is owner-only so no cross-user route/image/identity is returned (list/update/delete/image routes were already owner-scoped); friend/comment/like routers unmounted (`404`); backend README/seed corrected. No Flutter change required (client already sent `isPublic: false`, no social UI). An adversarial self-check confirmed `getActivityById` was the only cross-user leak. Migration must be applied on staging/production as a deploy step. At this snapshot the public policy pages were still stale; they were reconciled with repository behavior on 2026-07-27, while qualified IP-5.6 review remains open. |
 | 2026-07-27 | IP-2.6 (abuse-control slice) | Branch `feat/api-abuse-controls`; Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM production smoke; locked Flutter restore and full suite | Repository gates pass; deployed edge configuration pending | Backend passed 452 Jest tests (7 real-PostgreSQL cases intentionally skipped), up from 373 on main; Flutter passed 355 tests, up from 347. Delivers IP-2.6 items 1, 2, 4, 5, 9 and the account/address dimension of item 3: an exact-match `CORS_ALLOWED_ORIGINS` allowlist that is required and https-only under `NODE_ENV=production` and validated before the listener binds (the production smoke now supplies it, proving the built artifact reads it); `TRUST_PROXY_HOPS` driving `trust proxy`, defaulting to 0 so a forged `X-Forwarded-For` cannot select a limiter key; in-process sliding-window budgets on login, register, Google exchange, password-reset request and submit, password change, and verification resend, charged on admission and refunded when a `client_failures` response is not 4xx (an adversarial review probe showed response-time charging admitted 40 concurrent guesses against a limit of 5), plus an added 20-failures-per-address login ceiling that closes credential spraying, which the account+address key alone does not bound; a typed `AUTH_RATE_LIMITED` 429 with `Retry-After` and a message identical across endpoints; typed `ActivityImageServiceError` replacing exact-message branching in the mounted image controller, whose 500 branch no longer logs the error object; server-minted `X-Request-Id` that ignores any inbound header; and fixed-field `security_event` lines carrying only a truncated SHA-256 subject digest. Flutter maps `AUTH_RATE_LIMITED` and `AUTH_INVALID_CREDENTIALS` to stable user text and reads clean messages from typed exceptions, so neither the 429 nor a rejected login exposes a mangled exception class string. Storage-boundary items 6-8 (enforceable activity-image upload grant, real ContentType/ContentLength/checksum confirmation, per-user quotas, abandoned-upload cleanup, volume alarms) are NOT delivered and IP-2.6 stays `In progress`. Deployed proxy depth, production origins, fail-closed boot, live 429 recovery, and the single-replica assumption are gated by the new MC-2.6. |
+| 2026-08-11 | IP-2 reconciliation with `main` | `main` at `de93182`; merges `9003bff` (PR #167) and `cb24fea` (PR #169) carrying the abuse-control slice, `bec25c0` (PR #170) avatar re-hardening, `db6ad42` (PR #171) release fixes; backend `npm test` and `npm run typecheck`; Flutter `flutter test` and `flutter analyze` | Repository gates pass on main; every MC row unchanged | Records that the abuse-control slice is no longer branch-local: it is merged to main, so the "on branch `feat/api-abuse-controls`" wording in the 2026-07-27 row above is historical. Current `main` gates: backend 464 passed / 7 skipped / 471 total across 26 suites (1 suite skipped, real-PostgreSQL cases) and a clean typecheck; Flutter 359 tests pass with 9 analyzer issues, zero warnings and zero errors. The rise from the 452/355 recorded on 2026-07-27 comes from the avatar re-hardening and release commits, not from new IP-2 work. **No IP-2 package changes status.** IP-2.6 stays `In progress` on storage-boundary items 6-8 and MC-2.6; IP-2.4 stays `In progress` on account deletion — the settings screen now links to the public deletion-request page instead of showing a "coming soon" confirmation dialog, which removes a false UI claim and delivers none of the deletion implementation (see the IP-2.4 2026-08-11 subsection). |

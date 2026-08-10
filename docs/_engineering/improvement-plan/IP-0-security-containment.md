@@ -221,7 +221,18 @@ Later phases require staging, so a minimal isolated environment is a program pre
 3. Accept a content type from an allowlist such as JPEG/PNG/WebP. Derive the extension server-side; do not concatenate a raw `ext` supplied by the client. During the current-client compatibility window, accept `ext` only as a deprecated field, require it to match the canonical MIME mapping, and ignore it for key generation; remove it after a coordinated mobile rollout.
 4. Generate keys only as `avatars/{authenticatedUserId}/{serverGeneratedId}.{derivedExtension}`.
 5. Persist a short-lived, single-use pending upload intent containing the authenticated user, exact generated key, canonical content type, maximum bytes, expiry, and consumed state. Confirmation must reference and atomically consume this intent; prefix grammar alone does not prove the key was issued.
-6. Issue an upload grant that enforces exact key/type and a storage-boundary byte range (for example an S3 POST policy with `content-length-range`). A post-upload `HeadObject` check alone does not prevent storage-cost abuse.
+6. Issue an upload grant that enforces exact key/type and a storage-boundary byte range. A post-upload `HeadObject` check alone does not prevent storage-cost abuse.
+
+   **Amended 2026-07-28 (`76fa16f`).** This item originally named an S3 POST
+   policy with `content-length-range` as the example mechanism, and the first
+   implementation used one. Cloudflare R2 does not support presigned POST, so
+   on this deployment that grant enforced nothing and the byte range existed
+   only in the plan. The delivered mechanism is a presigned **PUT** whose
+   signed header set contains both `content-type` and `content-length`: the
+   uploader must present exactly the signed values or storage rejects the
+   request, which is the boundary enforcement this item asks for. The
+   `HeadObject` confirmation check is retained as defense in depth, not as the
+   primary control.
 7. Confirmation must:
    - match the exact user-owned key grammar;
    - reject another user's prefix and all traversal/separator variants outside the grammar;
@@ -233,6 +244,20 @@ Later phases require staging, so a minimal isolated environment is a program pre
 9. When replacing an avatar, delete the previous S3 object only if it matches that same user's approved prefix. Make DB update authoritative and object cleanup retryable so a transient S3 error cannot corrupt the profile.
 10. Update the Flutter avatar client for the enforced upload mechanism and redact current logs that expose local image paths, S3 response bodies, keys, or signed URLs. Return/log only safe status/error codes.
 11. Return an opaque avatar response. Do not expose bucket credentials or internal filesystem paths.
+
+**Delivered read path (added 2026-07-28, `76fa16f`)**
+
+12. Avatars are not served from a public origin. `R2_PUBLIC_URL` is removed from
+    the required environment and there is no public delivery domain to
+    configure. An authenticated `GET /avatar/read-url` returns a short-lived
+    presigned GET for the caller's own stored key, refusing any key that does
+    not match that user's approved prefix and answering `404` when no avatar is
+    stored. This keeps both R2 buckets private and makes item 11's opacity a
+    property of the storage configuration rather than of response shaping.
+13. Every avatar-side storage call names its bucket explicitly. `headObject` and
+    `deleteObject` previously fell back to a default bucket, which was the
+    activity-image bucket, so avatar confirmation and cleanup were addressing
+    the wrong bucket. Confirm and replace/cleanup now pass `R2_BUCKET_AVATARS`.
 
 **How to verify**
 
@@ -467,3 +492,5 @@ This is operational work. Store sensitive evidence in the approved incident syst
 | 2026-07-10 | IP-0.7a | `http-security-boundary.test.ts` (16 tests); full backend suite (129 tests); `backend-security.yml` local structure review | Pass locally; hosted CI pending | Express-boundary regressions, typecheck, and local suite pass. No operational CI pass is claimed until a successful GitHub Actions run URL and intentional-failure probe are added. |
 | 2026-07-11 | IP-0.7 dependency surface | Node.js 22.22.3 clean install; Prisma validate/generate; TypeScript/build; focused dependency/storage suites (50 tests); full backend suite (141 tests); package/source scans | Pass locally; advisory/staging pending | Replaced AWS SDK v2 with modular v3, retained storage-contract coverage including real PUT presigning without an empty-body checksum and with signed content type, removed `joi`/`pg`/`winston`, and found no remaining v2 source/import or installed direct path. MC-0.6 and MC-0.10 remain open; no hosted, staging, deployment, or current-advisory claim is made. |
 | 2026-07-13 | IP-1.6 superseding dependency decision | Prisma 7.8 config/generator/adapter, centralized database lifecycle, clean install, schema/type/build/test/smoke gates | Pass locally; hosted/staging pending | Preserves the 2026-07-11 fact that unused direct `pg` was removed, but deliberately restores the PostgreSQL driver as the exact runtime behind `@prisma/adapter-pg`. Node 22.22.3 restored the reviewed graph; Prisma validation/generation, production typecheck/build, 15 suites/244 tests, and the built no-database smoke passed. One database factory owns the client/pool; MC-1.12 must still prove real TLS, migration, transaction, pool, and disconnect behavior. |
+| 2026-07-28 | IP-0.4 avatar re-hardening | `76fa16f`, merged to main through PR #170 (`bec25c0`); `avatar.service.test.ts` and `s3.service.test.ts` reworked; `env.test.ts` and `http-security-boundary.test.ts` extended; Flutter avatar repository/profile suites updated | Pass locally; real-R2 proof still open | Corrects a control this log previously recorded as delivered. The IP-0.4 grant was a presigned POST policy, which Cloudflare R2 does not support, so its `content-length-range` never bound; the grant is now a presigned PUT with `content-type` and `content-length` in the signed header set, which storage does enforce. Public avatar delivery is removed — `R2_PUBLIC_URL` is no longer a required variable and an authenticated `GET /avatar/read-url` issues a short-lived presigned GET for the caller's own key — so both buckets stay private. `headObject`/`deleteObject` now take an explicit bucket; avatar confirm and cleanup had been inheriting the activity-image bucket default. The legacy `JWT_REFRESH_SECRET` name is retired in favor of `REFRESH_TOKEN_SECRET` only, and documented-placeholder rejection now also matches `your-*` values. **No real-R2 evidence is claimed:** that a signed `content-length` is rejected by R2 when violated, the abandoned-object lifecycle rule, and the per-account quota all remain MC-level work, and MC-0.11 must be re-run because the client upload mechanism changed from multipart POST to signed PUT. |
+| 2026-08-11 | IP-0 plan reconciliation | Current `main` (`de93182`): backend `npm test` 464 passed / 7 skipped / 471 total across 26 suites, `npm run typecheck` clean; Flutter `flutter test` 359 passed; `flutter analyze --no-pub --no-fatal-infos` 9 issues, zero warnings, zero errors | Pass locally; counted-baseline comparison not reproducible locally | Records the state of `main` at the 2026-08-11 reconciliation. The counted analyzer baseline is stamped Flutter 3.44.1 / Dart 3.12.1 to match the CI pin; this machine now runs Flutter 3.44.9 / Dart 3.12.2, so `analyzer_baseline.dart check` exits with a toolchain-mismatch error by design. The raw analyzer numbers above are reproducible; the baseline comparison is currently evidencable only on the pinned CI toolchain. No new operational, staging, or deployment claim is made. |
