@@ -4,10 +4,7 @@ class LoginRequestModel {
   final String email;
   final String password;
 
-  const LoginRequestModel({
-    required this.email,
-    required this.password,
-  });
+  const LoginRequestModel({required this.email, required this.password});
 
   factory LoginRequestModel.fromJson(Map<String, dynamic> json) {
     return LoginRequestModel(
@@ -17,23 +14,14 @@ class LoginRequestModel {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'username': email,
-      'password': password,
-    };
+    return {'username': email, 'password': password};
   }
 
   factory LoginRequestModel.fromEntity(LoginRequestEntity entity) {
-    return LoginRequestModel(
-      email: entity.email,
-      password: entity.password,
-    );
+    return LoginRequestModel(email: entity.email, password: entity.password);
   }
 
   LoginRequestEntity toEntity() {
-    return LoginRequestEntity(
-      email: email,
-      password: password,
-    );
+    return LoginRequestEntity(email: email, password: password);
   }
 }

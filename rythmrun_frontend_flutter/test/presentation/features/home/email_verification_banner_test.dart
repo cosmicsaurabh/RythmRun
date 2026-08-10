@@ -16,9 +16,7 @@ Future<void> _pump(WidgetTester tester, UserEntity? user) {
   return tester.pumpWidget(
     ProviderScope(
       overrides: [currentUserProvider.overrideWithValue(user)],
-      child: const MaterialApp(
-        home: Scaffold(body: EmailVerificationBanner()),
-      ),
+      child: const MaterialApp(home: Scaffold(body: EmailVerificationBanner())),
     ),
   );
 }

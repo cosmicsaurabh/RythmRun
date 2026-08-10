@@ -274,7 +274,9 @@ class _TrackingHistoryDetailsScreenState
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+            color: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -367,7 +369,9 @@ class _TrackingHistoryDetailsScreenState
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+            color: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -442,7 +446,9 @@ class _TrackingHistoryDetailsScreenState
         borderRadius: BorderRadius.circular(radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+            color: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -523,7 +529,9 @@ class _TrackingHistoryDetailsScreenState
         ),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+            color: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -552,7 +560,10 @@ class _TrackingHistoryDetailsScreenState
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(radiusMd),
-              border: Border.all(color: Colors.grey.withValues(alpha: 0.2), width: 1),
+              border: Border.all(
+                color: Colors.grey.withValues(alpha: 0.2),
+                width: 1,
+              ),
             ),
             child: Text(
               workout.notes!,

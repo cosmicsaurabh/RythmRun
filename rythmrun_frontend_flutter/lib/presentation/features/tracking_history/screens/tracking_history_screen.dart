@@ -814,7 +814,9 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
                     ).colorScheme.onPrimary.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(radiusMd),
                     border: Border.all(
-                      color: getWorkoutColor(workout.type).withValues(alpha: 0.1),
+                      color: getWorkoutColor(
+                        workout.type,
+                      ).withValues(alpha: 0.1),
                       width: 1,
                     ),
                   ),

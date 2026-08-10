@@ -161,7 +161,8 @@ final ColorScheme colorSchemeLight = ColorScheme.light(
   surface:
       CustomAppColors
           .surfaceBackgroundLight, // Main background for components like cards, sheets
-  onSurface: CustomAppColors.primaryTextLight, // Text/icons on general app background
+  onSurface:
+      CustomAppColors.primaryTextLight, // Text/icons on general app background
   error: CustomAppColors.statusDanger, // For error states
   onError: CustomAppColors.white, // Text/icons on error color
 );
@@ -412,7 +413,8 @@ final ColorScheme colorSchemeDark = ColorScheme.dark(
       CustomAppColors
           .surfaceBackgroundDark, // Main background for components like cards, sheets in dark mode
   onSurface:
-      CustomAppColors.primaryTextDark, // Text/icons on general app background for dark mode
+      CustomAppColors
+          .primaryTextDark, // Text/icons on general app background for dark mode
   error: CustomAppColors.statusDanger, // For error states
   onError: CustomAppColors.white, // Text/icons on error color
 );
