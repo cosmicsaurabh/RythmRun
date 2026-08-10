@@ -86,6 +86,7 @@ dependencies:
 
   # Ads
   google_mobile_ads: ^5.1.0
+  hugeicons: ^1.1.7
 
 dev_dependencies:
   flutter_test:
