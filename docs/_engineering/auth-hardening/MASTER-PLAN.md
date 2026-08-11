@@ -4,7 +4,7 @@ published: false
 
 # Auth Hardening & Tunable Timing — Master Plan
 
-**Status:** Phases 0–1 merged · Phase 2 complete — awaiting review · **Owner:** maintainer · **Created:** 2026-08-11
+**Status:** Phases 0–2 done · Phase 3a complete — awaiting review · **Owner:** maintainer · **Created:** 2026-08-11
 **Source:** auth + refresh audit (16 confirmed findings, 1 plausible, 2 refuted)
 **Relationship to the improvement program:** this is IP-2 follow-up work. It does
 not replace `IP-2-auth-account-privacy.md`; when a phase here lands, its evidence
@@ -639,8 +639,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [~] Real-device airplane-mode proof is a maintainer deploy check (use `ACCESS_TOKEN_TTL_SECONDS=30`)
 
 ### Phase 3 — Client credential simplification
-- [ ] **3a** legacy migration + `requiresServerVerification` deleted (43 refs, 5 files)
-- [ ] **3a** dead legacy-migration tests removed; suite still green
+- [x] **3a** legacy migration + `requiresServerVerification` / `markServerVerified` deleted across 5 lib files (net −854 lines). Kept a simplified gate-protected `markCurrentCredentialsServerVerified` — its only surviving job is the sync-timer reset, not a verification stamp.
+- [x] **3a** dead legacy-migration + verification-stamp tests removed (15 tests); suite green at 344, analyzer 9
 - [ ] **M2** same-session rotation accepted (on simplified coordinator)
 - [ ] **A3** failed flights evicted
 - [ ] **A4** avatar replay policy
@@ -700,7 +700,8 @@ true starting point. Phase 0 adds config-spine tests, taking the backend to
 507 passed / 7 skipped / 514 total with Flutter unchanged at 359. Phase 1 adds
 the M5 sweep and M3 rate-limit tests → 508 passed / 7 skipped / 515 total.
 Phase 2 adds four grace-window rotation tests → 512 passed / 7 skipped / 519
-total.)
+total. Phase 3a is client-only and **deliberately drops** the Flutter count from
+359 to 344 by deleting 15 dead legacy-migration / verification-stamp tests.)
 
 **Four known traps** (from `CLAUDE.md`, repeated because they cost real time):
 1. Use `npm test`, never `npx jest` — the suite is native ESM.

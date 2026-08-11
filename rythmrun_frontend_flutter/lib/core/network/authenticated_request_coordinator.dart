@@ -143,10 +143,9 @@ class AuthenticatedRequestCoordinator implements AuthenticatedRequestExecutor {
     }
   }
 
-  /// Commits a successful server verification under the authentication gate.
-  ///
-  /// This keeps the verification timestamp from being written back after an
-  /// account exit has drained the gate and cleared local authentication data.
+  /// Commits a successful online verification under the authentication gate by
+  /// resetting the backend-sync timer. The gate keeps this from running after an
+  /// account exit has drained it and cleared local authentication data.
   Future<void> markCurrentCredentialsServerVerified() async {
     final lease = _authenticationAttemptGate.tryAcquire();
     if (lease == null) {
@@ -156,10 +155,6 @@ class AuthenticatedRequestCoordinator implements AuthenticatedRequestExecutor {
     }
 
     try {
-      final snapshot = await _readRequiredSnapshot();
-      if (snapshot.requiresServerVerification) {
-        await _markMigratedSnapshotVerified(snapshot);
-      }
       await _commitServerVerificationSafely();
     } finally {
       lease.release();
@@ -349,19 +344,6 @@ class AuthenticatedRequestCoordinator implements AuthenticatedRequestExecutor {
       return await _credentialVault.compareAndSetCredentials(
         expectedRevision: expectedRevision,
         replacement: replacement,
-        requiresServerVerification: false,
-      );
-    } catch (_) {
-      throw const AuthSessionUnavailable(
-        AuthSessionUnavailableReason.credentialStoreUnavailable,
-      );
-    }
-  }
-
-  Future<AuthCredentialSnapshot?> _markServerVerified(int revision) async {
-    try {
-      return await _credentialVault.markCredentialsServerVerified(
-        expectedRevision: revision,
       );
     } catch (_) {
       throw const AuthSessionUnavailable(
@@ -394,39 +376,7 @@ class AuthenticatedRequestCoordinator implements AuthenticatedRequestExecutor {
     AuthCredentialSnapshot expected,
   ) async {
     final current = await _readSnapshot();
-    if (_sameCredentials(current, expected)) {
-      if (!expected.requiresServerVerification) return;
-      await _markMigratedSnapshotVerified(expected);
-      return;
-    }
-
-    // Concurrent first requests can both prove the same migrated pair. The
-    // first CAS increments the envelope revision; the second accepts that
-    // already-verified state only when the token pair is still identical.
-    if (expected.requiresServerVerification &&
-        current != null &&
-        current.pair == expected.pair &&
-        !current.requiresServerVerification) {
-      return;
-    }
-
-    throw const AuthSessionUnavailable(
-      AuthSessionUnavailableReason.credentialsChanged,
-    );
-  }
-
-  Future<void> _markMigratedSnapshotVerified(
-    AuthCredentialSnapshot expected,
-  ) async {
-    final verified = await _markServerVerified(expected.revision);
-    if (verified != null) return;
-
-    final current = await _readSnapshot();
-    if (current != null &&
-        current.pair == expected.pair &&
-        !current.requiresServerVerification) {
-      return;
-    }
+    if (_sameCredentials(current, expected)) return;
 
     throw const AuthSessionUnavailable(
       AuthSessionUnavailableReason.credentialsChanged,

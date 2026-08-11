@@ -259,9 +259,7 @@ class AuthRepositoryImpl implements AuthRepository {
     if (credentialSnapshot == null) {
       return SessionValidationStatus.invalid;
     }
-    final requiresServerCheck =
-        credentialSnapshot.requiresServerVerification ||
-        await _localDataSource.needsBackendSync();
+    final requiresServerCheck = await _localDataSource.needsBackendSync();
 
     if (requiresServerCheck) {
       try {

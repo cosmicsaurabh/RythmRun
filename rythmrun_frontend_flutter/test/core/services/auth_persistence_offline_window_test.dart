@@ -224,32 +224,6 @@ void main() {
       },
     );
 
-    test(
-      'a migrated pair is ineligible until verified, then bounded',
-      () async {
-        final pair = _pair(base);
-        final harness = build(
-          preferences: <String, Object>{
-            AuthPersistenceService.legacyAccessTokenKey: pair.accessToken,
-            AuthPersistenceService.legacyRefreshTokenKey: pair.refreshToken,
-            AuthPersistenceService.userDataKey: _encodedUser,
-            AuthPersistenceService.lastBackendSyncKey: base.toIso8601String(),
-          },
-        );
-
-        final migrated = await harness.service.readCredentialSnapshot();
-        expect(migrated?.requiresServerVerification, isTrue);
-        expect(await harness.service.canStayLoggedInOffline(), isFalse);
-
-        await harness.service.markCredentialsServerVerified(
-          expectedRevision: migrated!.revision,
-        );
-        expect(await harness.service.canStayLoggedInOffline(), isTrue);
-
-        harness.setNow(base.add(const Duration(days: 8)));
-        expect(await harness.service.canStayLoggedInOffline(), isFalse);
-      },
-    );
   });
 }
 
