@@ -5,12 +5,14 @@ import {
   AuthApplicationError,
   invalidRefreshError,
 } from '../errors/auth.error.js';
+import { AccountDeletionServiceError } from '../errors/account-deletion.error.js';
 import {
   DtoValidationError,
   validateDto,
 } from '../middleware/validation.middleware.js';
 import {
   ChangePasswordDto,
+  DeleteAccountDto,
   GoogleAuthDto,
   LoginUserDto,
   PasswordResetConfirmDto,
@@ -42,6 +44,14 @@ function sendError(
       error: error.code,
       message: error.message,
       retryable: error.retryable,
+      statusCode: error.statusCode,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  if (error instanceof AccountDeletionServiceError) {
+    return res.status(error.statusCode).json({
+      error: error.code,
+      message: error.message,
       statusCode: error.statusCode,
       timestamp: new Date().toISOString(),
     });
@@ -319,4 +329,22 @@ export class UserController {
       });
     }
   };
+
+  deleteAccount = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dto = await validateDto(DeleteAccountDto, req.body);
+      await this.userService.deleteAccount(req.user!.id, dto);
+      res.status(200).json({
+        message: 'Account deleted successfully',
+        statusCode: 200,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: unknown) {
+      sendError(res, error, {
+        validationCode: 'ACCOUNT_DELETION_FAILED',
+        unexpectedOperation: 'Account deletion',
+      });
+    }
+  };
 }
+

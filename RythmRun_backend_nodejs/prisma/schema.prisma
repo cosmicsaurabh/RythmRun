@@ -242,3 +242,30 @@ model RefreshTokenRecord {
   @@index([sessionId, usedAt, revokedAt])
   @@index([expiresAt])
 }
+
+enum ObjectCleanupBucket {
+  AVATARS
+  ACTIVITY_IMAGES
+}
+
+enum ObjectCleanupStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model ObjectCleanupJob {
+  id            String              @id @default(cuid())
+  bucket        ObjectCleanupBucket
+  s3Key         String
+  attemptCount  Int                 @default(0)
+  status        ObjectCleanupStatus @default(PENDING)
+  nextAttemptAt DateTime            @default(now())
+  lastError     String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @default(now()) @updatedAt
+
+  @@index([status, nextAttemptAt])
+}
+

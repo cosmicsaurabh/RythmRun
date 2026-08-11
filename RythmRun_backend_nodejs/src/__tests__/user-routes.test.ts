@@ -15,6 +15,7 @@ const mockUserController = {
   me: jest.fn(),
   updateProfile: jest.fn(),
   changePassword: jest.fn(),
+  deleteAccount: jest.fn(),
 };
 
 jest.unstable_mockModule('../config/container.js', () => ({
@@ -58,6 +59,7 @@ describe('user routes', () => {
       '/profile',
       '/change-password',
       '/verify-email/resend',
+      '/me',
     ]);
     expect(routePaths).not.toContain('/profile-picture');
     expect(routePaths).not.toContain('/profile-picture/:id');

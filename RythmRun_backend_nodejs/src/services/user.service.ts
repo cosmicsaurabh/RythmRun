@@ -12,14 +12,22 @@ import {
   passwordUnavailableError,
   verificationRateLimitedError,
 } from '../errors/auth.error.js';
+import {
+  AccountDeletionServiceError,
+  accountDeletionGoogleInvalidError,
+  accountDeletionPasswordInvalidError,
+  accountDeletionReauthRequiredError,
+} from '../errors/account-deletion.error.js';
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import {
   ChangePasswordDto,
+  DeleteAccountDto,
   GoogleAuthDto,
   LoginUserDto,
   RegisterUserDto,
   UpdateProfileDto,
 } from '../models/dto/user.dto.js';
+import { ObjectCleanupRunner } from './object-cleanup.runner.js';
 import {
   AuthSessionService,
   type AuthResponse,
@@ -677,4 +685,98 @@ export class UserService {
     }
     return toSafeUserResponse(user);
   }
+
+  async deleteAccount(userId: number, dto: DeleteAccountDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new AuthApplicationError(
+        'AUTH_USER_NOT_FOUND',
+        404,
+        'User account was not found',
+      );
+    }
+
+    if (user.password !== null) {
+      if (!dto.password) {
+        throw accountDeletionReauthRequiredError();
+      }
+      const matches = await bcrypt.compare(dto.password, user.password);
+      if (!matches) {
+        throw accountDeletionPasswordInvalidError();
+      }
+    } else {
+      if (!dto.googleIdToken) {
+        throw accountDeletionReauthRequiredError();
+      }
+      if (this.googleIdentityVerifier === undefined) {
+        throw new Error('Google identity verifier is not configured');
+      }
+      try {
+        const verified = await this.googleIdentityVerifier.verifyIdToken(
+          dto.googleIdToken,
+        );
+        if (verified.subject !== user.googleSubject) {
+          throw accountDeletionGoogleInvalidError();
+        }
+      } catch (error) {
+        if (error instanceof AccountDeletionServiceError) throw error;
+        throw accountDeletionGoogleInvalidError();
+      }
+    }
+
+    const activityImages = await this.prisma.activityImage.findMany({
+      where: { userId },
+      select: { s3Key: true },
+    });
+    const avatarIntents = await this.prisma.avatarUploadIntent.findMany({
+      where: { userId },
+      select: { key: true, cleanupKey: true },
+    });
+
+    const avatarKeys = new Set<string>();
+    if (user.profilePicturePath) {
+      avatarKeys.add(user.profilePicturePath);
+    }
+    for (const intent of avatarIntents) {
+      avatarKeys.add(intent.key);
+      if (intent.cleanupKey) avatarKeys.add(intent.cleanupKey);
+    }
+
+    const activityKeys = new Set<string>();
+    for (const img of activityImages) {
+      activityKeys.add(img.s3Key);
+    }
+
+    await this.authSessions.withSerializableTransaction(async (transaction) => {
+      for (const s3Key of avatarKeys) {
+        await transaction.objectCleanupJob.create({
+          data: {
+            bucket: 'AVATARS',
+            s3Key,
+            status: 'PENDING',
+          },
+        });
+      }
+
+      for (const s3Key of activityKeys) {
+        await transaction.objectCleanupJob.create({
+          data: {
+            bucket: 'ACTIVITY_IMAGES',
+            s3Key,
+            status: 'PENDING',
+          },
+        });
+      }
+
+      await transaction.user.delete({
+        where: { id: userId },
+      });
+    });
+
+    const runner = new ObjectCleanupRunner(this.prisma);
+    await runner.processPendingJobs().catch((err) => {
+      console.error('Asynchronous object cleanup runner error:', err);
+    });
+  }
 }
+

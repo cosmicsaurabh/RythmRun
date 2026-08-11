@@ -22,6 +22,7 @@ export interface UserRouteController {
   me: RequestHandler;
   updateProfile: RequestHandler;
   changePassword: RequestHandler;
+  deleteAccount: RequestHandler;
 }
 
 export interface UserRouterDependencies {
@@ -179,6 +180,14 @@ export function createUserRouter({
     rateLimits.verificationResend,
     controller.resendVerification,
   );
+
+  /**
+   * @route DELETE /api/users/me
+   * @description Delete authenticated user account and all associated data
+   * @auth Required
+   * @body {DeleteAccountDto} - password or googleIdToken
+   */
+  router.delete('/me', authenticate, controller.deleteAccount);
 
   return router;
 }
