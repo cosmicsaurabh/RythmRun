@@ -62,53 +62,27 @@ outside `lib/presentation/features/`, and 61 semantic icon aliases in
 `lib/theme/app_theme.dart` coexist with ~99 raw `Icons.*` uses. Follow the
 majority convention in the file you are editing; do not launch a migration.
 
-## Code Simplicity and Readability
+## Strict Coding Philosophy
 
-Prefer the smallest direct implementation that fully satisfies the current
-requirement.
+- **Readability Over Cleverness**: Write highly readable, explicit code. Avoid complex abstractions, design-pattern jargon, and over-engineering.
+  - Prefer the smallest direct implementation that fully satisfies the current requirement.
+  - Keep one-use logic at its call site when it remains readable. Do not add pass-through helpers, wrapper widgets/classes, adapters, services, extensions, or separate files merely to rename an operation, shorten a file, or reduce line length.
+  - A new abstraction with only one caller must earn its existence by isolating a real domain or side-effect boundary, satisfying a framework constraint, or making genuinely complex logic easier to understand or test. Otherwise, keep the logic inline.
+  - Do not add speculative generalization, configuration, defensive branches, or future-proofing without a current requirement or demonstrated failure mode. Preserve compatibility where repository rules require it.
+  - Prefer clear names and visible, straightforward control flow over clever or deeply nested expressions. Reuse an established project abstraction before creating a parallel one.
+  - Do not introduce a design pattern, generic type parameter, metaprogramming trick, or layer of indirection because it is more "correct" in the abstract. If the concrete problem does not demand it, it is a cost with no payer.
 
-- Keep one-use logic at its call site when it remains readable. Do not add
-  pass-through helpers, wrapper widgets/classes, adapters, services, extensions,
-  or separate files merely to rename an operation, shorten a file, or reduce
-  line length.
-- A new abstraction with only one caller must earn its existence by isolating a
-  real domain or side-effect boundary, satisfying a framework constraint, or
-  making genuinely complex logic easier to understand or test. Otherwise, keep
-  the logic inline.
-- Do not add speculative generalization, configuration, defensive branches, or
-  future-proofing without a current requirement or demonstrated failure mode.
-  Preserve compatibility where repository rules require it.
-- Prefer clear names and visible, straightforward control flow over clever or
-  deeply nested expressions. Reuse an established project abstraction before
-  creating a parallel one.
-- Keep short calls, declarations, conditions, signatures, and expressions on one
-  line when they fit the formatter width. Let `dart format` and the TypeScript
-  style decide unavoidable breaks; do not hand-force one-item-per-line layouts.
-- Match nearby code and keep the diff scoped. Format only the exact changed
-  files. Do not refactor or reformat unrelated code — the plan says so
-  explicitly, and a `dart format` sweep across untouched files buries the real
-  change.
-- Before finishing, make a simplification pass and remove indirection with no
-  clear present benefit.
+- **Boring Code Wins**: If a simple if/else statement or a basic loop gets the job done reliably, use it instead of advanced, obscure language features.
+  - Prefer an obvious loop, an early return, and a named intermediate variable over a chained one-liner, a nested ternary, a clever reduce, or a dense comprehension that packs three ideas into one expression.
+  - Keep short calls, declarations, conditions, signatures, and expressions on one line when they fit the formatter width. Let `dart format` and the TypeScript style decide unavoidable breaks; do not hand-force one-item-per-line layouts.
+  - Match nearby code and keep the diff scoped. Format only the exact changed files. Do not refactor or reformat unrelated code — the plan says so explicitly, and a `dart format` sweep across untouched files buries the real change.
+  - Line count is not the score. Fewer lines that take longer to read is a regression; do not compress genuinely complex code to make it look tidy.
+  - Prefer explaining *why* in a short comment over encoding the reason in a pattern the reader has to reverse-engineer.
 
-**When asked to refactor, optimize for the reader.** RythmRun is a learning and
-portfolio project — the code is meant to be understood, not admired. A refactor
-succeeds when someone reading the file six months from now follows it faster
-than before. It fails when it is shorter but needs a second pass to decode.
-
-- Prefer an obvious loop, an early return, and a named intermediate variable
-  over a chained one-liner, a nested ternary, a clever reduce, or a dense
-  comprehension that packs three ideas into one expression.
-- Prefer explaining *why* in a short comment over encoding the reason in a
-  pattern the reader has to reverse-engineer.
-- Do not introduce a design pattern, generic type parameter, metaprogramming
-  trick, or layer of indirection because it is more "correct" in the abstract.
-  If the concrete problem does not demand it, it is a cost with no payer.
-- Line count is not the score. Fewer lines that take longer to read is a
-  regression; do not compress genuinely complex code to make it look tidy.
-- If a refactor changes behavior at all, say so explicitly — a refactor is
-  supposed to be behavior-preserving, and a silent change hidden inside a
-  cleanup diff is the hardest kind of bug to find later.
+- **Maintainable for One**: Keep the codebase simple enough that a single developer can easily understand and modify any part of it six months from now.
+  - RythmRun is a learning and portfolio project — the code is meant to be understood, not admired. A refactor succeeds when someone reading the file six months from now follows it faster than before. It fails when it is shorter but needs a second pass to decode.
+  - Before finishing, make a simplification pass and remove indirection with no clear present benefit.
+  - If a refactor changes behavior at all, say so explicitly — a refactor is supposed to be behavior-preserving, and a silent change hidden inside a cleanup diff is the hardest kind of bug to find later.
 
 ## Verification
 

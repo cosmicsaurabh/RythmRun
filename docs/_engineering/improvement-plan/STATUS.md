@@ -22,7 +22,7 @@ _Last updated: 2026-08-11 against `main` at `de93182`._
 | --- | --- | --- | --- |
 | IP-0 Security containment (P0) | **In progress** | 6 of 10 code packages | IP-0.1, 0.1A, 0.6, 0.7 — all operational |
 | IP-1 Tracking correctness | **Verification** | 7 of 7 | — |
-| IP-2 Auth, account, privacy | **In progress** | 5 of 8 + IP-2.9, all merged to main | IP-2.7 |
+| IP-2 Auth, account, privacy | **Verification** | 7 of 8 + IP-2.9 code-delivered | IP-2.7 |
 | IP-3 Workout durability | **Planned** | 0 of 5 | all |
 | IP-4 Sync & restore | **Planned** | 0 of 6 | all |
 | IP-5 Release readiness | **Planned** | 0 of 7 | all (5.7 `Deferred`) |
@@ -109,7 +109,7 @@ All seven delivered; each waits on a device, staging, or hosted gate.
 | 2.1 Session/refresh semantics | Verification | ✓ | MC-2.1, MC-2.2 |
 | 2.2 Secure mobile token storage | Verification | ✓ | MC-2.3 |
 | 2.3 Offline-session behavior | Verification | ✓ | MC-2.3 |
-| 2.4 Profile, recovery, deletion | **In progress** | partial | Profile and password recovery delivered and merged (PR #164). **Account deletion is the last slice** — blocked on your retention/reauth decision, then transactional revocation + durable object-cleanup outbox/runner + full local and remote purge. Production exposure gated by MC-2.5 |
+| 2.4 Profile, recovery, deletion | Verification | ✓ | Code delivered for profile, password recovery, and account deletion slices. Production exposure gated by MC-2.5 |
 | 2.5 Private routes; disable social | Verification | ✓ | Merged (PR #165, `bd78d9a`). Apply the migration on staging/production; complete the IP-5.6 policy review |
 | 2.6 API abuse controls & typed errors | Verification | ✓ | Code delivered for abuse-control and storage-boundary slices (items 1–9). MC-2.6 owns deployed edge configuration |
 | 2.7 Protect retained routes/photos at rest | Planned | ✗ | Not started; gated on an owner design spike (threat model, library/perf, backup and key-loss recovery) |
@@ -137,11 +137,7 @@ Nothing delivered. See the phase files for the full specs.
 Lowest-numbered unblocked packages. The operational IP-0 gates run in parallel
 and are not substitutes.
 
-1. **IP-2.4 account deletion** — needs your retention and
-   password-versus-fresh-Google reauthentication decision first, then
-   transactional revocation, a durable object-cleanup outbox and runner, remote
-   deletion state, and complete local purge.
-2. **IP-2.7 retained-data protection** — gated on the owner design spike.
+1. **IP-2.7 retained-data protection** — gated on the owner design spike.
 
 ## Delivery history
 
@@ -154,6 +150,7 @@ and are not substitutes.
 | 2026-07-28 | IP-0.4 avatar re-hardening — presigned PUT with signed `content-length`, authenticated read URLs, explicit buckets | PR #170 |
 | 2026-08-11 | Release fixes — OpenStreetMap attribution, deletion-request link, `1.2.0+21`; toolchain bump; `APP_ENV` define | PR #171 |
 | 2026-08-11 | IP-2.6 storage boundary slice (items 6–8) — presigned PUT with signed Content-Length/Content-Type, S3 metadata & checksum verification, user/activity quotas, abandoned upload cleanup | Local branch |
+| 2026-08-11 | IP-2.4 account deletion slice — re-authentication control (password/Google token), transactional `ObjectCleanupJob` outbox, atomic user delete, `ObjectCleanupRunner`, Flutter datasource & error mapping | Local branch |
 
 Each phase file's evidence log carries the detail, including what was
 deliberately *not* claimed.
