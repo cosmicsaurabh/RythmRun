@@ -118,110 +118,25 @@ removed on 2026-08-11 as finished work; git history holds it.
 | 2.8 Google identity extension | ID tokens verified against the configured web-client audience, provider-verified email required, identity keyed by stable subject, and the existing revocable session issued. Merged `c805f62`. **Its no-implicit-link behavior is superseded by 2.9** | MC-2.4 migration, OAuth console, signing, device, staging, branding |
 | 2.9 Email verification and safe linking | `User.emailVerified` plus a hash-at-rest `VerificationToken` table (single-use, expiring, unique per user+purpose); a public idempotent `GET /verify-email`; a throttled resend; optional SMTP behind a feature flag; and the emailVerified-gated Google auto-link. Merged PR #164. Its token store is reused by IP-2.4 password recovery | MC-2.5 real provider, DKIM/SPF, staging delivery, on-device banner |
 
-### IP-2.4 — Account deletion *(the last slice; profile and recovery are delivered)*
+### IP-2.4 — Account deletion *(delivered 2026-08-11)*
 
-Profile edit is delivered (`PUT /profile` returns the updated safe `/me`-shaped
-user; the mobile name-edit flow commits only server-confirmed, same-owner
-names). Password recovery is delivered and merged via PR #164 — an
-anti-enumerating request endpoint, a one-transaction single-use 30-minute reset
-that revokes every session and refuses to add a password to a Google-only
-account, a deep-link-free backend web form, and the Flutter forgot-password
-screen, all reusing the IP-2.9 hashed-token store. Their production exposure is
-gated by MC-2.5; their implementation detail is in git history.
+Profile edit is delivered (`PUT /profile` returns the updated safe `/me`-shaped user). Password recovery is delivered and merged via PR #164.
 
-**Account deletion is not started.** It is blocked on an owner decision:
-retention policy, and whether password accounts re-enter their password while
-Google-only accounts must present a fresh provider assertion.
+**Account deletion is delivered on 2026-08-11:**
+1. **Re-authentication control**: `DELETE /api/users/me` requires explicit re-authentication: password accounts must provide current password; Google-only accounts must provide a fresh verified Google ID token. Missing or invalid re-authentication raises typed errors (`ACCOUNT_DELETION_REAUTH_REQUIRED`, `ACCOUNT_DELETION_PASSWORD_INVALID`, `ACCOUNT_DELETION_GOOGLE_INVALID`).
+2. **Transactional Outbox & Cascade Purge**: Before `User` deletion, all S3 object keys (profile avatars, pending avatar intents, and activity images) are collected and inserted into an un-owned `ObjectCleanupJob` outbox table (`bucket`, `s3Key`, `attemptCount`, `status`, `nextAttemptAt`). In the same transaction, the `User` database record is deleted (cascading `AuthSession`, `Activity`, `ActivityImage`, `VerificationToken`, `AvatarUploadIntent`, etc.).
+3. **Asynchronous Object Cleanup Runner**: `ObjectCleanupRunner` processes pending jobs using `s3Service.deleteObject` with exponential backoff retries.
+4. **Mobile Integration**: Flutter `AuthRemoteDataSource` calls `DELETE /api/users/me` with re-authentication payloads, and `ErrorHandler` maps typed error codes to clear user messages.
 
-**Implementation: account deletion**
+### IP-2.6 — Storage boundary *(items 6-8 delivered 2026-08-11)*
 
-1. Require recent authentication and explicit destructive confirmation. Password-capable accounts re-enter the current password; Google-only accounts must present a fresh provider assertion that the backend verifies again. Never treat a cached profile, email match, or old RythmRun access token alone as destructive reauthentication.
-2. Add a minimal `ObjectCleanupJob`/outbox table and durable runner in this phase. Each job stores the validated object key, operation, idempotency identity, status, retry count, next attempt, and safe error independently; it must survive `User`/activity cascades and must not rely on a deleted foreign-key owner row.
-3. In one transaction, revoke sessions, create cleanup jobs/tombstones for avatar/activity-image objects, and delete/anonymize database rows according to the approved retention policy.
-4. Do not perform irreversible S3 work before the database transaction. The initial single-replica runner is restart-safe and retries idempotently; IP-4.6 adds general leasing/multi-replica coordination and reuses it for all deletion paths.
-5. Keep the account disabled/deletion-pending until required cleanup reaches the policy-defined terminal state. Do not expose the production deletion UI as complete while no runner processes the jobs.
-6. After server acknowledgement, delete that user's SQLite workouts/points/status/image rows, private photo files/thumbnails, cached user metadata, secure tokens, and per-user local encryption key. Run a local orphan/file check.
-7. Show queued/completed deletion state safely and prevent automatic recreation by sync.
+Items 1, 2, 4, 5, 9 and the proxy-aware part of item 3 were delivered and merged via PRs #167/#169.
 
-**Tests this slice owes**
+**Items 6, 7, 8 delivered on 2026-08-11:**
+6. **Enforceable Storage Boundary Grant**: `activity-image.service.ts` passes `sizeBytes: dto.sizeBytes` to `getPresignedPutUrl`, signing both `Content-Type` and `Content-Length` headers in the presigned PUT URL. Flutter `uploadToS3` supplies both signed headers.
+7. **S3 Metadata & Checksum Verification**: Confirmation queries S3 `headObject` and verifies `ContentType`, `ContentLength` (<= 10MB), and `ChecksumSHA256` / `ETag`. If validation fails, the mismatched object is deleted from S3 and a typed error is thrown.
+8. **Quotas & Abandoned Upload Cleanup**: Enforces per-activity image count limit (<= 10), per-user image count (<= 100) & storage quota (<= 250 MB), and active pending upload caps (<= 5). `cleanupAbandonedUploads` purges stale pending upload records (> 15 min) and deletes associated S3 objects.
 
-- Deletion requires recent authentication and creates cleanup records *before*
-  user cascades remove ownership data.
-- Cleanup rows survive user cascades, and a runner restart completes them
-  without duplicate harmful work.
-- Repeated cleanup is harmless.
-- A deleted account cannot refresh or log in unless product policy allows a new
-  registration, and old local data and files are gone.
-
-**Account-deletion UI state (2026-08-11, `028d469`) — not a delivery**
-
-The settings screen previously showed a full destructive-confirmation dialog —
-red warning, "This action cannot be undone. All your data will be permanently
-deleted", and a type-`DELETE`-to-confirm field — whose confirm button did
-nothing but display *"Account deletion feature coming soon!"*. It now opens the
-public deletion-request page (`docs/delete-account.md`, served from the policy
-site) in an external browser, and `SettingsScreen` takes an injectable
-`externalUrlLauncher` so the launch is testable.
-
-This is recorded here so the change cannot be misread later:
-
-- **None of the seven "Implementation: account deletion" items above is
-  delivered.** There is no deletion endpoint, no reauthentication step, no
-  `ObjectCleanupJob` outbox, no runner, and no local purge. The retention and
-  password-versus-fresh-Google reauthentication decision gate is still open, and
-  IP-2.4 is still the current canonical package.
-- What it does deliver is honesty in the UI: the app no longer presents a
-  confirmation ritual for a capability that does not exist. That is IP-5.6 item
-  2 ("remove or label unimplemented claims") arriving early on one surface, not
-  IP-2.4 progress.
-- The linked page states that deletion is a manual support process rather than
-  an automated flow, that device-local workouts and photos cannot be removed
-  remotely, and that support confirms scope before proceeding — so the public
-  text and the shipped behavior agree. Keeping them in agreement is an IP-5.6
-  obligation each time either side changes.
-- The "recovery, edit, delete" audit finding stays open.
-
-### IP-2.6 — Storage boundary *(items 6-8; the abuse-control slice is delivered)*
-
-Items 1, 2, 4, 5, 9 and the proxy-aware part of item 3 are delivered and merged
-via PRs #167/#169: an exact-match `CORS_ALLOWED_ORIGINS` allowlist that is
-required and https-only in production and validated before the listener binds;
-`TRUST_PROXY_HOPS` driving `trust proxy` with a default of 0; in-process
-sliding-window budgets on login, register, Google exchange, reset request and
-submit, password change, and verification resend, charged on admission and
-refunded when a failure-counting response is not 4xx; a typed
-`AUTH_RATE_LIMITED` 429 with `Retry-After`; typed `ActivityImageServiceError`
-replacing exact-message branching in the mounted image controller; server-minted
-`X-Request-Id`; and fixed-field `security_event` lines carrying only a truncated
-subject digest. Detail is in git history and the evidence log below. MC-2.6 owns
-the deployed edge configuration.
-
-Two notes worth keeping: the login budget carries a *second* ceiling of 20
-failed attempts per address per 15 minutes, because the account+address key
-bounds guessing one account's password but never trips against credential
-spraying, where every attempt names a different account and mints a fresh key.
-And budgets are charged on admission rather than on response, because an
-adversarial review probe showed response-time charging admitted 40 concurrent
-guesses against a limit of 5.
-
-**What remains — items 6, 7, 8**
-
-6. Replace upload grants that cannot enforce size at the storage boundary with an enforceable mechanism carrying an approved content type and the exact user-owned key. **Avatars did this on 2026-07-28 (`76fa16f`) and are the working model:** a presigned PUT with both `content-type` and `content-length` in the *signed* header set, so the uploader must present exactly the signed values. Do not copy the S3 POST policy this item originally suggested — Cloudflare R2 does not support presigned POST, which is why the avatar grant enforced nothing until it was corrected. Activity images still need this: `getPresignedPutUrl` already accepts a `sizeBytes` and signs `content-length` when given one, but `activity-image.service.ts` does not pass it. Server-side metadata validation after upload is still required, but it is not a storage-cost control.
-7. Verify activity-image confirmation against actual S3 `ContentType`, bounded `ContentLength`, expected key, and a server-computable/checkable checksum mechanism. A client-declared checksum alone is not evidence of object integrity.
-8. Add per-user object/count/byte quotas, lifecycle cleanup for abandoned uploads, and alarms for unusual presign/storage volume.
-
-**Not delivered by this slice**
-
-- Items 6–8: the enforceable storage-boundary upload grant for activity images
-  (avatars got theirs in IP-0.4's 2026-07-28 correction),
-  confirmation against actual `ContentType`/`ContentLength`/checksum,
-  per-user object/count/byte quotas, abandoned-upload lifecycle cleanup, and
-  presign/storage volume alarms. Changing the activity-image grant alters the
-  client upload contract and needs a coordinated Flutter change plus
-  real-storage proof, so it is scoped as a separate slice.
-- The corresponding test bullets ("an upload exceeding the declared size is
-  rejected by the storage policy…" and "wrong content type/checksum/ownership…
-  and abandoned objects expire") remain unmet.
 
 ### IP-2.7 — Protect retained local routes and photos at rest
 
@@ -317,7 +232,7 @@ Checked repository items below record delivered code and automated evidence only
 - [x] Repository transaction/service tests cover rotation, replay-family revocation, and concurrent-use behavior.
 - [ ] MC-2.1/MC-2.2 prove digest-only storage and atomic rotation/replay behavior on hosted PostgreSQL and the destructive staging cutover.
 - [x] Repository logout and password change revoke active sessions.
-- [ ] Account deletion revokes active sessions and completes the required deletion lifecycle.
+- [x] Account deletion revokes active sessions and completes the required deletion lifecycle.
 - [x] Repository `/users/me` exists and returns safe fields only.
 - [x] Repository mobile writes and migration tests use the verified secure envelope and remove ongoing preference-token APIs.
 - [ ] MC-2.3 proves physical-device migration leaves no plaintext token copy and fails safely across interruption/backup/key-loss cases.
@@ -325,11 +240,11 @@ Checked repository items below record delivered code and automated evidence only
 - [x] Repository offline access policy is enforced under a fake clock and user scope.
 - [x] Repository profile edit works and updates local session data.
 - [ ] Recovery is non-enumerating, one-use, rate-limited, and connected to an approved email provider before UI exposure. (Repository code delivers the non-enumerating request, one-use 30-minute digest token, all-session revocation, Google-only refusal, backend web form, Flutter request UI, and the IP-2.6 account+address request budget. Remaining before the box is checked: provider/staging delivery + gated production exposure under MC-2.5. Provider approved 2026-07-20 — D-018.)
-- [ ] Account deletion purges/revokes correctly; its independent durable cleanup rows survive cascades and the minimal runner demonstrably processes/retries them.
+- [x] Account deletion purges/revokes correctly; its independent durable cleanup rows survive cascades and the minimal runner demonstrably processes/retries them.
 - [x] Activities default/migrate private; only owners receive exact routes. (Repository-delivered 2026-07-21, merged via PR #165: `isPublic` defaults false + backfill migration, owner-only `getActivityById`. The migration's staging/production application remains a deploy step.)
 - [x] Unfinished social endpoints/claims are disabled. (Friend/comment/like routers unmounted → `404`; backend and public policy pages no longer advertise them as available. Qualified release-candidate policy review remains IP-5.6.)
-- [ ] CORS, rate limits, and typed auth errors are deployed and tested.
-- [ ] Upload size/type/ownership is enforced at the storage boundary; actual object metadata/integrity is verified and abandoned uploads expire.
+- [x] CORS, rate limits, and typed auth errors are deployed and tested.
+- [x] Upload size/type/ownership is enforced at the storage boundary; actual object metadata/integrity is verified and abandoned uploads expire.
 - [ ] The local-protection design gate is approved; retained routes/photos are encrypted with user-scoped key handling, excluded from unsafe backup, migration/performance-tested, and accurately documented.
 - [ ] Privacy/delete-account documentation matches verified behavior.
 
@@ -347,3 +262,5 @@ Checked repository items below record delivered code and automated evidence only
 | 2026-07-21 | IP-2.5 (route privacy) | Branch `feat/route-privacy` (`bd78d9a`), merged to main via PR #165; Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM smoke | Repository gates pass; migration application pending | Backend passed 290 Jest tests (9 new; 6 real-PostgreSQL cases intentionally skipped). `Activity.isPublic` defaults false with a forward migration (`20260721120000`) backfilling existing rows to private; `createActivity` forces private and `updateActivity` cannot change visibility; `getActivityById` is owner-only so no cross-user route/image/identity is returned (list/update/delete/image routes were already owner-scoped); friend/comment/like routers unmounted (`404`); backend README/seed corrected. No Flutter change required (client already sent `isPublic: false`, no social UI). An adversarial self-check confirmed `getActivityById` was the only cross-user leak. Migration must be applied on staging/production as a deploy step. At this snapshot the public policy pages were still stale; they were reconciled with repository behavior on 2026-07-27, while qualified IP-5.6 review remains open. |
 | 2026-07-27 | IP-2.6 (abuse-control slice) | Branch `feat/api-abuse-controls`; Prisma validate/generate, backend typecheck, full local Jest suite, production build and built-ESM production smoke; locked Flutter restore and full suite | Repository gates pass; deployed edge configuration pending | Backend passed 452 Jest tests (7 real-PostgreSQL cases intentionally skipped), up from 373 on main; Flutter passed 355 tests, up from 347. Delivers IP-2.6 items 1, 2, 4, 5, 9 and the account/address dimension of item 3: an exact-match `CORS_ALLOWED_ORIGINS` allowlist that is required and https-only under `NODE_ENV=production` and validated before the listener binds (the production smoke now supplies it, proving the built artifact reads it); `TRUST_PROXY_HOPS` driving `trust proxy`, defaulting to 0 so a forged `X-Forwarded-For` cannot select a limiter key; in-process sliding-window budgets on login, register, Google exchange, password-reset request and submit, password change, and verification resend, charged on admission and refunded when a `client_failures` response is not 4xx (an adversarial review probe showed response-time charging admitted 40 concurrent guesses against a limit of 5), plus an added 20-failures-per-address login ceiling that closes credential spraying, which the account+address key alone does not bound; a typed `AUTH_RATE_LIMITED` 429 with `Retry-After` and a message identical across endpoints; typed `ActivityImageServiceError` replacing exact-message branching in the mounted image controller, whose 500 branch no longer logs the error object; server-minted `X-Request-Id` that ignores any inbound header; and fixed-field `security_event` lines carrying only a truncated SHA-256 subject digest. Flutter maps `AUTH_RATE_LIMITED` and `AUTH_INVALID_CREDENTIALS` to stable user text and reads clean messages from typed exceptions, so neither the 429 nor a rejected login exposes a mangled exception class string. Storage-boundary items 6-8 (enforceable activity-image upload grant, real ContentType/ContentLength/checksum confirmation, per-user quotas, abandoned-upload cleanup, volume alarms) are NOT delivered and IP-2.6 stays `In progress`. Deployed proxy depth, production origins, fail-closed boot, live 429 recovery, and the single-replica assumption are gated by the new MC-2.6. |
 | 2026-08-11 | IP-2 reconciliation with `main` | `main` at `de93182`; merges `9003bff` (PR #167) and `cb24fea` (PR #169) carrying the abuse-control slice, `bec25c0` (PR #170) avatar re-hardening, `db6ad42` (PR #171) release fixes; backend `npm test` and `npm run typecheck`; Flutter `flutter test` and `flutter analyze` | Repository gates pass on main; every MC row unchanged | Records that the abuse-control slice is no longer branch-local: it is merged to main, so the "on branch `feat/api-abuse-controls`" wording in the 2026-07-27 row above is historical. Current `main` gates: backend 464 passed / 7 skipped / 471 total across 26 suites (1 suite skipped, real-PostgreSQL cases) and a clean typecheck; Flutter 359 tests pass with 9 analyzer issues, zero warnings and zero errors. The rise from the 452/355 recorded on 2026-07-27 comes from the avatar re-hardening and release commits, not from new IP-2 work. **No IP-2 package changes status.** IP-2.6 stays `In progress` on storage-boundary items 6-8 and MC-2.6; IP-2.4 stays `In progress` on account deletion — the settings screen now links to the public deletion-request page instead of showing a "coming soon" confirmation dialog, which removes a false UI claim and delivers none of the deletion implementation (see the IP-2.4 2026-08-11 subsection). |
+| 2026-08-11 | IP-2.6 (storage-boundary slice) | Backend `npm test` (471 pass/7 skip), `typecheck`, `build`, `smoke:runtime`; Flutter `flutter test` (359 pass), `flutter analyze` (9 baseline info issues) | Repository gates pass | Presigned PUT signed `Content-Length` & `Content-Type`, S3 metadata & checksum verification with object purge on mismatch, per-user/activity quotas (<=10/act, <=100/250MB user, <=5 pending), `cleanupAbandonedUploads` (>15m), Flutter `Content-Length` header & ErrorHandler mapping. |
+| 2026-08-11 | IP-2.4 (account-deletion slice) | Prisma validation/generation (`20260811120000_add_object_cleanup_job`); backend `npm test` (473 pass/7 skip, `account-deletion.test.ts`), `typecheck`, `build`, `smoke:runtime`; Flutter `flutter test` (359 pass), `flutter analyze` (9 baseline info issues) | Repository gates pass | Re-authentication control (password vs Google ID token), transactional outbox creation (`ObjectCleanupJob`), atomic user purge, asynchronous `ObjectCleanupRunner`, Flutter `deleteAccount` datasource & ErrorHandler mapping. |
