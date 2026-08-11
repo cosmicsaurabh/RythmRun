@@ -28,7 +28,6 @@ import {
   RegisterUserDto,
   UpdateProfileDto,
 } from '../models/dto/user.dto.js';
-import { ObjectCleanupRunner } from './object-cleanup.runner.js';
 import {
   AuthSessionService,
   type AuthResponse,
@@ -772,10 +771,10 @@ export class UserService {
       });
     });
 
-    const runner = new ObjectCleanupRunner(this.prisma);
-    await runner.processPendingJobs().catch((err) => {
-      console.error('Asynchronous object cleanup runner error:', err);
-    });
+    // The queued avatar/activity-image removals are drained by the scheduled
+    // object-cleanup sweep (server.ts). Running the runner inline here was the
+    // only trigger before, so a first-attempt failure left jobs stranded (M5);
+    // it also logged raw storage errors that can carry a presigned URL.
   }
 }
 

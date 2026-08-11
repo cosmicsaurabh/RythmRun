@@ -4,7 +4,7 @@ published: false
 
 # Auth Hardening & Tunable Timing — Master Plan
 
-**Status:** Phase 0 complete — awaiting review · **Owner:** maintainer · **Created:** 2026-08-11
+**Status:** Phase 0 merged · Phase 1 complete — awaiting review · **Owner:** maintainer · **Created:** 2026-08-11
 **Source:** auth + refresh audit (16 confirmed findings, 1 plausible, 2 refuted)
 **Relationship to the improvement program:** this is IP-2 follow-up work. It does
 not replace `IP-2-auth-account-privacy.md`; when a phase here lands, its evidence
@@ -629,9 +629,9 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [~] Both suites green (automated ✅) · manual 30s-TTL proof is a maintainer deploy check
 
 ### Phase 1 — Backend containment
-- [ ] **M5** cleanup runner scheduled + DI-resolved
-- [ ] **M3** `DELETE /me` rate limit
-- [ ] Tests for both
+- [x] **M5** cleanup runner scheduled on the sweep (DI-resolved in `server.ts`); inline post-deletion kick removed so the sweep is the single drain path (also drops a raw-error log on a storage path)
+- [x] **M3** `DELETE /me` rate limit — `accountDeletion` 5/hour, keyed by authenticated account, `count: 'all'`
+- [x] Tests: sweep drains the outbox (server-bootstrap); 6th deletion re-auth in an hour → `429` (api-abuse-controls)
 
 ### Phase 2 — Refresh grace window
 - [ ] **M1** grace branch in `rotateRefreshToken`
@@ -697,7 +697,8 @@ dart format --set-exit-if-changed <changed files only>
 Flutter 359 passed · analyzer 9 issues, 0 warnings, 0 errors. (The prior
 `464 / 7 / 471` figure was stale — the Phase 0 lock-baseline step measured the
 true starting point. Phase 0 adds config-spine tests, taking the backend to
-507 passed / 7 skipped / 514 total with Flutter unchanged at 359.)
+507 passed / 7 skipped / 514 total with Flutter unchanged at 359. Phase 1 adds
+the M5 sweep and M3 rate-limit tests → 508 passed / 7 skipped / 515 total.)
 
 **Four known traps** (from `CLAUDE.md`, repeated because they cost real time):
 1. Use `npm test`, never `npx jest` — the suite is native ESM.

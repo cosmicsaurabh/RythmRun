@@ -16,7 +16,8 @@ export type SecurityEventCategory =
   | 'auth.password_change'
   | 'auth.password_reset_request'
   | 'auth.password_reset_submit'
-  | 'auth.verification_resend';
+  | 'auth.verification_resend'
+  | 'auth.account_deletion';
 
 export type SecurityEventOutcome = 'rate_limited';
 

@@ -187,7 +187,12 @@ export function createUserRouter({
    * @auth Required
    * @body {DeleteAccountDto} - password or googleIdToken
    */
-  router.delete('/me', authenticate, controller.deleteAccount);
+  router.delete(
+    '/me',
+    authenticate,
+    rateLimits.accountDeletion,
+    controller.deleteAccount,
+  );
 
   return router;
 }

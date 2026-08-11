@@ -37,6 +37,7 @@ export const AUTH_RATE_LIMITS = {
   passwordResetSubmit: { limit: 10, windowMs: HOUR_MS },
   passwordChange: { limit: 5, windowMs: HOUR_MS },
   verificationResend: { limit: 5, windowMs: HOUR_MS },
+  accountDeletion: { limit: 5, windowMs: HOUR_MS },
 } as const;
 
 export const AUTH_RATE_LIMIT_RULES: readonly RateLimitRule[] = [
@@ -110,6 +111,16 @@ export const AUTH_RATE_LIMIT_RULES: readonly RateLimitRule[] = [
     count: 'all',
     key: authenticatedAccount,
   },
+  {
+    name: 'account-deletion',
+    category: 'auth.account_deletion',
+    ...AUTH_RATE_LIMITS.accountDeletion,
+    // Deletion re-authenticates (password or Google token). Charging every
+    // attempt, keyed by the proven user id, bounds re-auth guessing on a
+    // destructive endpoint — same shape as password-change.
+    count: 'all',
+    key: authenticatedAccount,
+  },
 ];
 
 export interface AuthRateLimiters {
@@ -121,6 +132,7 @@ export interface AuthRateLimiters {
   passwordResetSubmit: RequestHandler;
   passwordChange: RequestHandler;
   verificationResend: RequestHandler;
+  accountDeletion: RequestHandler;
 }
 
 const RULE_BY_NAME = new Map(AUTH_RATE_LIMIT_RULES.map((rule) => [rule.name, rule]));
@@ -158,6 +170,7 @@ export function createAuthRateLimiters(
     passwordResetSubmit: limiter('password-reset-submit', shared),
     passwordChange: limiter('password-change', shared),
     verificationResend: limiter('verification-resend', shared),
+    accountDeletion: limiter('account-deletion', shared),
   };
 }
 
@@ -173,5 +186,6 @@ export function createPassthroughRateLimiters(): AuthRateLimiters {
     passwordResetSubmit: passthrough,
     passwordChange: passthrough,
     verificationResend: passthrough,
+    accountDeletion: passthrough,
   };
 }

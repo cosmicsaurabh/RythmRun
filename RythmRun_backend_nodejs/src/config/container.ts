@@ -10,6 +10,7 @@ import { LikeService } from '../services/like.service.js';
 import { FriendService } from '../services/friend.service.js';
 import { AvatarService } from '../services/avatar.service.js';
 import { AuthSessionService } from '../services/auth-session.service.js';
+import { ObjectCleanupRunner } from '../services/object-cleanup.runner.js';
 import { GoogleAuthService } from '../services/google-auth.service.js';
 import { createEmailSender } from '../services/email.service.js';
 import type { AuthTimingEnvironment, EmailEnvironment } from './env.js';
@@ -50,6 +51,7 @@ export function configureContainer(
   container.register('LikeService', { useClass: LikeService });
   container.register('FriendService', { useClass: FriendService });
   container.register('AvatarService', { useClass: AvatarService });
+  container.register('ObjectCleanupRunner', { useClass: ObjectCleanupRunner });
 
   configured = true;
   return database;
