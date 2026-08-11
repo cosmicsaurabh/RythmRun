@@ -286,8 +286,18 @@ export interface AuthTimingEnvironment {
 ```
 
 Registered in the DI container as `'AuthTiming'`, consumed by `AuthSessionService`
-and `UserService`. The existing `export const`s stay as the **default values**
-those parsers reference, so tests keep a stable symbol to import.
+and `UserService`.
+
+**`RETRY_SWEEP_INTERVAL_SECONDS` is deliberately not in this interface.** It
+configures the sweep timer in `server.ts` and no service reads it, so it is parsed
+directly at bootstrap (`options.retryIntervalMs`) rather than injected.
+
+**Injection is required, not optional.** Export a `DEFAULT_AUTH_TIMING` constant
+(today's values) and make the constructor param a required, non-null field read as
+`this.authTiming.accessTokenTtlSeconds` — one path, no `?? CONST` fallbacks in
+method bodies. The ~20 manual `new AuthSessionService(...)` / `new UserService(...)`
+call sites in tests pass `DEFAULT_AUTH_TIMING` explicitly. We update the tests; we
+do not weaken the constructor to protect them.
 
 ### 2.3 Configuration contract — frontend `--dart-define`
 
@@ -457,11 +467,13 @@ rides the next Play release.
 - `CONFIGURATION.md` — new "Auth timing overrides" section
 
 **Steps**
-1. Backend: add the parser + type + bounds, keeping existing `export const`s as the default values.
-2. Backend: thread through DI; delete no symbols the tests import.
-3. Backend: add `env.test.ts` cases — default, valid override, out-of-bounds rejection.
-4. Client: convert the four constants to `fromEnvironment` with today's values as defaults.
-5. Docs: `.env.example` + `CONFIGURATION.md`.
+0. Lock the true test baseline first (`npm test`, `flutter test --no-pub`) — record the real pass/skip/total so a later regression is unambiguous.
+1. Backend: add `parseIntEnv`, `AuthTimingEnvironment`, `parseAuthTiming`, and `DEFAULT_AUTH_TIMING` (today's values) in `env.ts`.
+2. Backend: `RETRY_SWEEP_INTERVAL_SECONDS` is parsed in `server.ts` bootstrap, not the injected type.
+3. Backend: inject `'AuthTiming'` as a **required, non-null** param into both services; update the ~20 `new …Service(...)` test call sites to pass `DEFAULT_AUTH_TIMING`. No optional params, no `?? CONST` fallbacks.
+4. Backend: add `env.test.ts` cases — default, valid override, out-of-bounds rejection.
+5. Client: convert the four constants to `fromEnvironment` with today's values as defaults.
+6. Docs: `.env.example` + `CONFIGURATION.md`.
 
 **Verification**
 ```bash
