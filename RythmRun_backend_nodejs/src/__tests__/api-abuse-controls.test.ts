@@ -121,6 +121,7 @@ const userService = {
   changePassword: jest.fn(),
   requestPasswordReset: jest.fn(),
   resendVerification: jest.fn(),
+  deleteAccount: jest.fn(),
 };
 
 const authenticate = jest.fn(
@@ -519,6 +520,52 @@ describe('IP-2.6 authentication rate limits', () => {
         { authorization: AUTHORIZATION },
       );
       expect(blocked.statusCode).toBe(429);
+    } finally {
+      await stop(server);
+    }
+  });
+
+  it('caps account-deletion re-auth attempts behind authentication', async () => {
+    const server = await startTestServer();
+    userService.deleteAccount.mockResolvedValue(undefined);
+    const deleteBody = { password: 'correct-horse-battery-staple' };
+
+    try {
+      const unauthenticated = await request(
+        server,
+        'DELETE',
+        '/api/users/me',
+        deleteBody,
+      );
+      expect(unauthenticated.statusCode).toBe(401);
+
+      for (
+        let attempt = 0;
+        attempt < AUTH_RATE_LIMITS.accountDeletion.limit;
+        attempt += 1
+      ) {
+        const response = await request(
+          server,
+          'DELETE',
+          '/api/users/me',
+          deleteBody,
+          { authorization: AUTHORIZATION },
+        );
+        expect(response.statusCode).toBe(200);
+      }
+
+      const blocked = await request(
+        server,
+        'DELETE',
+        '/api/users/me',
+        deleteBody,
+        { authorization: AUTHORIZATION },
+      );
+      expect(blocked.statusCode).toBe(429);
+      expect(blocked.body).toMatchObject({
+        error: 'AUTH_RATE_LIMITED',
+        statusCode: 429,
+      });
     } finally {
       await stop(server);
     }

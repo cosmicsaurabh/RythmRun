@@ -7,6 +7,7 @@ const mockRetryPendingDeletes = jest.fn().mockResolvedValue(undefined);
 const mockRetryPendingCleanup = jest.fn().mockResolvedValue(undefined);
 const mockPurgeExpiredSessions = jest.fn().mockResolvedValue(0);
 const mockPurgeExpiredVerificationTokens = jest.fn().mockResolvedValue(0);
+const mockProcessPendingJobs = jest.fn().mockResolvedValue(0);
 const mockResolve = jest.fn((token: string) => {
   if (token === 'ActivityImageService') {
     return { retryPendingDeletes: mockRetryPendingDeletes };
@@ -24,6 +25,10 @@ const mockResolve = jest.fn((token: string) => {
     return {
       purgeExpiredVerificationTokens: mockPurgeExpiredVerificationTokens,
     };
+  }
+
+  if (token === 'ObjectCleanupRunner') {
+    return { processPendingJobs: mockProcessPendingJobs };
   }
 
   throw new Error(`Unexpected service token: ${token}`);
@@ -185,10 +190,14 @@ describe('server bootstrap', () => {
     expect(mockResolve).toHaveBeenCalledWith('AvatarService');
     expect(mockResolve).toHaveBeenCalledWith('AuthSessionService');
     expect(mockResolve).toHaveBeenCalledWith('UserService');
+    expect(mockResolve).toHaveBeenCalledWith('ObjectCleanupRunner');
     expect(mockRetryPendingDeletes).toHaveBeenCalledTimes(1);
     expect(mockRetryPendingCleanup).toHaveBeenCalledTimes(1);
     expect(mockPurgeExpiredSessions).toHaveBeenCalledTimes(1);
     expect(mockPurgeExpiredVerificationTokens).toHaveBeenCalledTimes(1);
+    // The deletion outbox is drained on the same sweep, so a job whose first
+    // attempt failed is retried here instead of being stranded (M5).
+    expect(mockProcessPendingJobs).toHaveBeenCalledTimes(1);
     expect(console.error).toHaveBeenCalledWith(
       'Avatar cleanup retry failed (AvatarCleanupError)',
     );

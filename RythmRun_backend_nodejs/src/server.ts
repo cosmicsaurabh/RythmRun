@@ -14,6 +14,7 @@ import type { ActivityImageService } from './services/activity-image.service.js'
 import type { AvatarService } from './services/avatar.service.js';
 import type { AuthSessionService } from './services/auth-session.service.js';
 import type { UserService } from './services/user.service.js';
+import type { ObjectCleanupRunner } from './services/object-cleanup.runner.js';
 
 export interface StartServerOptions {
   host?: string;
@@ -209,6 +210,15 @@ export async function startServer(
         container
           .resolve<UserService>('UserService')
           .purgeExpiredVerificationTokens()
+          .then(() => undefined),
+      );
+      // Drains the deletion outbox (avatar + activity-image removals queued by
+      // account deletion). This is the only scheduled runner for it, so a job
+      // whose first attempt failed is retried here instead of being stranded.
+      runRetry('Object cleanup', () =>
+        container
+          .resolve<ObjectCleanupRunner>('ObjectCleanupRunner')
+          .processPendingJobs()
           .then(() => undefined),
       );
     }, options.retryIntervalMs ?? retrySweepIntervalMs);
