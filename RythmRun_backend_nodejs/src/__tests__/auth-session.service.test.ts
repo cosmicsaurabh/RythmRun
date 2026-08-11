@@ -6,12 +6,10 @@ import jwt from 'jsonwebtoken';
 
 import type { User } from '../generated/prisma/client.js';
 import {
-  ACCESS_TOKEN_LIFETIME_SECONDS,
   AuthSessionService,
-  MAX_ACTIVE_SESSIONS_PER_USER,
-  REFRESH_SESSION_LIFETIME_SECONDS,
   digestRefreshToken,
 } from '../services/auth-session.service.js';
+import { DEFAULT_AUTH_TIMING } from '../config/env.js';
 
 const ACCESS_SECRET = 'unit-access-secret-0123456789-abcdefgh';
 const REFRESH_SECRET = 'unit-refresh-secret-0123456789-abcdefg';
@@ -85,7 +83,7 @@ function signRefresh(
       jti: randomUUID(),
       typ: 'refresh',
       iat: now,
-      exp: now + REFRESH_SESSION_LIFETIME_SECONDS,
+      exp: now + DEFAULT_AUTH_TIMING.refreshSessionTtlSeconds,
       ...claims,
     },
     secret,
@@ -124,7 +122,7 @@ describe('AuthSessionService', () => {
   it('issues standard claims and persists only a refresh digest', async () => {
     const transaction = createTransaction();
     const prisma = createPrisma(transaction);
-    const service = new AuthSessionService(prisma as never);
+    const service = new AuthSessionService(prisma as never, DEFAULT_AUTH_TIMING);
 
     const response = await service.issueSession(user);
     const access = tokenPayload(response.accessToken);
@@ -153,9 +151,11 @@ describe('AuthSessionService', () => {
       typ: 'refresh',
     });
     expect(access.jti).not.toBe(refresh.jti);
-    expect(access.exp! - access.iat!).toBe(ACCESS_TOKEN_LIFETIME_SECONDS);
+    expect(access.exp! - access.iat!).toBe(
+      DEFAULT_AUTH_TIMING.accessTokenTtlSeconds,
+    );
     expect(refresh.exp! - refresh.iat!).toBe(
-      REFRESH_SESSION_LIFETIME_SECONDS,
+      DEFAULT_AUTH_TIMING.refreshSessionTtlSeconds,
     );
 
     const persisted = transaction.refreshTokenRecord.create.mock.calls[0][0];
@@ -172,16 +172,35 @@ describe('AuthSessionService', () => {
     ).not.toContain(response.refreshToken);
   });
 
+  it('mints tokens using the injected access and session lifetimes', async () => {
+    const transaction = createTransaction();
+    const prisma = createPrisma(transaction);
+    // The automated analogue of the manual 30s-TTL proof: a non-default timing
+    // must actually reach the minted token, not just parse at boot.
+    const service = new AuthSessionService(prisma as never, {
+      ...DEFAULT_AUTH_TIMING,
+      accessTokenTtlSeconds: 30,
+      refreshSessionTtlSeconds: 120,
+    });
+
+    const response = await service.issueSession(user);
+    const access = tokenPayload(response.accessToken);
+    const refresh = tokenPayload(response.refreshToken);
+
+    expect(access.exp! - access.iat!).toBe(30);
+    expect(refresh.exp! - refresh.iat!).toBe(120);
+  });
+
   it('evicts the least recently used session before creating session six', async () => {
     const transaction = createTransaction();
     const existing = Array.from(
-      { length: MAX_ACTIVE_SESSIONS_PER_USER },
+      { length: DEFAULT_AUTH_TIMING.maxActiveSessionsPerUser },
       () => ({ id: randomUUID() }),
     );
     transaction.authSession.findMany.mockResolvedValueOnce([]);
     transaction.authSession.findMany.mockResolvedValueOnce(existing);
     const prisma = createPrisma(transaction);
-    const service = new AuthSessionService(prisma as never);
+    const service = new AuthSessionService(prisma as never, DEFAULT_AUTH_TIMING);
 
     await service.issueSession(user);
 
@@ -231,7 +250,7 @@ describe('AuthSessionService', () => {
     const transaction = createTransaction();
     transaction.refreshTokenRecord.findUnique.mockResolvedValue(record);
     const prisma = createPrisma(transaction);
-    const service = new AuthSessionService(prisma as never);
+    const service = new AuthSessionService(prisma as never, DEFAULT_AUTH_TIMING);
 
     const response = await service.rotateRefreshToken(rawToken);
     const replacement = tokenPayload(response.refreshToken);
@@ -306,7 +325,7 @@ describe('AuthSessionService', () => {
         throw error;
       }
     });
-    const service = new AuthSessionService(prisma as never);
+    const service = new AuthSessionService(prisma as never, DEFAULT_AUTH_TIMING);
 
     await expect(service.rotateRefreshToken(rawToken)).rejects.toMatchObject({
       code: 'AUTH_REFRESH_INVALID',
@@ -346,7 +365,10 @@ describe('AuthSessionService', () => {
         user,
       },
     });
-    const service = new AuthSessionService(createPrisma(transaction) as never);
+    const service = new AuthSessionService(
+      createPrisma(transaction) as never,
+      DEFAULT_AUTH_TIMING,
+    );
 
     await expect(service.rotateRefreshToken(rawToken)).rejects.toMatchObject({
       code: 'AUTH_REFRESH_INVALID',
@@ -373,7 +395,7 @@ describe('AuthSessionService', () => {
   ])('maps %s to the same safe refresh error', async (_name, makeToken) => {
     const transaction = createTransaction();
     const prisma = createPrisma(transaction);
-    const service = new AuthSessionService(prisma as never);
+    const service = new AuthSessionService(prisma as never, DEFAULT_AUTH_TIMING);
 
     await expect(service.rotateRefreshToken(makeToken())).rejects.toMatchObject({
       code: 'AUTH_REFRESH_INVALID',
@@ -386,7 +408,7 @@ describe('AuthSessionService', () => {
   it('requires the access JWT session to remain active', async () => {
     const transaction = createTransaction();
     const prisma = createPrisma(transaction);
-    const service = new AuthSessionService(prisma as never);
+    const service = new AuthSessionService(prisma as never, DEFAULT_AUTH_TIMING);
     const response = await service.issueSession(user);
     prisma.authSession.findFirst.mockResolvedValue(null);
 

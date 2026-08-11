@@ -1,8 +1,11 @@
 import {
+  DEFAULT_AUTH_TIMING,
   EnvironmentValidationError,
   MAX_TRUST_PROXY_HOPS,
   MINIMUM_JWT_SECRET_LENGTH,
   getJwtSecrets,
+  parseAuthTiming,
+  parseRetrySweepIntervalSeconds,
   validateEmailEnvironment,
   validateHttpSecurityEnvironment,
   validateJwtSecrets,
@@ -358,4 +361,95 @@ describe('HTTP security environment validation', () => {
       validateHttpSecurityEnvironment({ CORS_ALLOWED_ORIGINS: '*' }),
     ).toThrow(EnvironmentValidationError);
   });
+});
+
+describe('auth timing environment validation', () => {
+  const AUTH_TIMING_CASES = [
+    { env: 'ACCESS_TOKEN_TTL_SECONDS', field: 'accessTokenTtlSeconds', min: 30, max: 86400 },
+    { env: 'REFRESH_SESSION_TTL_SECONDS', field: 'refreshSessionTtlSeconds', min: 60, max: 7776000 },
+    { env: 'MAX_ACTIVE_SESSIONS_PER_USER', field: 'maxActiveSessionsPerUser', min: 1, max: 100 },
+    { env: 'REFRESH_REUSE_GRACE_SECONDS', field: 'refreshReuseGraceSeconds', min: 0, max: 300 },
+    { env: 'EMAIL_VERIFICATION_TTL_SECONDS', field: 'emailVerificationTtlSeconds', min: 60, max: 604800 },
+    { env: 'EMAIL_VERIFICATION_COOLDOWN_SECONDS', field: 'emailVerificationCooldownSeconds', min: 0, max: 3600 },
+    { env: 'PASSWORD_RESET_TTL_SECONDS', field: 'passwordResetTtlSeconds', min: 60, max: 86400 },
+    { env: 'PASSWORD_RESET_COOLDOWN_SECONDS', field: 'passwordResetCooldownSeconds', min: 0, max: 3600 },
+  ] as const;
+
+  it('returns the shipped defaults when nothing is set', () => {
+    expect(parseAuthTiming({})).toEqual(DEFAULT_AUTH_TIMING);
+  });
+
+  it('treats a blank value as unset and falls back to the default', () => {
+    expect(parseAuthTiming({ ACCESS_TOKEN_TTL_SECONDS: '   ' })).toEqual(
+      DEFAULT_AUTH_TIMING,
+    );
+  });
+
+  it.each(AUTH_TIMING_CASES)(
+    'applies an in-range override for $env without disturbing the others',
+    ({ env, field, min }) => {
+      const override = min + 1;
+      expect(parseAuthTiming({ [env]: String(override) })).toEqual({
+        ...DEFAULT_AUTH_TIMING,
+        [field]: override,
+      });
+    },
+  );
+
+  it.each(AUTH_TIMING_CASES)(
+    'accepts the exact min and max bounds for $env',
+    ({ env, field, min, max }) => {
+      expect(parseAuthTiming({ [env]: String(min) })[field]).toBe(min);
+      expect(parseAuthTiming({ [env]: String(max) })[field]).toBe(max);
+    },
+  );
+
+  it.each(AUTH_TIMING_CASES)(
+    'rejects an out-of-range or non-integer $env',
+    ({ env, min, max }) => {
+      for (const bad of [String(min - 1), String(max + 1), '1.5', 'abc']) {
+        expect(() => parseAuthTiming({ [env]: bad })).toThrow(
+          `${env} must be an integer between ${min} and ${max}`,
+        );
+      }
+    },
+  );
+
+  it('raises a typed configuration error', () => {
+    expect(() => parseAuthTiming({ ACCESS_TOKEN_TTL_SECONDS: '0' })).toThrow(
+      EnvironmentValidationError,
+    );
+  });
+});
+
+describe('retry sweep interval validation', () => {
+  it('defaults to 900 seconds when unset or blank', () => {
+    expect(parseRetrySweepIntervalSeconds({})).toBe(900);
+    expect(
+      parseRetrySweepIntervalSeconds({ RETRY_SWEEP_INTERVAL_SECONDS: '' }),
+    ).toBe(900);
+  });
+
+  it('applies an in-range override and accepts the bounds', () => {
+    expect(
+      parseRetrySweepIntervalSeconds({ RETRY_SWEEP_INTERVAL_SECONDS: '60' }),
+    ).toBe(60);
+    expect(
+      parseRetrySweepIntervalSeconds({ RETRY_SWEEP_INTERVAL_SECONDS: '10' }),
+    ).toBe(10);
+    expect(
+      parseRetrySweepIntervalSeconds({ RETRY_SWEEP_INTERVAL_SECONDS: '86400' }),
+    ).toBe(86400);
+  });
+
+  it.each(['9', '86401', '1.5', 'abc'])(
+    'rejects an unusable RETRY_SWEEP_INTERVAL_SECONDS: %s',
+    (value) => {
+      expect(() =>
+        parseRetrySweepIntervalSeconds({ RETRY_SWEEP_INTERVAL_SECONDS: value }),
+      ).toThrow(
+        'RETRY_SWEEP_INTERVAL_SECONDS must be an integer between 10 and 86400',
+      );
+    },
+  );
 });

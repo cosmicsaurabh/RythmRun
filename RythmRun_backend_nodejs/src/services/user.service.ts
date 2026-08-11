@@ -19,6 +19,7 @@ import {
   accountDeletionReauthRequiredError,
 } from '../errors/account-deletion.error.js';
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
+import type { AuthTimingEnvironment } from '../config/env.js';
 import {
   ChangePasswordDto,
   DeleteAccountDto,
@@ -39,12 +40,8 @@ import type { EmailSender } from './email.service.js';
 import type { GoogleIdentityVerifier } from './google-auth.service.js';
 
 const SALT_ROUNDS = 10;
-const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
-const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
 const EMAIL_VERIFICATION_PURPOSE = 'EMAIL_VERIFICATION' as const;
 const PASSWORD_RESET_PURPOSE = 'PASSWORD_RESET' as const;
-const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
-const PASSWORD_RESET_COOLDOWN_MS = 60 * 1000;
 
 type VerificationPurpose =
   | typeof EMAIL_VERIFICATION_PURPOSE
@@ -80,6 +77,7 @@ export class UserService {
     @inject('PrismaClient') private readonly prisma: PrismaClient,
     @inject('AuthSessionService')
     private readonly authSessions: AuthSessionService,
+    @inject('AuthTiming') private readonly authTiming: AuthTimingEnvironment,
     @inject('GoogleIdentityVerifier')
     private readonly googleIdentityVerifier?: GoogleIdentityVerifier,
     @inject('EmailSender')
@@ -118,7 +116,7 @@ export class UserService {
             transaction,
             user.id,
             EMAIL_VERIFICATION_PURPOSE,
-            VERIFICATION_TOKEN_TTL_MS,
+            this.authTiming.emailVerificationTtlSeconds * 1000,
           );
           return {
             response,
@@ -240,7 +238,7 @@ export class UserService {
     if (
       existing?.lastSentAt != null &&
       Date.now() - existing.lastSentAt.getTime() <
-        VERIFICATION_RESEND_COOLDOWN_MS
+        this.authTiming.emailVerificationCooldownSeconds * 1000
     ) {
       throw verificationRateLimitedError();
     }
@@ -251,7 +249,7 @@ export class UserService {
           transaction,
           userId,
           EMAIL_VERIFICATION_PURPOSE,
-          VERIFICATION_TOKEN_TTL_MS,
+          this.authTiming.emailVerificationTtlSeconds * 1000,
         ),
     );
     await this.deliverVerificationEmail(
@@ -284,7 +282,8 @@ export class UserService {
     });
     if (
       existing?.lastSentAt != null &&
-      Date.now() - existing.lastSentAt.getTime() < PASSWORD_RESET_COOLDOWN_MS
+      Date.now() - existing.lastSentAt.getTime() <
+        this.authTiming.passwordResetCooldownSeconds * 1000
     ) {
       return;
     }
@@ -295,7 +294,7 @@ export class UserService {
           transaction,
           user.id,
           PASSWORD_RESET_PURPOSE,
-          PASSWORD_RESET_TTL_MS,
+          this.authTiming.passwordResetTtlSeconds * 1000,
         ),
     );
     await this.deliverPasswordResetEmail(

@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { inject, injectable } from 'tsyringe';
 
-import { getJwtSecrets } from '../config/env.js';
+import { getJwtSecrets, type AuthTimingEnvironment } from '../config/env.js';
 import {
   Prisma,
   type PrismaClient,
@@ -14,9 +14,6 @@ import {
   invalidRefreshError,
 } from '../errors/auth.error.js';
 
-export const ACCESS_TOKEN_LIFETIME_SECONDS = 15 * 60;
-export const REFRESH_SESSION_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
-export const MAX_ACTIVE_SESSIONS_PER_USER = 5;
 export const REFRESH_DIGEST_ALGORITHM = 'sha256';
 
 const MAX_SERIALIZABLE_ATTEMPTS = 3;
@@ -100,7 +97,10 @@ export function toSafeUserResponse(user: User): SafeUserResponse {
 
 @injectable()
 export class AuthSessionService {
-  constructor(@inject('PrismaClient') private readonly prisma: PrismaClient) {}
+  constructor(
+    @inject('PrismaClient') private readonly prisma: PrismaClient,
+    @inject('AuthTiming') private readonly authTiming: AuthTimingEnvironment,
+  ) {}
 
   async withSerializableTransaction<T>(
     operation: (transaction: TransactionClient) => Promise<T>,
@@ -152,7 +152,7 @@ export class AuthSessionService {
       select: { id: true },
     });
     const overflowCount =
-      activeSessions.length - MAX_ACTIVE_SESSIONS_PER_USER + 1;
+      activeSessions.length - this.authTiming.maxActiveSessionsPerUser + 1;
     if (overflowCount > 0) {
       await this.revokeSessionIdsInTransaction(
         transaction,
@@ -166,7 +166,7 @@ export class AuthSessionService {
     const sessionId = randomUUID();
     const familyId = randomUUID();
     const expiresAt = new Date(
-      now.getTime() + REFRESH_SESSION_LIFETIME_SECONDS * 1000,
+      now.getTime() + this.authTiming.refreshSessionTtlSeconds * 1000,
     );
     const tokenPair = this.createTokenPair(user.id, sessionId, expiresAt, now);
 
@@ -445,7 +445,7 @@ export class AuthSessionService {
       typ: 'access',
       iat: issuedAt,
       exp: Math.min(
-        issuedAt + ACCESS_TOKEN_LIFETIME_SECONDS,
+        issuedAt + this.authTiming.accessTokenTtlSeconds,
         sessionExpiry,
       ),
     };

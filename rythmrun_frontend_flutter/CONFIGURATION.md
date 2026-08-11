@@ -190,6 +190,46 @@ flutter run --release
 - **Error Classification**: Different exception types for different error scenarios
 - **Connection Pooling**: Efficient HTTP client reuse
 
+## Auth timing overrides
+
+Auth timing is tunable so real-world scenarios can be forced on demand instead of
+simulated in tests — for example, proving a lost refresh response recovers by
+shrinking a 15-minute access token to 30 seconds. The knobs split into two
+families by *where* the value lives.
+
+### Backend env vars are the live lever
+
+Token and session lifetimes are backend environment variables (documented in
+`RythmRun_backend_nodejs/.env.example`). The client never hardcodes a token
+lifetime — it reads the `exp` claim straight out of the JWT — so **changing a
+backend TTL and restarting immediately changes the installed app's refresh
+cadence, with no rebuild or reinstall.** That makes the backend the primary
+live-testing lever. For example: set `ACCESS_TOKEN_TTL_SECONDS=30` on the
+deployment, sign in on the installed app, wait 30s, make a request → the app
+refreshes once and the retry succeeds.
+
+### Client dart-defines are compile-time policy
+
+Four client-side policies are *not* derived from the token, so they are set at
+build time with `--dart-define`. They are baked into the binary: an override
+cannot be changed on an installed Play build, which is exactly why the backend
+knobs — not these — are the live lever. Every default reproduces the previous
+hardcoded behavior, so an unset build is unchanged.
+
+| Define | Default | Controls |
+| --- | --- | --- |
+| `OFFLINE_WINDOW_HOURS` | `168` (7d) | Max offline access after a successful server verification (D-009) |
+| `CLOCK_SKEW_TOLERANCE_SECONDS` | `120` (2m) | Tolerance before a clock rollback fails offline admission closed |
+| `BACKEND_SYNC_INTERVAL_HOURS` | `168` (7d) | Default cadence of periodic backend reconciliation |
+| `REQUEST_TIMEOUT_MS` | per-env map | Overrides the environment HTTP timeout when positive (`0` = keep the env value) |
+
+```bash
+# Force the offline re-verification path and a short request timeout in a test build
+flutter run \
+  --dart-define=OFFLINE_WINDOW_HOURS=1 \
+  --dart-define=REQUEST_TIMEOUT_MS=3000
+```
+
 ## Google sign-in configuration
 
 Google sign-in exchanges a Google ID token at

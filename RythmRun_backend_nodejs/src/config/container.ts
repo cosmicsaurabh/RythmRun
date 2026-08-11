@@ -12,7 +12,7 @@ import { AvatarService } from '../services/avatar.service.js';
 import { AuthSessionService } from '../services/auth-session.service.js';
 import { GoogleAuthService } from '../services/google-auth.service.js';
 import { createEmailSender } from '../services/email.service.js';
-import type { EmailEnvironment } from './env.js';
+import type { AuthTimingEnvironment, EmailEnvironment } from './env.js';
 import s3Service from '../services/s3.service.js';
 
 export const container = rootContainer.createChildContainer();
@@ -21,6 +21,7 @@ let configured = false;
 export function configureContainer(
   databaseUrl: string,
   googleServerClientId: string,
+  authTiming: AuthTimingEnvironment,
   emailConfig: EmailEnvironment | null = null,
 ): DatabaseRuntime {
   if (configured) {
@@ -29,6 +30,7 @@ export function configureContainer(
 
   const database = createDatabase(databaseUrl);
   container.registerInstance('PrismaClient', database.client);
+  container.registerInstance('AuthTiming', authTiming);
   container.registerInstance('S3Service', s3Service);
   container.registerInstance(
     'GoogleIdentityVerifier',

@@ -4,7 +4,7 @@ published: false
 
 # Auth Hardening & Tunable Timing — Master Plan
 
-**Status:** Phase 0 not started · **Owner:** maintainer · **Created:** 2026-08-11
+**Status:** Phase 0 complete — awaiting review · **Owner:** maintainer · **Created:** 2026-08-11
 **Source:** auth + refresh audit (16 confirmed findings, 1 plausible, 2 refuted)
 **Relationship to the improvement program:** this is IP-2 follow-up work. It does
 not replace `IP-2-auth-account-privacy.md`; when a phase here lands, its evidence
@@ -619,14 +619,14 @@ New tests: a request completing across a rotation returns its result; a failed f
 Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### Phase 0 — Configuration spine
-- [ ] `parseIntEnv` helper + `AuthTimingEnvironment` in `env.ts`
-- [ ] Nine env vars parsed with defaults + bounds
-- [ ] DI registration + injection into `AuthSessionService` / `UserService`
-- [ ] `RETRY_SWEEP_INTERVAL_SECONDS` in `server.ts`
-- [ ] `.env.example` documented
-- [ ] Client: `offlineWindow`, `clockSkewTolerance`, `needsBackendSync`, `REQUEST_TIMEOUT_MS`
-- [ ] `CONFIGURATION.md` auth-timing section
-- [ ] Both suites green · manual 30s-TTL proof
+- [x] `parseIntEnv` helper + `AuthTimingEnvironment` in `env.ts`
+- [x] Nine env vars parsed with defaults + bounds
+- [x] DI registration + injection into `AuthSessionService` / `UserService`
+- [x] `RETRY_SWEEP_INTERVAL_SECONDS` in `server.ts`
+- [x] `.env.example` documented
+- [x] Client: `offlineWindow`, `clockSkewTolerance`, `needsBackendSync`, `REQUEST_TIMEOUT_MS`
+- [x] `CONFIGURATION.md` auth-timing section
+- [~] Both suites green (automated ✅) · manual 30s-TTL proof is a maintainer deploy check
 
 ### Phase 1 — Backend containment
 - [ ] **M5** cleanup runner scheduled + DI-resolved
@@ -693,8 +693,11 @@ flutter analyze --no-pub --no-fatal-infos
 dart format --set-exit-if-changed <changed files only>
 ```
 
-**Baseline to hold or beat:** backend 464 passed / 7 skipped / 471 total ·
-Flutter 359 passed · analyzer 9 issues, 0 warnings, 0 errors.
+**Baseline to hold or beat:** backend 473 passed / 7 skipped / 480 total ·
+Flutter 359 passed · analyzer 9 issues, 0 warnings, 0 errors. (The prior
+`464 / 7 / 471` figure was stale — the Phase 0 lock-baseline step measured the
+true starting point. Phase 0 adds config-spine tests, taking the backend to
+507 passed / 7 skipped / 514 total with Flutter unchanged at 359.)
 
 **Four known traps** (from `CLAUDE.md`, repeated because they cost real time):
 1. Use `npm test`, never `npx jest` — the suite is native ESM.

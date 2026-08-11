@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { jest } from '@jest/globals';
 
+import { DEFAULT_AUTH_TIMING } from '../config/env.js';
+
 jest.unstable_mockModule('bcrypt', () => ({
   hash: jest.fn(),
   compare: jest.fn(),
@@ -111,6 +113,7 @@ function harness() {
     service: new UserService(
       prisma as never,
       authSessions as never,
+      DEFAULT_AUTH_TIMING,
       googleIdentityVerifier,
       emailSender as never,
     ),

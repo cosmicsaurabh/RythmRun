@@ -85,13 +85,39 @@ class AuthPersistenceService {
   static const String lastBackendSyncKey = 'last_backend_sync';
   static const String authCleanupPendingKey = 'auth_cleanup_pending';
 
+  // Auth timing knobs. Baked in at compile time (int.fromEnvironment), so an
+  // override needs a rebuild + reinstall — unlike the backend token/session
+  // TTLs, which the app follows live because it reads expiry from the JWT.
+  // Defaults reproduce today's behavior exactly.
+
   /// Maximum offline access after a successful server verification (D-009).
-  static const Duration offlineWindow = Duration(days: 7);
+  /// Override with `--dart-define=OFFLINE_WINDOW_HOURS=<n>` to force the
+  /// re-verification path in a test build.
+  static const int _offlineWindowHours = int.fromEnvironment(
+    'OFFLINE_WINDOW_HOURS',
+    defaultValue: 168,
+  );
+  static const Duration offlineWindow = Duration(hours: _offlineWindowHours);
 
   /// Small tolerance so benign NTP corrections do not force re-verification,
   /// while a meaningful clock rollback or future-dated verification still
   /// fails offline admission closed. Negligible against [offlineWindow].
-  static const Duration clockSkewTolerance = Duration(minutes: 2);
+  /// Override with `--dart-define=CLOCK_SKEW_TOLERANCE_SECONDS=<n>`.
+  static const int _clockSkewToleranceSeconds = int.fromEnvironment(
+    'CLOCK_SKEW_TOLERANCE_SECONDS',
+    defaultValue: 120,
+  );
+  static const Duration clockSkewTolerance = Duration(
+    seconds: _clockSkewToleranceSeconds,
+  );
+
+  /// Default cadence for the periodic backend reconciliation in
+  /// [needsBackendSync]. Override with
+  /// `--dart-define=BACKEND_SYNC_INTERVAL_HOURS=<n>`.
+  static const int _backendSyncIntervalHours = int.fromEnvironment(
+    'BACKEND_SYNC_INTERVAL_HOURS',
+    defaultValue: 168,
+  );
 
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
@@ -309,7 +335,7 @@ class AuthPersistenceService {
   }
 
   Future<bool> needsBackendSync({
-    Duration syncInterval = const Duration(days: 7),
+    Duration syncInterval = const Duration(hours: _backendSyncIntervalHours),
   }) async {
     final lastSync = await getLastBackendSync();
     if (lastSync == null) return true;
