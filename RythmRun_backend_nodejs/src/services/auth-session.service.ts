@@ -233,6 +233,72 @@ export class AuthSessionService {
         }
 
         if (record.usedAt !== null) {
+          // A used token was re-presented. This is either a lost-response retry
+          // (the client never received the rotated pair and retries with the old
+          // token) or genuine reuse (theft/replay). Only the retry is forgiven,
+          // and only inside a short window while the successor is still unused.
+          const graceMs = this.authTiming.refreshReuseGraceSeconds * 1000;
+          const withinGrace =
+            graceMs > 0 && now.getTime() - record.usedAt.getTime() <= graceMs;
+          const successorJti = record.replacedByJti;
+
+          if (
+            withinGrace &&
+            successorJti !== null &&
+            record.session.status === 'ACTIVE' &&
+            record.session.revokedAt === null &&
+            record.session.expiresAt > now
+          ) {
+            const successor = await transaction.refreshTokenRecord.findUnique({
+              where: { jti: successorJti },
+            });
+            // An unused successor proves the client never received it. If it was
+            // already used, the client did get the rotated pair, so presenting
+            // the old token is genuine reuse — fall through to family revocation.
+            if (
+              successor !== null &&
+              successor.usedAt === null &&
+              successor.revokedAt === null &&
+              successor.expiresAt > now
+            ) {
+              const tokenPair = this.createTokenPair(
+                record.session.userId,
+                record.session.id,
+                record.session.expiresAt,
+                now,
+              );
+              await transaction.authSession.update({
+                where: { id: record.session.id },
+                data: { lastUsedAt: now },
+              });
+              await transaction.refreshTokenRecord.create({
+                data: {
+                  jti: tokenPair.refreshJti,
+                  sessionId: record.session.id,
+                  tokenDigest: tokenPair.refreshDigest,
+                  issuedAt: now,
+                  expiresAt: record.session.expiresAt,
+                },
+              });
+              // Revoke the never-received successor and extend the chain to the
+              // fresh token, so exactly one live refresh token survives.
+              await transaction.refreshTokenRecord.update({
+                where: { jti: successor.jti },
+                data: { revokedAt: now, replacedByJti: tokenPair.refreshJti },
+              });
+              return {
+                kind: 'success',
+                response: {
+                  ...toSafeUserResponse(record.session.user),
+                  accessToken: tokenPair.accessToken,
+                  refreshToken: tokenPair.refreshToken,
+                },
+              };
+            }
+          }
+
+          // Genuine reuse (grace disabled, window passed, or successor already
+          // spent): kill the whole family so a stolen token cannot rotate.
           if (
             record.session.status === 'ACTIVE' &&
             record.session.revokedAt === null
