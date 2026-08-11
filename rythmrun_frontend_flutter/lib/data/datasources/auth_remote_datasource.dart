@@ -199,4 +199,28 @@ class AuthRemoteDataSource {
     final Map<String, dynamic> jsonResponse = json.decode(response.body);
     return UserModel.fromJson(jsonResponse);
   }
+
+  /// Delete authenticated user account with re-authentication payload.
+  Future<void> deleteAccount({
+    required Map<String, String> authHeaders,
+    String? password,
+    String? googleIdToken,
+  }) async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    };
+
+    final body = <String, dynamic>{
+      if (password != null) 'password': password,
+      if (googleIdToken != null) 'googleIdToken': googleIdToken,
+    };
+
+    await _httpClient.delete(
+      _resolveEndpoint(ApiEndpoints.me),
+      headers: headers,
+      body: json.encode(body),
+      maxRetries: 0,
+    );
+  }
 }

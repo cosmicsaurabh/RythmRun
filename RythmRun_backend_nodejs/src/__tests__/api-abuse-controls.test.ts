@@ -15,6 +15,7 @@ const mockProductionController = {
   me: jest.fn(),
   updateProfile: jest.fn(),
   changePassword: jest.fn(),
+  deleteAccount: jest.fn(),
 };
 
 jest.unstable_mockModule('../config/container.js', () => ({
@@ -27,6 +28,7 @@ jest.unstable_mockModule('../config/container.js', () => ({
 // HTTP test constructs no AWS client.
 jest.unstable_mockModule('../services/s3.service.js', () => ({
   S3Service: class S3Service {},
+  default: {},
 }));
 
 import http, { type Server } from 'node:http';

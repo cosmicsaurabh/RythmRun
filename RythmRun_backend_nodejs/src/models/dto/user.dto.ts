@@ -100,3 +100,18 @@ export class PasswordResetConfirmDto {
     @MaxLength(50)
     newPassword!: string;
 }
+
+export class DeleteAccountDto {
+    @IsString()
+    @IsOptional()
+    @MinLength(1)
+    @MaxLength(50)
+    password?: string;
+
+    @IsString()
+    @IsOptional()
+    @MinLength(1)
+    @MaxLength(8192)
+    googleIdToken?: string;
+}
+

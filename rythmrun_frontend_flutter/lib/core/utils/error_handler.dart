@@ -42,6 +42,12 @@ class ErrorHandler {
           return 'Activity image storage quota exceeded.';
         case 'ACTIVITY_IMAGE_TOO_MANY_PENDING':
           return 'Too many pending image uploads. Please wait a moment and try again.';
+        case 'ACCOUNT_DELETION_REAUTH_REQUIRED':
+          return 'Re-authentication is required to delete your account.';
+        case 'ACCOUNT_DELETION_PASSWORD_INVALID':
+          return 'Incorrect password. Account deletion cancelled.';
+        case 'ACCOUNT_DELETION_GOOGLE_INVALID':
+          return 'Google authentication could not be verified. Account deletion cancelled.';
       }
     }
 

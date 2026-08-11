@@ -15,6 +15,7 @@ const mockProductionController = {
   me: jest.fn(),
   updateProfile: jest.fn(),
   changePassword: jest.fn(),
+  deleteAccount: jest.fn(),
   getUploadUrl: jest.fn(),
   confirmUpload: jest.fn(),
   getReadUrl: jest.fn(),
@@ -31,6 +32,7 @@ jest.unstable_mockModule('../config/container.js', () => ({
 // client while still using the real controller and AvatarServiceError class.
 jest.unstable_mockModule('../services/s3.service.js', () => ({
   S3Service: class S3Service {},
+  default: {},
 }));
 
 import http, { type Server } from 'node:http';
