@@ -1,13 +1,16 @@
 import { injectable, inject } from 'tsyringe';
 import type { ActivityImage, PrismaClient } from '../generated/prisma/client.js';
 import {
+  activityImageLimitExceededError,
   activityNotFoundError,
   imageTooLargeError,
   invalidChecksumError,
   invalidClientImageIdError,
   invalidImageKeyError,
+  tooManyPendingUploadsError,
   unsupportedContentTypeError,
   uploadedSizeMismatchError,
+  userImageQuotaExceededError,
 } from '../errors/activity-image.error.js';
 import {
   ConfirmActivityImageUploadDto,
@@ -28,6 +31,11 @@ const EXT_BY_CONTENT_TYPE: Record<string, string> = {
 };
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGES_PER_ACTIVITY = 10;
+const MAX_IMAGES_PER_USER = 100;
+const MAX_STORAGE_BYTES_PER_USER = 250 * 1024 * 1024; // 250MB
+const MAX_PENDING_UPLOADS_PER_USER = 5;
+const PENDING_UPLOAD_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 @injectable()
 export class ActivityImageService {
@@ -40,6 +48,7 @@ export class ActivityImageService {
   ) {
     await this.assertOwnedActivity(userId, activityId);
     this.validateImageMetadata(dto);
+    await this.cleanupAbandonedUploads(userId);
 
     const existing = await this.prisma.activityImage.findUnique({
       where: {
@@ -57,6 +66,54 @@ export class ActivityImageService {
         imageId: existing.id,
         alreadyUploaded: true,
       };
+    }
+
+    if (!existing) {
+      // Check activity image count limit
+      const activityImageCount = await this.prisma.activityImage.count({
+        where: {
+          activityId,
+          status: 'UPLOADED',
+          deletedAt: null,
+        },
+      });
+      if (activityImageCount >= MAX_IMAGES_PER_ACTIVITY) {
+        throw activityImageLimitExceededError();
+      }
+
+      // Check user image count and storage byte quota
+      const userStats = await this.prisma.activityImage.aggregate({
+        where: {
+          userId,
+          status: 'UPLOADED',
+          deletedAt: null,
+        },
+        _count: { id: true },
+        _sum: { sizeBytes: true },
+      });
+
+      if ((userStats._count.id ?? 0) >= MAX_IMAGES_PER_USER) {
+        throw userImageQuotaExceededError();
+      }
+
+      if ((userStats._sum.sizeBytes ?? 0) + dto.sizeBytes > MAX_STORAGE_BYTES_PER_USER) {
+        throw userImageQuotaExceededError();
+      }
+
+      // Check active pending uploads quota
+      const pendingCount = await this.prisma.activityImage.count({
+        where: {
+          userId,
+          status: 'PENDING_UPLOAD',
+          createdAt: {
+            gte: new Date(Date.now() - PENDING_UPLOAD_TTL_MS),
+          },
+        },
+      });
+
+      if (pendingCount >= MAX_PENDING_UPLOADS_PER_USER) {
+        throw tooManyPendingUploadsError();
+      }
     }
 
     const ext = EXT_BY_CONTENT_TYPE[dto.contentType];
@@ -86,6 +143,7 @@ export class ActivityImageService {
     const signed = await s3Service.getPresignedPutUrl({
       key: image.s3Key,
       contentType: dto.contentType,
+      sizeBytes: dto.sizeBytes,
     });
 
     return {
@@ -94,7 +152,10 @@ export class ActivityImageService {
       key: image.s3Key,
       uploadUrl: signed.uploadUrl,
       expiresAt: new Date(Date.now() + 300 * 1000).toISOString(),
-      requiredHeaders: { 'Content-Type': dto.contentType },
+      requiredHeaders: {
+        'Content-Type': dto.contentType,
+        'Content-Length': dto.sizeBytes.toString(),
+      },
     };
   }
 
@@ -113,8 +174,28 @@ export class ActivityImageService {
     );
 
     const head = await s3Service.headObject(dto.key);
-    if (head.ContentLength && head.ContentLength !== dto.sizeBytes) {
+
+    if (head.ContentType && head.ContentType !== dto.contentType) {
+      await this.tryDeleteObjectAndMarkDeleted(0, dto.key).catch(() => undefined);
+      throw unsupportedContentTypeError();
+    }
+
+    if (head.ContentLength !== undefined && head.ContentLength !== dto.sizeBytes) {
+      await this.tryDeleteObjectAndMarkDeleted(0, dto.key).catch(() => undefined);
       throw uploadedSizeMismatchError();
+    }
+
+    if (head.ContentLength !== undefined && head.ContentLength > MAX_IMAGE_SIZE_BYTES) {
+      await this.tryDeleteObjectAndMarkDeleted(0, dto.key).catch(() => undefined);
+      throw imageTooLargeError();
+    }
+
+    if (dto.checksumSha256) {
+      const s3Checksum = (head as any).ChecksumSHA256 ?? (head.ETag ? head.ETag.replace(/"/g, '') : null);
+      if (s3Checksum && s3Checksum.length === 64 && s3Checksum.toLowerCase() !== dto.checksumSha256.toLowerCase()) {
+        await this.tryDeleteObjectAndMarkDeleted(0, dto.key).catch(() => undefined);
+        throw invalidChecksumError();
+      }
     }
 
     const image = await this.prisma.activityImage.upsert({
@@ -210,6 +291,22 @@ export class ActivityImageService {
     }
   }
 
+  async cleanupAbandonedUploads(userId?: number) {
+    const cutoff = new Date(Date.now() - PENDING_UPLOAD_TTL_MS);
+    const stalePending = await this.prisma.activityImage.findMany({
+      where: {
+        status: 'PENDING_UPLOAD',
+        createdAt: { lt: cutoff },
+        ...(userId !== undefined ? { userId } : {}),
+      },
+      take: 50,
+    });
+
+    for (const image of stalePending) {
+      await this.tryDeleteObjectAndMarkDeleted(image.id, image.s3Key);
+    }
+  }
+
   private async assertOwnedActivity(userId: number, activityId: number) {
     const activity = await this.prisma.activity.findFirst({
       where: { id: activityId, userId },
@@ -262,21 +359,25 @@ export class ActivityImageService {
   private async tryDeleteObjectAndMarkDeleted(imageId: number, s3Key: string) {
     try {
       await s3Service.deleteObject(s3Key);
-      await this.prisma.activityImage.update({
-        where: { id: imageId },
-        data: {
-          status: 'DELETED',
-          deletedAt: new Date(),
-        },
-      });
+      if (imageId > 0) {
+        await this.prisma.activityImage.update({
+          where: { id: imageId },
+          data: {
+            status: 'DELETED',
+            deletedAt: new Date(),
+          },
+        });
+      }
     } catch (error) {
       console.error('Failed to delete activity image object:', error);
-      await this.prisma.activityImage.update({
-        where: { id: imageId },
-        data: {
-          status: 'DELETE_PENDING',
-        },
-      });
+      if (imageId > 0) {
+        await this.prisma.activityImage.update({
+          where: { id: imageId },
+          data: {
+            status: 'DELETE_PENDING',
+          },
+        });
+      }
     }
   }
 
@@ -303,3 +404,4 @@ export class ActivityImageService {
     };
   }
 }
+

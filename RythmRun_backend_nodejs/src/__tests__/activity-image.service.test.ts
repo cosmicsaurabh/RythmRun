@@ -37,6 +37,8 @@ function createMockPrisma() {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
+      aggregate: jest.fn(),
     },
   };
 }
@@ -87,6 +89,12 @@ describe('ActivityImageService', () => {
     jest.clearAllMocks();
     prisma = createMockPrisma();
     prisma.activity.findFirst.mockResolvedValue({ id: activityId, userId });
+    prisma.activityImage.count.mockResolvedValue(0);
+    prisma.activityImage.aggregate.mockResolvedValue({
+      _count: { id: 0 },
+      _sum: { sizeBytes: 0 },
+    });
+    prisma.activityImage.findMany.mockResolvedValue([]);
     service = new ActivityImageService(prisma as any);
   });
 
@@ -129,7 +137,40 @@ describe('ActivityImageService', () => {
       expect(s3Service.getPresignedPutUrl).not.toHaveBeenCalled();
     });
 
-    it('is idempotent for the same pending client image ID', async () => {
+    it('rejects requests when per-activity image limit is reached', async () => {
+      prisma.activityImage.count.mockImplementation(async (args: any) => {
+        if (args?.where?.activityId) return 10;
+        return 0;
+      });
+
+      await expect(
+        service.requestUploadUrl(userId, activityId, baseDto),
+      ).rejects.toThrow('Activity image limit reached');
+    });
+
+    it('rejects requests when user total image quota is reached', async () => {
+      prisma.activityImage.aggregate.mockResolvedValue({
+        _count: { id: 100 },
+        _sum: { sizeBytes: 50 * 1024 * 1024 },
+      });
+
+      await expect(
+        service.requestUploadUrl(userId, activityId, baseDto),
+      ).rejects.toThrow('User activity image quota exceeded');
+    });
+
+    it('rejects requests when active pending upload limit is reached', async () => {
+      prisma.activityImage.count.mockImplementation(async (args: any) => {
+        if (args?.where?.status === 'PENDING_UPLOAD') return 5;
+        return 0;
+      });
+
+      await expect(
+        service.requestUploadUrl(userId, activityId, baseDto),
+      ).rejects.toThrow('Too many pending image uploads');
+    });
+
+    it('is idempotent for the same pending client image ID and passes sizeBytes', async () => {
       const pendingImage = {
         ...baseImage,
         status: 'PENDING_UPLOAD',
@@ -144,13 +185,17 @@ describe('ActivityImageService', () => {
       expect(s3Service.getPresignedPutUrl).toHaveBeenCalledWith({
         key: s3Key,
         contentType: 'image/jpeg',
+        sizeBytes: 1024,
       });
       expect(result).toMatchObject({
         imageId: pendingImage.id,
         clientImageId,
         key: s3Key,
         uploadUrl: `https://upload.example.com/${s3Key}`,
-        requiredHeaders: { 'Content-Type': 'image/jpeg' },
+        requiredHeaders: {
+          'Content-Type': 'image/jpeg',
+          'Content-Length': '1024',
+        },
       });
     });
 
@@ -190,7 +235,37 @@ describe('ActivityImageService', () => {
       expect(prisma.activityImage.upsert).not.toHaveBeenCalled();
     });
 
+    it('rejects and cleans up S3 object when S3 ContentType mismatches', async () => {
+      (s3Service.headObject as jest.Mock<any>).mockResolvedValueOnce({
+        ContentType: 'image/png',
+        ContentLength: 1024,
+      });
+
+      await expect(
+        service.confirmUpload(userId, activityId, confirmDto),
+      ).rejects.toThrow('Unsupported image content type');
+
+      expect(s3Service.deleteObject).toHaveBeenCalledWith(s3Key);
+    });
+
+    it('rejects and cleans up S3 object when S3 ContentLength mismatches', async () => {
+      (s3Service.headObject as jest.Mock<any>).mockResolvedValueOnce({
+        ContentType: 'image/jpeg',
+        ContentLength: 2048,
+      });
+
+      await expect(
+        service.confirmUpload(userId, activityId, confirmDto),
+      ).rejects.toThrow('Uploaded image size mismatch');
+
+      expect(s3Service.deleteObject).toHaveBeenCalledWith(s3Key);
+    });
+
     it('confirms the same uploaded image idempotently', async () => {
+      (s3Service.headObject as jest.Mock<any>).mockResolvedValue({
+        ContentType: 'image/jpeg',
+        ContentLength: 1024,
+      });
       prisma.activityImage.upsert.mockResolvedValue(baseImage);
 
       const first = await service.confirmUpload(userId, activityId, confirmDto);
@@ -221,6 +296,25 @@ describe('ActivityImageService', () => {
       );
       expect(first.id).toBe(baseImage.id);
       expect(second.id).toBe(baseImage.id);
+    });
+  });
+
+  describe('cleanupAbandonedUploads', () => {
+    it('deletes stale pending upload objects from storage', async () => {
+      const staleImage = {
+        id: 42,
+        s3Key: 'activity-images/1/99/stale.jpg',
+        status: 'PENDING_UPLOAD',
+      };
+      prisma.activityImage.findMany.mockResolvedValue([staleImage]);
+
+      await service.cleanupAbandonedUploads(userId);
+
+      expect(s3Service.deleteObject).toHaveBeenCalledWith('activity-images/1/99/stale.jpg');
+      expect(prisma.activityImage.update).toHaveBeenCalledWith({
+        where: { id: 42 },
+        data: expect.objectContaining({ status: 'DELETED' }),
+      });
     });
   });
 

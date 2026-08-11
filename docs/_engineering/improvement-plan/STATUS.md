@@ -111,7 +111,7 @@ All seven delivered; each waits on a device, staging, or hosted gate.
 | 2.3 Offline-session behavior | Verification | ✓ | MC-2.3 |
 | 2.4 Profile, recovery, deletion | **In progress** | partial | Profile and password recovery delivered and merged (PR #164). **Account deletion is the last slice** — blocked on your retention/reauth decision, then transactional revocation + durable object-cleanup outbox/runner + full local and remote purge. Production exposure gated by MC-2.5 |
 | 2.5 Private routes; disable social | Verification | ✓ | Merged (PR #165, `bd78d9a`). Apply the migration on staging/production; complete the IP-5.6 policy review |
-| 2.6 API abuse controls & typed errors | **In progress** | partial | Abuse-control slice merged (PRs #167/#169). Left: **storage-boundary items 6–8** (enforceable activity-image upload grant, real ContentType/ContentLength/checksum confirmation, per-user quotas, abandoned-upload lifecycle, volume alarms), the unmounted social controllers' message-string branching, and MC-2.6 |
+| 2.6 API abuse controls & typed errors | Verification | ✓ | Code delivered for abuse-control and storage-boundary slices (items 1–9). MC-2.6 owns deployed edge configuration |
 | 2.7 Protect retained routes/photos at rest | Planned | ✗ | Not started; gated on an owner design spike (threat model, library/perf, backup and key-loss recovery) |
 | 2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. MC-2.4. Its no-implicit-link behavior is superseded by 2.9 |
 | 2.9 Email verification & safe linking | Verification | ✓ | Merged (PR #164). MC-2.5 |
@@ -137,18 +137,11 @@ Nothing delivered. See the phase files for the full specs.
 Lowest-numbered unblocked packages. The operational IP-0 gates run in parallel
 and are not substitutes.
 
-1. **IP-2.6 storage boundary (items 6–8)** — an enforceable activity-image upload
-   grant, confirmation against actual `ContentType`/`ContentLength`/checksum,
-   per-user object and byte quotas, abandoned-upload cleanup, and presign/storage
-   volume alarms. Changing the grant alters the client upload contract, so it
-   needs a coordinated Flutter change and real-storage proof. `getPresignedPutUrl`
-   can already sign `content-length` (IP-0.4 uses it); the activity-image caller
-   just doesn't pass a size yet.
-2. **IP-2.4 account deletion** — needs your retention and
+1. **IP-2.4 account deletion** — needs your retention and
    password-versus-fresh-Google reauthentication decision first, then
    transactional revocation, a durable object-cleanup outbox and runner, remote
    deletion state, and complete local purge.
-3. **IP-2.7 retained-data protection** — gated on the owner design spike.
+2. **IP-2.7 retained-data protection** — gated on the owner design spike.
 
 ## Delivery history
 
@@ -160,6 +153,7 @@ and are not substitutes.
 | 2026-07-27 | IP-2.6 abuse-control slice — CORS allowlist, proxy-hop trust, request budgets, typed `AUTH_RATE_LIMITED`, typed image errors, request IDs, security events | PRs #167/#169 |
 | 2026-07-28 | IP-0.4 avatar re-hardening — presigned PUT with signed `content-length`, authenticated read URLs, explicit buckets | PR #170 |
 | 2026-08-11 | Release fixes — OpenStreetMap attribution, deletion-request link, `1.2.0+21`; toolchain bump; `APP_ENV` define | PR #171 |
+| 2026-08-11 | IP-2.6 storage boundary slice (items 6–8) — presigned PUT with signed Content-Length/Content-Type, S3 metadata & checksum verification, user/activity quotas, abandoned upload cleanup | Local branch |
 
 Each phase file's evidence log carries the detail, including what was
 deliberately *not* claimed.

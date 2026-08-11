@@ -28,6 +28,20 @@ class ErrorHandler {
           // generic path and surfaces the raw 'HttpStatusException(429): ...'
           // string, because 429 has no dedicated exception type.
           return 'Too many attempts. Please wait a few minutes and try again.';
+        case 'ACTIVITY_IMAGE_CONTENT_TYPE_UNSUPPORTED':
+          return 'Unsupported image format. Please select a JPEG, PNG, or WebP image.';
+        case 'ACTIVITY_IMAGE_TOO_LARGE':
+          return 'Image file is too large. Maximum size is 10 MB.';
+        case 'ACTIVITY_IMAGE_SIZE_MISMATCH':
+          return 'Uploaded image size did not match expected size. Please try again.';
+        case 'ACTIVITY_IMAGE_CHECKSUM_INVALID':
+          return 'Uploaded image corrupted in transit. Please try again.';
+        case 'ACTIVITY_IMAGE_ACTIVITY_LIMIT_EXCEEDED':
+          return 'Maximum number of images per activity reached (10 images max).';
+        case 'ACTIVITY_IMAGE_USER_QUOTA_EXCEEDED':
+          return 'Activity image storage quota exceeded.';
+        case 'ACTIVITY_IMAGE_TOO_MANY_PENDING':
+          return 'Too many pending image uploads. Please wait a moment and try again.';
       }
     }
 
