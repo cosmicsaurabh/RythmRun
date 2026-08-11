@@ -30,6 +30,15 @@ class AppConfig {
     'prod': 10000, // 10 seconds for prod
   };
 
+  /// Optional HTTP timeout override. Compile-time
+  /// (`--dart-define=REQUEST_TIMEOUT_MS=<ms>`); when positive it wins over the
+  /// per-environment default so a test build can force a short timeout. 0 (the
+  /// default) means unset — keep the environment value.
+  static const int _requestTimeoutMsOverride = int.fromEnvironment(
+    'REQUEST_TIMEOUT_MS',
+    defaultValue: 0,
+  );
+
   // Environment detection
   static String get _environment {
     const appEnv = String.fromEnvironment('APP_ENV');
@@ -58,6 +67,9 @@ class AppConfig {
 
   /// Get the timeout duration for HTTP requests
   static Duration get timeout {
+    if (_requestTimeoutMsOverride > 0) {
+      return Duration(milliseconds: _requestTimeoutMsOverride);
+    }
     final env = _environment;
     final timeoutMs = _timeouts[env] ?? 30000; // Default to 30 seconds
     return Duration(milliseconds: timeoutMs);

@@ -12,6 +12,7 @@ import {
     RegisterUserDto,
     UpdateProfileDto
 } from '../models/dto/user.dto.js';
+import { DEFAULT_AUTH_TIMING } from '../config/env.js';
 const bcrypt = await import('bcrypt');
 const { UserService } = await import('../services/user.service.js');
 
@@ -204,7 +205,7 @@ describe('UserService writable-field mapping', () => {
             }
         };
         const authSessions = createMockAuthSessions(transaction);
-        const service = new UserService(prisma as any, authSessions as any);
+        const service = new UserService(prisma as any, authSessions as any, DEFAULT_AUTH_TIMING);
         const dto = Object.assign(new RegisterUserDto(), {
             username: 'ada@example.com',
             password: 'correct-horse-battery-staple',
@@ -251,7 +252,7 @@ describe('UserService writable-field mapping', () => {
             lastname: 'King'
         });
         const authSessions = createMockAuthSessions({});
-        const service = new UserService(prisma as any, authSessions as any);
+        const service = new UserService(prisma as any, authSessions as any, DEFAULT_AUTH_TIMING);
         const dto = Object.assign(new UpdateProfileDto(), {
             firstname: 'Augusta Ada',
             lastname: 'King',
@@ -293,7 +294,8 @@ describe('UserService writable-field mapping', () => {
         );
         const service = new UserService(
             prisma as any,
-            createMockAuthSessions({}) as any
+            createMockAuthSessions({}) as any,
+            DEFAULT_AUTH_TIMING
         );
 
         await expect(

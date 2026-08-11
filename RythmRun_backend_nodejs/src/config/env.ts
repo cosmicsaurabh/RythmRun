@@ -51,6 +51,47 @@ export interface HttpSecurityEnvironment {
   trustProxyHops: number;
 }
 
+/**
+ * Tunable auth timing. Every field replaces a value that used to be hardcoded in
+ * a service, so the defaults reproduce today's behavior exactly. Resolved once at
+ * boot from the environment and injected as 'AuthTiming' into AuthSessionService
+ * and UserService, so a deployment can force a real-world scenario (a 30-second
+ * access token, a 1-minute session) without a code change.
+ *
+ * `RETRY_SWEEP_INTERVAL_SECONDS` is deliberately absent: no service reads it, so
+ * it is parsed at bootstrap by parseRetrySweepIntervalSeconds and used directly in
+ * server.ts rather than injected here.
+ */
+export interface AuthTimingEnvironment {
+  accessTokenTtlSeconds: number;
+  refreshSessionTtlSeconds: number;
+  maxActiveSessionsPerUser: number;
+  // Consumed in Phase 2 (refresh reuse grace window); parsed now so the spine is
+  // complete and Phase 2 is a behavior-only change.
+  refreshReuseGraceSeconds: number;
+  emailVerificationTtlSeconds: number;
+  emailVerificationCooldownSeconds: number;
+  passwordResetTtlSeconds: number;
+  passwordResetCooldownSeconds: number;
+}
+
+/**
+ * The timing values the services shipped with before they became tunable. This
+ * is the single source of truth for the defaults: parseAuthTiming reads each
+ * field as its fallback, and unit tests that construct the services directly
+ * (bypassing the DI container) inject this constant.
+ */
+export const DEFAULT_AUTH_TIMING: AuthTimingEnvironment = {
+  accessTokenTtlSeconds: 900,
+  refreshSessionTtlSeconds: 604800,
+  maxActiveSessionsPerUser: 5,
+  refreshReuseGraceSeconds: 60,
+  emailVerificationTtlSeconds: 86400,
+  emailVerificationCooldownSeconds: 60,
+  passwordResetTtlSeconds: 1800,
+  passwordResetCooldownSeconds: 60,
+};
+
 export const HTTP_SECURITY_ENVIRONMENT_VARIABLES = [
   'CORS_ALLOWED_ORIGINS',
   'TRUST_PROXY_HOPS',
@@ -418,6 +459,100 @@ function parseTrustProxyHops(source: EnvironmentSource): number {
   }
 
   return hops;
+}
+
+/**
+ * Parses one optional integer environment variable. Absent or blank falls back
+ * to the default; anything present must be an integer inside [min, max] or boot
+ * fails closed. The bounds are typo protection, not policy —
+ * `ACCESS_TOKEN_TTL_SECONDS=9000000` should stop the boot, not silently mint a
+ * three-month token.
+ */
+function parseIntEnv(
+  source: EnvironmentSource,
+  name: string,
+  bounds: { fallback: number; min: number; max: number },
+): number {
+  const raw = source[name];
+  if (raw === undefined || raw.trim().length === 0) {
+    return bounds.fallback;
+  }
+
+  const value = Number(raw.trim());
+  if (!Number.isInteger(value) || value < bounds.min || value > bounds.max) {
+    throw new EnvironmentValidationError(
+      `${name} must be an integer between ${bounds.min} and ${bounds.max}`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Resolves the tunable auth timing knobs once at boot. Each fallback comes from
+ * DEFAULT_AUTH_TIMING so the defaults live in exactly one place; the bounds are
+ * per-variable here.
+ */
+export function parseAuthTiming(
+  source: EnvironmentSource,
+): AuthTimingEnvironment {
+  return {
+    accessTokenTtlSeconds: parseIntEnv(source, 'ACCESS_TOKEN_TTL_SECONDS', {
+      fallback: DEFAULT_AUTH_TIMING.accessTokenTtlSeconds,
+      min: 30,
+      max: 86400,
+    }),
+    refreshSessionTtlSeconds: parseIntEnv(
+      source,
+      'REFRESH_SESSION_TTL_SECONDS',
+      { fallback: DEFAULT_AUTH_TIMING.refreshSessionTtlSeconds, min: 60, max: 7776000 },
+    ),
+    maxActiveSessionsPerUser: parseIntEnv(
+      source,
+      'MAX_ACTIVE_SESSIONS_PER_USER',
+      { fallback: DEFAULT_AUTH_TIMING.maxActiveSessionsPerUser, min: 1, max: 100 },
+    ),
+    refreshReuseGraceSeconds: parseIntEnv(
+      source,
+      'REFRESH_REUSE_GRACE_SECONDS',
+      { fallback: DEFAULT_AUTH_TIMING.refreshReuseGraceSeconds, min: 0, max: 300 },
+    ),
+    emailVerificationTtlSeconds: parseIntEnv(
+      source,
+      'EMAIL_VERIFICATION_TTL_SECONDS',
+      { fallback: DEFAULT_AUTH_TIMING.emailVerificationTtlSeconds, min: 60, max: 604800 },
+    ),
+    emailVerificationCooldownSeconds: parseIntEnv(
+      source,
+      'EMAIL_VERIFICATION_COOLDOWN_SECONDS',
+      { fallback: DEFAULT_AUTH_TIMING.emailVerificationCooldownSeconds, min: 0, max: 3600 },
+    ),
+    passwordResetTtlSeconds: parseIntEnv(
+      source,
+      'PASSWORD_RESET_TTL_SECONDS',
+      { fallback: DEFAULT_AUTH_TIMING.passwordResetTtlSeconds, min: 60, max: 86400 },
+    ),
+    passwordResetCooldownSeconds: parseIntEnv(
+      source,
+      'PASSWORD_RESET_COOLDOWN_SECONDS',
+      { fallback: DEFAULT_AUTH_TIMING.passwordResetCooldownSeconds, min: 0, max: 3600 },
+    ),
+  };
+}
+
+/**
+ * The background sweep interval (expired sessions/tokens, pending media
+ * cleanup). Bootstrap-only — no service reads it — so it is parsed here and used
+ * directly by the sweep timer in server.ts rather than injected with the auth
+ * timing knobs.
+ */
+export function parseRetrySweepIntervalSeconds(
+  source: EnvironmentSource,
+): number {
+  return parseIntEnv(source, 'RETRY_SWEEP_INTERVAL_SECONDS', {
+    fallback: 900,
+    min: 10,
+    max: 86400,
+  });
 }
 
 /**

@@ -68,6 +68,19 @@ jest.unstable_mockModule('../config/env.js', () => ({
     mockEvents.push('validate-http-security');
     return { allowedOrigins: [], trustProxyHops: 0 };
   }),
+  // configureContainer is mocked below and ignores the injected timing, so
+  // these only need to return well-shaped values, not real parsing.
+  parseAuthTiming: jest.fn(() => ({
+    accessTokenTtlSeconds: 900,
+    refreshSessionTtlSeconds: 604800,
+    maxActiveSessionsPerUser: 5,
+    refreshReuseGraceSeconds: 60,
+    emailVerificationTtlSeconds: 86400,
+    emailVerificationCooldownSeconds: 60,
+    passwordResetTtlSeconds: 1800,
+    passwordResetCooldownSeconds: 60,
+  })),
+  parseRetrySweepIntervalSeconds: jest.fn(() => 900),
 }));
 
 jest.unstable_mockModule('../app.js', () => {

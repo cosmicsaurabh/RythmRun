@@ -10,6 +10,7 @@ import {
   digestRefreshToken,
 } from '../services/auth-session.service.js';
 import { UserService } from '../services/user.service.js';
+import { DEFAULT_AUTH_TIMING } from '../config/env.js';
 
 const RUN_INTEGRATION = process.env.RUN_DATABASE_INTEGRATION === '1';
 const integrationDescribe = RUN_INTEGRATION ? describe : describe.skip;
@@ -67,10 +68,10 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
     const databaseUrl = requireTestDatabaseUrl();
     databaseA = createDatabase(databaseUrl);
     databaseB = createDatabase(databaseUrl);
-    sessionsA = new AuthSessionService(databaseA.client);
-    sessionsB = new AuthSessionService(databaseB.client);
-    usersA = new UserService(databaseA.client, sessionsA);
-    usersB = new UserService(databaseB.client, sessionsB);
+    sessionsA = new AuthSessionService(databaseA.client, DEFAULT_AUTH_TIMING);
+    sessionsB = new AuthSessionService(databaseB.client, DEFAULT_AUTH_TIMING);
+    usersA = new UserService(databaseA.client, sessionsA, DEFAULT_AUTH_TIMING);
+    usersB = new UserService(databaseB.client, sessionsB, DEFAULT_AUTH_TIMING);
   });
 
   beforeEach(async () => {
@@ -170,9 +171,14 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
       firstname: 'Grace',
       lastname: 'Runner',
     };
-    const googleUsers = new UserService(databaseA.client, sessionsA, {
-      verifyIdToken: async () => googleIdentity,
-    });
+    const googleUsers = new UserService(
+      databaseA.client,
+      sessionsA,
+      DEFAULT_AUTH_TIMING,
+      {
+        verifyIdToken: async () => googleIdentity,
+      },
+    );
 
     const authenticated = await googleUsers.googleLogin({
       idToken: 'test-verifier-token',
@@ -232,6 +238,7 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
     const conflictingGoogleUsers = new UserService(
       databaseA.client,
       sessionsA,
+      DEFAULT_AUTH_TIMING,
       {
         verifyIdToken: async () => ({
           ...googleIdentity,
@@ -366,7 +373,7 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
     const issuanceGate = new Promise<void>((resolve) => {
       releaseIssuance = resolve;
     });
-    const gatedSessions = new AuthSessionService(databaseA.client);
+    const gatedSessions = new AuthSessionService(databaseA.client, DEFAULT_AUTH_TIMING);
     const runTransaction =
       gatedSessions.withSerializableTransaction.bind(gatedSessions);
     gatedSessions.withSerializableTransaction = (async (operation: unknown) => {
@@ -377,6 +384,7 @@ integrationDescribe('auth sessions on PostgreSQL', () => {
     const staleLoginUserService = new UserService(
       databaseA.client,
       gatedSessions,
+      DEFAULT_AUTH_TIMING,
     );
 
     const staleLogin = staleLoginUserService

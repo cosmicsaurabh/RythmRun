@@ -4,6 +4,8 @@ import os from 'node:os';
 
 import {
   loadAndValidateEnvironment,
+  parseAuthTiming,
+  parseRetrySweepIntervalSeconds,
   validateEmailEnvironment,
   validateHttpSecurityEnvironment,
 } from './config/env.js';
@@ -117,6 +119,11 @@ export async function startServer(
   // Fails closed in production: a missing CORS allowlist stops the boot rather
   // than falling back to the permissive policy this app used before IP-2.6.
   const httpSecurity = validateHttpSecurityEnvironment(process.env);
+  // Tunable auth timing, resolved once and injected; the sweep interval is
+  // bootstrap-only and used directly below.
+  const authTiming = parseAuthTiming(process.env);
+  const retrySweepIntervalMs =
+    parseRetrySweepIntervalSeconds(process.env) * 1000;
   const port = getPort(options.port);
   let database: DatabaseRuntime | undefined;
 
@@ -127,6 +134,7 @@ export async function startServer(
     database = configureContainer(
       environment.DATABASE_URL,
       environment.GOOGLE_SERVER_CLIENT_ID,
+      authTiming,
       emailConfig,
     );
 
@@ -203,7 +211,7 @@ export async function startServer(
           .purgeExpiredVerificationTokens()
           .then(() => undefined),
       );
-    }, options.retryIntervalMs ?? 15 * 60 * 1000);
+    }, options.retryIntervalMs ?? retrySweepIntervalMs);
     retryTimer.unref();
 
     const cleanup = createRuntimeCleanup(retryTimer, database);
