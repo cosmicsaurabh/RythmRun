@@ -90,6 +90,40 @@ describe('S3Service AWS SDK v3 adapter', () => {
     });
   });
 
+  it('presigns an activity image PutObjectCommand with sizeBytes and content-length signable header', async () => {
+    presignS3Request.mockResolvedValue(
+      'https://storage-test-bucket.s3.example.com/upload',
+    );
+    const service = createService();
+
+    const result = await service.getPresignedPutUrl({
+      key: ACTIVITY_IMAGE_KEY,
+      contentType: 'image/jpeg',
+      sizeBytes: 2048,
+      expiresSeconds: 300,
+    });
+
+    expect(presignS3Request).toHaveBeenCalledTimes(1);
+    const [client, command, options] = presignS3Request.mock.calls[0];
+    expect(client).toBe(s3Client);
+    expect(command).toBeInstanceOf(PutObjectCommand);
+    expect(command.input).toEqual({
+      Bucket: 'test-activity-images-bucket',
+      Key: ACTIVITY_IMAGE_KEY,
+      ContentType: 'image/jpeg',
+      ContentLength: 2048,
+    });
+    expect(options).toEqual({
+      expiresIn: 300,
+      signableHeaders: new Set(['content-type', 'content-length']),
+    });
+    expect(result).toEqual({
+      uploadUrl: 'https://storage-test-bucket.s3.example.com/upload',
+      key: ACTIVITY_IMAGE_KEY,
+    });
+  });
+
+
   it('presigns avatar PUTs against the avatar bucket', async () => {
     presignS3Request.mockResolvedValue(
       'https://test-avatars-bucket.test-account-id.r2.cloudflarestorage.com/upload',

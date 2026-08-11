@@ -92,7 +92,10 @@ class ActivityImageRemoteDataSource {
     final bytes = await File(localPath).readAsBytes();
     await _httpClient.put(
       uploadUrl,
-      headers: {'Content-Type': contentType},
+      headers: {
+        'Content-Type': contentType,
+        'Content-Length': bytes.length.toString(),
+      },
       body: bytes,
       maxRetries: 0,
     );

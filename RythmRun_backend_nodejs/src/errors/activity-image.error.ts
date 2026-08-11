@@ -14,7 +14,10 @@ export type ActivityImageErrorCode =
   | 'ACTIVITY_IMAGE_CONTENT_TYPE_UNSUPPORTED'
   | 'ACTIVITY_IMAGE_KEY_INVALID'
   | 'ACTIVITY_IMAGE_SIZE_MISMATCH'
-  | 'ACTIVITY_IMAGE_TOO_LARGE';
+  | 'ACTIVITY_IMAGE_TOO_LARGE'
+  | 'ACTIVITY_IMAGE_ACTIVITY_LIMIT_EXCEEDED'
+  | 'ACTIVITY_IMAGE_USER_QUOTA_EXCEEDED'
+  | 'ACTIVITY_IMAGE_TOO_MANY_PENDING';
 
 export class ActivityImageServiceError extends Error {
   constructor(
@@ -87,3 +90,28 @@ export function uploadedSizeMismatchError(): ActivityImageServiceError {
     'Uploaded image size mismatch',
   );
 }
+
+export function activityImageLimitExceededError(): ActivityImageServiceError {
+  return new ActivityImageServiceError(
+    'ACTIVITY_IMAGE_ACTIVITY_LIMIT_EXCEEDED',
+    400,
+    'Activity image limit reached',
+  );
+}
+
+export function userImageQuotaExceededError(): ActivityImageServiceError {
+  return new ActivityImageServiceError(
+    'ACTIVITY_IMAGE_USER_QUOTA_EXCEEDED',
+    400,
+    'User activity image quota exceeded',
+  );
+}
+
+export function tooManyPendingUploadsError(): ActivityImageServiceError {
+  return new ActivityImageServiceError(
+    'ACTIVITY_IMAGE_TOO_MANY_PENDING',
+    429,
+    'Too many pending image uploads',
+  );
+}
+
