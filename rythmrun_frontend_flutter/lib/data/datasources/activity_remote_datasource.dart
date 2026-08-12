@@ -58,4 +58,28 @@ class ActivityRemoteDataSource {
           ),
     );
   }
+
+  /// Fetch activities from the server (paginated)
+  Future<Map<String, dynamic>> fetchActivities({
+    int page = 1,
+    int limit = 50,
+  }) async {
+    final response = await _authenticatedRequests.execute(
+      request:
+          (authHeaders) => _httpClient.get(
+            AppConfig.getUrl(
+              '${ApiEndpoints.activities}?page=$page&limit=$limit',
+            ),
+            headers: authHeaders,
+          ),
+    );
+
+    final jsonResponse = json.decode(response.body);
+    if (jsonResponse is! Map<String, dynamic> ||
+        jsonResponse['status'] != 'success') {
+      throw Exception('Failed to fetch activities');
+    }
+
+    return jsonResponse['data'] as Map<String, dynamic>;
+  }
 }

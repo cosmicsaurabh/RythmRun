@@ -23,6 +23,7 @@ userScopeTeardownProvider = Provider<UserScopeTeardown>((ref) {
     if (userId != null && userId > 0) {
       try {
         ref.read(workoutRepositoryProvider).clearLocalWorkouts(userId);
+        ref.read(workoutRepositoryProvider).setHistoryRestored(false);
       } catch (e) {
         debugPrint(
           'Teardown: Failed to clear local workouts for user $userId: $e',

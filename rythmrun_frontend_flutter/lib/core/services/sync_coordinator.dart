@@ -10,6 +10,9 @@ class SyncCoordinator {
   final AuthRepository _authRepository;
   final UserScopeOperationGate _operationGate;
   final OnlineOperationGuard? _onlineOperationGuard;
+  final void Function()? onRestoreStart;
+  final void Function()? onRestoreComplete;
+  final void Function()? onRestoreFailed;
 
   SyncCoordinator({
     required WorkoutRepository workoutRepository,
@@ -17,6 +20,9 @@ class SyncCoordinator {
     required AuthRepository authRepository,
     required UserScopeOperationGate operationGate,
     OnlineOperationGuard? onlineOperationGuard,
+    this.onRestoreStart,
+    this.onRestoreComplete,
+    this.onRestoreFailed,
   }) : _workoutRepository = workoutRepository,
        _activityImageRepository = activityImageRepository,
        _authRepository = authRepository,
@@ -43,6 +49,14 @@ class SyncCoordinator {
     }
 
     try {
+      final isRestored = await _workoutRepository.isHistoryRestored();
+      if (!isRestored) {
+        onRestoreStart?.call();
+        await _workoutRepository.downloadAndRestoreWorkouts();
+        await _workoutRepository.setHistoryRestored(true);
+        onRestoreComplete?.call();
+      }
+
       await _workoutRepository.syncWorkouts();
 
       final currentUser = await _authRepository.getCurrentUser();
@@ -54,6 +68,9 @@ class SyncCoordinator {
       }
 
       await _activityImageRepository.syncPendingImages();
+    } catch (e) {
+      onRestoreFailed?.call();
+      rethrow;
     } finally {
       operationLease.release();
     }

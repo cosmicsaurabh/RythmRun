@@ -215,6 +215,12 @@ final activityImageRepositoryProvider = Provider<ActivityImageRepository>((
   );
 });
 
+enum SyncProgress { idle, restoring, completed, failed }
+
+final syncProgressProvider = StateProvider<SyncProgress>(
+  (ref) => SyncProgress.idle,
+);
+
 final syncCoordinatorProvider = Provider<SyncCoordinator>((ref) {
   return SyncCoordinator(
     workoutRepository: ref.watch(workoutRepositoryProvider),
@@ -222,6 +228,15 @@ final syncCoordinatorProvider = Provider<SyncCoordinator>((ref) {
     authRepository: ref.watch(authRepositoryProvider),
     operationGate: ref.watch(userScopeOperationGateProvider),
     onlineOperationGuard: ref.watch(onlineOperationGuardProvider),
+    onRestoreStart: () {
+      ref.read(syncProgressProvider.notifier).state = SyncProgress.restoring;
+    },
+    onRestoreComplete: () {
+      ref.read(syncProgressProvider.notifier).state = SyncProgress.completed;
+    },
+    onRestoreFailed: () {
+      ref.read(syncProgressProvider.notifier).state = SyncProgress.failed;
+    },
   );
 });
 

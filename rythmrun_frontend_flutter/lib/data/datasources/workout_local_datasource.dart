@@ -203,4 +203,16 @@ class WorkoutLocalDataSource {
   Future<int> getWorkoutCount(int userId) async {
     return await _localDbService.getWorkoutCount(userId);
   }
+
+  Future<bool> hasWorkout({
+    required int userId,
+    required String clientSyncId,
+    int? remoteActivityId,
+  }) async {
+    return await _localDbService.hasWorkout(
+      userId: userId,
+      clientSyncId: clientSyncId,
+      remoteActivityId: remoteActivityId,
+    );
+  }
 }

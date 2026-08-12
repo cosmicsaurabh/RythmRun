@@ -207,6 +207,15 @@ class _ScopedWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<bool> isHistoryRestored() async => false;
+
+  @override
+  Future<void> setHistoryRestored(bool value) async {}
+
+  @override
+  Future<void> downloadAndRestoreWorkouts() async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

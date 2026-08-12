@@ -80,4 +80,11 @@ class AuthLocalDataSource
   Future<DateTime?> getLastBackendSync() {
     return _persistenceService.getLastBackendSync();
   }
+
+  Future<bool> isHistoryRestored(String userId) =>
+      _persistenceService.isHistoryRestored(userId);
+
+  Future<void> setHistoryRestored(String userId, bool value) {
+    return _persistenceService.setHistoryRestored(userId, value);
+  }
 }

@@ -319,4 +319,14 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> updateLastBackendSync() async {
     await _localDataSource.updateLastBackendSync();
   }
+
+  @override
+  Future<bool> isHistoryRestored(String userId) async {
+    return await _localDataSource.isHistoryRestored(userId);
+  }
+
+  @override
+  Future<void> setHistoryRestored(String userId, bool value) async {
+    await _localDataSource.setHistoryRestored(userId, value);
+  }
 }

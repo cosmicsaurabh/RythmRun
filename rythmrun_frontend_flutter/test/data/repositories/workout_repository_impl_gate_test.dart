@@ -599,6 +599,17 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
       throw UnauthorizedException('expired');
     }
   }
+
+  @override
+  Future<Map<String, dynamic>> fetchActivities({
+    int page = 1,
+    int limit = 50,
+  }) async {
+    return <String, dynamic>{
+      'activities': <dynamic>[],
+      'pagination': <String, dynamic>{'hasNextPage': false},
+    };
+  }
 }
 
 class _FakeAuthRepository implements AuthRepository {
@@ -723,4 +734,10 @@ class _FakeAuthRepository implements AuthRepository {
   Future<void> updateLastBackendSync() {
     throw UnimplementedError();
   }
+
+  @override
+  Future<bool> isHistoryRestored(String userId) async => false;
+
+  @override
+  Future<void> setHistoryRestored(String userId, bool value) async {}
 }

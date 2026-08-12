@@ -479,4 +479,69 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
       throw Exception('Failed to clear local workouts: $e');
     }
   }
+
+  @override
+  Future<bool> isHistoryRestored() async {
+    try {
+      final userId = await getCurrentUserId();
+      if (userId == null) return false;
+      return await _authRepository.isHistoryRestored(userId.toString());
+    } catch (e) {
+      throw Exception('Failed to check if history is restored: $e');
+    }
+  }
+
+  @override
+  Future<void> setHistoryRestored(bool value) async {
+    try {
+      final userId = await getCurrentUserId();
+      if (userId == null) return;
+      await _authRepository.setHistoryRestored(userId.toString(), value);
+    } catch (e) {
+      throw Exception('Failed to set history restored flag: $e');
+    }
+  }
+
+  @override
+  Future<void> downloadAndRestoreWorkouts() async {
+    try {
+      final userId = await getCurrentUserId();
+      if (userId == null) return;
+
+      int currentPage = 1;
+      bool hasNextPage = true;
+
+      while (hasNextPage) {
+        final data = await _remoteDataSource.fetchActivities(
+          page: currentPage,
+          limit: 50,
+        );
+
+        final activities = data['activities'] as List<dynamic>? ?? [];
+        final pagination = data['pagination'] as Map<String, dynamic>?;
+        hasNextPage = pagination?['hasNextPage'] as bool? ?? false;
+
+        for (final act in activities) {
+          if (act is! Map<String, dynamic>) continue;
+          final workout = ActivitySyncModel.fromJson(act, userId);
+
+          final exists = await _localDataSource.hasWorkout(
+            userId: userId,
+            clientSyncId: workout.clientSyncId,
+            remoteActivityId: workout.remoteActivityId,
+          );
+
+          if (!exists) {
+            await _localDataSource.saveWorkoutInLocalDatabase(
+              workout,
+              userId: userId,
+            );
+          }
+        }
+        currentPage++;
+      }
+    } catch (e) {
+      throw Exception('Failed to download and restore workouts: $e');
+    }
+  }
 }

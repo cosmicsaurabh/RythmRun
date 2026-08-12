@@ -91,4 +91,10 @@ abstract class AuthRepository {
 
   /// Update the last backend sync timestamp
   Future<void> updateLastBackendSync();
+
+  /// Check if the history has been fully restored from the server for the user
+  Future<bool> isHistoryRestored(String userId);
+
+  /// Mark the history as restored (or not) for the user
+  Future<void> setHistoryRestored(String userId, bool value);
 }
