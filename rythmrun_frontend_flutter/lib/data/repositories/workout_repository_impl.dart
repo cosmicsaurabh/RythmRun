@@ -470,4 +470,13 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
       throw Exception('Failed to get workout count: $e');
     }
   }
+
+  @override
+  Future<void> clearLocalWorkouts(int userId) async {
+    try {
+      await _localDataSource.clearUserDataFromLocalDatabase(userId);
+    } catch (e) {
+      throw Exception('Failed to clear local workouts: $e');
+    }
+  }
 }
