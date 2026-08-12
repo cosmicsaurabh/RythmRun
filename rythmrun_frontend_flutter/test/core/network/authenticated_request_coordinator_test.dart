@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -404,6 +405,142 @@ void main() {
     expect(vault.current!.pair.accessToken, 'access-2');
   });
 
+  test(
+    'a request completing across a same-session rotation returns its result',
+    () async {
+      vault.current = AuthCredentialSnapshot(
+        pair: _jwtPair(sid: 'session-1', sub: 'user-1', jti: 'access-a'),
+        revision: 1,
+      );
+
+      final result = await coordinator.execute<String>(
+        request: (_) async {
+          // A concurrent refresh rotates the pair to a fresh same-session token
+          // while this request is in flight; the request still succeeded.
+          vault.current = AuthCredentialSnapshot(
+            pair: _jwtPair(sid: 'session-1', sub: 'user-1', jti: 'access-b'),
+            revision: 2,
+          );
+          return 'ok';
+        },
+      );
+
+      expect(result, 'ok');
+    },
+  );
+
+  test(
+    'a request completing across a different-session rotation is rejected',
+    () async {
+      vault.current = AuthCredentialSnapshot(
+        pair: _jwtPair(sid: 'session-1', sub: 'user-1', jti: 'access-a'),
+        revision: 1,
+      );
+
+      await expectLater(
+        coordinator.execute<String>(
+          request: (_) async {
+            // A different session (a fresh login on this device) must not be
+            // mistaken for a rotation of the in-flight request's session.
+            vault.current = AuthCredentialSnapshot(
+              pair: _jwtPair(sid: 'session-2', sub: 'user-1', jti: 'access-b'),
+              revision: 2,
+            );
+            return 'ok';
+          },
+        ),
+        throwsA(
+          isA<AuthSessionUnavailable>().having(
+            (error) => error.reason,
+            'reason',
+            AuthSessionUnavailableReason.credentialsChanged,
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'a failed refresh flight is evicted so a later request retries fresh',
+    () async {
+      // Hold one operation open on revision 1 so the shared flight is not
+      // cleared when the failing request ends; only the failed-flight eviction
+      // can remove it. Without eviction the later request would inherit the
+      // cached failure instead of refreshing anew.
+      final keeperHold = Completer<void>();
+      final keeperStarted = Completer<void>();
+      final keeper = coordinator.execute<String>(
+        request: (_) async {
+          keeperStarted.complete();
+          await keeperHold.future;
+          return 'keeper';
+        },
+      );
+      await keeperStarted.future;
+
+      var refreshAttempt = 0;
+      final firstRefreshReached = Completer<void>();
+      final releaseFirstRefresh = Completer<void>();
+      remote.onRefresh = (_) async {
+        refreshAttempt++;
+        if (refreshAttempt == 1) {
+          firstRefreshReached.complete();
+          await releaseFirstRefresh.future;
+          throw const NetworkException(
+            'offline',
+            kind: NetworkFailureKind.offline,
+          );
+        }
+        return _response(access: 'access-2', refresh: 'refresh-2');
+      };
+
+      final firstRequest = coordinator.execute<String>(
+        replayPolicy: AuthenticatedReplayPolicy.idempotent,
+        request: (headers) async {
+          if (headers['Authorization'] == 'Bearer access-1') {
+            throw UnauthorizedException(
+              'expired',
+              code: AuthenticatedRequestCoordinator.invalidAccessCode,
+            );
+          }
+          return 'first-replayed';
+        },
+      );
+      await firstRefreshReached.future;
+
+      releaseFirstRefresh.complete();
+      await expectLater(
+        firstRequest,
+        throwsA(
+          isA<AuthSessionUnavailable>().having(
+            (error) => error.reason,
+            'reason',
+            AuthSessionUnavailableReason.network,
+          ),
+        ),
+      );
+
+      final secondResult = await coordinator.execute<String>(
+        replayPolicy: AuthenticatedReplayPolicy.idempotent,
+        request: (headers) async {
+          if (headers['Authorization'] == 'Bearer access-1') {
+            throw UnauthorizedException(
+              'expired',
+              code: AuthenticatedRequestCoordinator.invalidAccessCode,
+            );
+          }
+          expect(headers['Authorization'], 'Bearer access-2');
+          return 'second-replayed';
+        },
+      );
+
+      expect(secondResult, 'second-replayed');
+      expect(remote.refreshCalls, 2);
+
+      keeperHold.complete();
+      await keeper.catchError((_) => 'keeper');
+    },
+  );
 }
 
 Future<void> _accessRejectedRequest(
@@ -429,6 +566,36 @@ AuthCredentialSnapshot _snapshot({
     pair: AuthTokenPair(accessToken: access, refreshToken: refresh),
     revision: revision,
   );
+}
+
+AuthTokenPair _jwtPair({
+  required String sid,
+  required String sub,
+  required String jti,
+}) {
+  return AuthTokenPair(
+    accessToken: _jwt(<String, Object>{
+      'sub': sub,
+      'sid': sid,
+      'jti': jti,
+      'typ': 'access',
+    }),
+    refreshToken: _jwt(<String, Object>{
+      'sub': sub,
+      'sid': sid,
+      'jti': '$jti-refresh',
+      'typ': 'refresh',
+    }),
+  );
+}
+
+String _jwt(Map<String, Object> claims) {
+  String encode(Object value) {
+    return base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+  }
+
+  return '${encode(<String, Object>{'alg': 'HS256', 'typ': 'JWT'})}.'
+      '${encode(claims)}.${encode('signature')}';
 }
 
 AuthResponseModel _response({required String access, required String refresh}) {
