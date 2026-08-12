@@ -92,6 +92,25 @@ sequenceDiagram
 
 ---
 
+## Data Clearance on Logout (Multi-User Privacy at Rest)
+
+To guarantee complete separation of local user data on shared devices:
+- **Logout Database Purge:** When a user logs out (voluntary or forced), the app immediately wipes all local workouts, tracking points, and cached image metadata belonging to that `userId` from the local SQLite database.
+- **Trophy Preservation:** This satisfies privacy requirements (IP-2.7) by ensuring that one account cannot see or mutate another account's local state.
+
+---
+
+## Bootstrapping History on Login
+
+When a user logs in (or restores a session after reinstalling/logging out), the app automatically triggers a **Bootstrapping Sync**:
+1. **Background Retrieval:** The synchronization happens in the background immediately at login (via the `SyncCoordinator`’s startup sequence). This pre-populates the local database before the user opens the Activities tab.
+2. **Perceived Latency:** Since data is already written in SQLite, the history screen opens instantly without showing loading spinners.
+3. **Pagination & Rendering:**
+   - **Network:** Paging (e.g., 50 items/page) is used when fetching from the server to prevent timeouts.
+   - **Local SQLite:** Local database queries retrieve all cached items in a single query since reading from SQLite is fast (under 5ms). Visual virtualization is handled in Flutter using `ListView.builder`, keeping memory usage tiny.
+
+---
+
 ## Token Rotation and Security Seams
 
 1. **Atomic Envelope:** The access token and refresh token are written atomically to secure storage as a single versioned envelope. The envelope's version represents the credential generation.

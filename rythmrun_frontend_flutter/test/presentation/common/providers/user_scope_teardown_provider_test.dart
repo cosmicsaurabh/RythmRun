@@ -87,6 +87,7 @@ void main() {
       reason: UserScopeExitReason.voluntaryLogout,
     );
     expect(teardown.isCompleted, isTrue);
+    expect(workoutRepository.clearedUserIds, contains(7));
 
     workoutRepository.currentUserId = 8;
     coordinator.activateUserScope('8');
@@ -151,6 +152,7 @@ void main() {
 class _ScopedWorkoutRepository implements WorkoutRepository {
   int currentUserId;
   final List<int> loadedUserIds = <int>[];
+  final List<int> clearedUserIds = <int>[];
 
   _ScopedWorkoutRepository({required this.currentUserId});
 
@@ -197,6 +199,11 @@ class _ScopedWorkoutRepository implements WorkoutRepository {
   @override
   Future<WorkoutSessionEntity?> getWorkout(int workoutId) async {
     return _workout(currentUserId);
+  }
+
+  @override
+  Future<void> clearLocalWorkouts(int userId) async {
+    clearedUserIds.add(userId);
   }
 
   @override

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/core/di/injection_container.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/session/user_scope_teardown.dart';
@@ -18,6 +19,17 @@ userScopeTeardownProvider = Provider<UserScopeTeardown>((ref) {
   String? activeUserId;
 
   void invalidateUserState({bool includeEntryForms = true}) {
+    final userId = int.tryParse(activeUserId ?? '');
+    if (userId != null && userId > 0) {
+      try {
+        ref.read(workoutRepositoryProvider).clearLocalWorkouts(userId);
+      } catch (e) {
+        debugPrint(
+          'Teardown: Failed to clear local workouts for user $userId: $e',
+        );
+      }
+    }
+
     ref.invalidate(liveTrackingProvider);
     ref.invalidate(trackingHistoryProvider);
     ref.invalidate(trackingHistoryDetailsProvider);

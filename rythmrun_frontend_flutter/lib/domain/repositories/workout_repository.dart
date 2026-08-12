@@ -51,4 +51,7 @@ abstract class WorkoutRepository {
 
   /// Get workout count for quick stats
   Future<int> getWorkoutCount();
+
+  /// Clear all local workouts for a user
+  Future<void> clearLocalWorkouts(int userId);
 }
