@@ -41,7 +41,7 @@ function sendError(
 ): Response {
   if (error instanceof AuthApplicationError) {
     return res.status(error.statusCode).json({
-      error: error.code,
+      code: error.code,
       message: error.message,
       retryable: error.retryable,
       statusCode: error.statusCode,
@@ -50,15 +50,16 @@ function sendError(
   }
   if (error instanceof AccountDeletionServiceError) {
     return res.status(error.statusCode).json({
-      error: error.code,
+      code: error.code,
       message: error.message,
+      retryable: error.retryable,
       statusCode: error.statusCode,
       timestamp: new Date().toISOString(),
     });
   }
   if (error instanceof DtoValidationError) {
     return res.status(400).json({
-      error: options.validationCode,
+      code: options.validationCode,
       message: 'Validation failed',
       statusCode: 400,
       timestamp: new Date().toISOString(),
@@ -68,7 +69,7 @@ function sendError(
   const category = error instanceof Error ? error.name : 'UnknownError';
   console.error(`${options.unexpectedOperation} failed (${category})`);
   return res.status(500).json({
-    error: 'INTERNAL_ERROR',
+    code: 'INTERNAL_ERROR',
     message: 'Internal server error',
     statusCode: 500,
     timestamp: new Date().toISOString(),

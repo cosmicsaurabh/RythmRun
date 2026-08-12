@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/di/injection_container.dart';
+import '../../../../core/network/auth_failures.dart';
+import '../../../../core/utils/error_handler.dart';
 import '../../../../domain/usecases/change_password_usecase.dart';
 import '../models/change_password_state.dart';
 
@@ -22,10 +24,22 @@ class ChangePasswordNotifier extends StateNotifier<ChangePasswordState> {
       );
       state = state.copyWith(isLoading: false, isSuccess: true);
       return response.message; // Return success message
+    } on AuthSessionFailure catch (e) {
+      // A dead/expired session surfaces its curated message; the coordinator has
+      // already emitted the invalidation signal that drives the global logout.
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: ErrorHandler.getErrorMessage(e),
+      );
+      return null;
     } catch (e) {
-      final errorMessage = e.toString().replaceFirst('Exception: ', '');
-      state = state.copyWith(isLoading: false, errorMessage: errorMessage);
-      return null; // Return null on error
+      // Stable backend codes (e.g. AUTH_PASSWORD_INVALID) render curated text via
+      // ErrorHandler — never a raw toString() with the class name welded on.
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: ErrorHandler.getErrorMessage(e),
+      );
+      return null;
     }
   }
 

@@ -120,19 +120,11 @@ class AppHttpClient {
         try {
           final decodedBody = json.decode(response.body);
           if (decodedBody is Map<String, dynamic>) {
-            final responseError = decodedBody['error'];
-            final responseMessage = decodedBody['message'] ?? responseError;
+            final responseMessage = decodedBody['message'];
             if (responseMessage is String && responseMessage.isNotEmpty) {
               errorMessage = responseMessage;
             }
-            final explicitCode = decodedBody['code'];
-            final responseCode =
-                explicitCode is String && explicitCode.isNotEmpty
-                    ? explicitCode
-                    : responseError is String &&
-                        _looksLikeStableErrorCode(responseError)
-                    ? responseError
-                    : null;
+            final responseCode = decodedBody['code'];
             if (responseCode is String && responseCode.isNotEmpty) {
               errorCode = responseCode;
             }
@@ -222,10 +214,6 @@ class AppHttpClient {
     }
 
     throw const NetworkException('The network request could not be completed.');
-  }
-
-  static bool _looksLikeStableErrorCode(String value) {
-    return RegExp(r'^[A-Z][A-Z0-9_]+$').hasMatch(value);
   }
 
   /// Close the HTTP client

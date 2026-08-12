@@ -6,12 +6,12 @@ import 'package:http/testing.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 
 void main() {
-  test('reads the backend error field as the stable auth code', () async {
+  test('reads the backend stable code field', () async {
     final client = AppHttpClient(
       client: MockClient(
         (_) async => http.Response(
           jsonEncode(<String, Object>{
-            'error': 'AUTH_ACCESS_INVALID',
+            'code': 'AUTH_ACCESS_INVALID',
             'message': 'Authentication is required',
             'statusCode': 401,
           }),
@@ -35,12 +35,43 @@ void main() {
     );
   });
 
+  test('ignores a legacy error field — the code fallback is gone', () async {
+    // Phase 4 dropped the `error`-field heuristic: a body that carries only the
+    // old `error` key yields no stable code, so nothing keeps the client and a
+    // backend that still emitted `error` accidentally compatible.
+    final client = AppHttpClient(
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode(<String, Object>{
+            'error': 'AUTH_ACCESS_INVALID',
+            'message': 'Authentication is required',
+          }),
+          401,
+        ),
+      ),
+    );
+    addTearDown(client.close);
+
+    await expectLater(
+      client.get('https://example.test/api/users/me', maxRetries: 0),
+      throwsA(
+        isA<UnauthorizedException>()
+            .having((error) => error.code, 'code', isNull)
+            .having(
+              (error) => error.message,
+              'message',
+              'Authentication is required',
+            ),
+      ),
+    );
+  });
+
   test('classifies every 5xx response as a server failure', () async {
     final client = AppHttpClient(
       client: MockClient(
         (_) async => http.Response(
           jsonEncode(<String, Object>{
-            'error': 'AUTH_SERVICE_UNAVAILABLE',
+            'code': 'AUTH_SERVICE_UNAVAILABLE',
             'message': 'Authentication service is temporarily unavailable',
             'retryable': true,
           }),

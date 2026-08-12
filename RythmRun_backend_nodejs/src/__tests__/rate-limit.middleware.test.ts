@@ -202,7 +202,7 @@ describe('rate limit middleware', () => {
     expect(blocked.statusCode).toBe(429);
     expect(blocked.headers['Retry-After']).toBe(String(WINDOW_MS / 1000));
     expect(blocked.body).toMatchObject({
-      error: 'AUTH_RATE_LIMITED',
+      code: 'AUTH_RATE_LIMITED',
       message: 'Too many requests. Please wait and try again.',
       retryable: true,
       statusCode: 429,

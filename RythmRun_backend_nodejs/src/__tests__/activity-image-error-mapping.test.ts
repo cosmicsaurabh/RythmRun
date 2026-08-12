@@ -81,7 +81,7 @@ describe('typed activity-image error mapping (IP-2.6)', () => {
     await controller.listImages(fakeRequest(), fakeResponse(captured));
 
     expect(captured.statusCode).toBe(statusCode);
-    expect(captured.body).toMatchObject({ status: 'error', error: code });
+    expect(captured.body).toMatchObject({ status: 'error', code });
   });
 
   it('keeps the status when the message text changes', async () => {
@@ -99,7 +99,7 @@ describe('typed activity-image error mapping (IP-2.6)', () => {
 
     expect(captured.statusCode).toBe(400);
     expect(captured.body).toMatchObject({
-      error: 'ACTIVITY_IMAGE_KEY_INVALID',
+      code: 'ACTIVITY_IMAGE_KEY_INVALID',
       message: 'Completely different wording',
     });
   });

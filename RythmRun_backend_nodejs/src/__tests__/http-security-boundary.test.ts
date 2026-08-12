@@ -209,7 +209,7 @@ describe('HTTP security boundaries', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toMatchObject({
-      error: 'REGISTRATION_FAILED',
+      code: 'REGISTRATION_FAILED',
       message: 'Validation failed',
       statusCode: 400,
     });
@@ -230,7 +230,7 @@ describe('HTTP security boundaries', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toMatchObject({
-      error: 'PROFILE_UPDATE_FAILED',
+      code: 'PROFILE_UPDATE_FAILED',
       message: 'Validation failed',
       statusCode: 400,
     });
@@ -337,7 +337,7 @@ describe('HTTP security boundaries', () => {
 
     expect(response.statusCode).toBe(503);
     expect(response.body).toMatchObject({
-      error: 'AUTH_GOOGLE_UNAVAILABLE',
+      code: 'AUTH_GOOGLE_UNAVAILABLE',
       message: 'Google authentication is temporarily unavailable',
       retryable: true,
       statusCode: 503,
@@ -361,7 +361,7 @@ describe('HTTP security boundaries', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toMatchObject({
-      error: 'GOOGLE_AUTH_FAILED',
+      code: 'GOOGLE_AUTH_FAILED',
       message: 'Validation failed',
       statusCode: 400,
     });
@@ -378,12 +378,35 @@ describe('HTTP security boundaries', () => {
 
     expect(response.statusCode).toBe(401);
     expect(response.body).toMatchObject({
-      error: 'AUTH_REFRESH_INVALID',
+      code: 'AUTH_REFRESH_INVALID',
       message: 'Refresh session is invalid',
       statusCode: 401,
     });
     expect(authenticate).not.toHaveBeenCalled();
     expect(userService.refreshToken).not.toHaveBeenCalled();
+  });
+
+  it('emits a well-formed stable code on every auth error and drops the legacy error field', async () => {
+    // Phase 4 error contract (P1): the stable code lives in `code`; the old
+    // `error` field is gone entirely, so the client can read one field with one
+    // meaning across validation (400), typed auth (401), and retryable (503).
+    userService.googleLogin.mockRejectedValueOnce(googleAuthUnavailableError());
+
+    const responses = await Promise.all([
+      requestJson(server, 'POST', '/api/users/register', { username: 'x' }),
+      requestJson(server, 'POST', '/api/users/refresh-token', {}),
+      requestJson(server, 'POST', '/api/users/auth/google', { idToken: 't' }),
+    ]);
+
+    const stableCode = /^[A-Z][A-Z0-9_]+$/;
+    for (const response of responses) {
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      const body = response.body as Record<string, unknown>;
+      expect(typeof body.code).toBe('string');
+      expect(body.code as string).toMatch(stableCode);
+      expect(typeof body.message).toBe('string');
+      expect(body).not.toHaveProperty('error');
+    }
   });
 
   it('returns the safe current-user profile through the protected route', async () => {

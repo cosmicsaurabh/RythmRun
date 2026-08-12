@@ -106,7 +106,7 @@ void main() {
         client: MockClient(
           (_) async => http.Response(
             jsonEncode(<String, Object>{
-              'error': 'AUTH_INVALID_CREDENTIALS',
+              'code': 'AUTH_INVALID_CREDENTIALS',
               'message': 'Invalid username or password',
             }),
             401,
