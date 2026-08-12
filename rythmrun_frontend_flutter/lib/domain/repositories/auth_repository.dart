@@ -23,6 +23,13 @@ abstract class AuthRepository {
   /// coordinator only after user-scoped work has stopped.
   Future<void> logout();
 
+  /// Best-effort native Google sign-out. Clears the cached Google account so
+  /// the next Google sign-in shows the chooser instead of silently reusing the
+  /// signed-out account. A no-op when the build has no Google identity service;
+  /// never throws. The session coordinator calls this on every account exit —
+  /// voluntary logout and forced loss alike.
+  Future<void> signOutFromGoogle();
+
   /// Change password
   Future<ChangePasswordResponseModel> changePassword(
     String currentPassword,

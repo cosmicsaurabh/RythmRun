@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:developer';
 
 import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
@@ -120,14 +119,6 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
-    final googleIdentityService = _googleIdentityService;
-    if (googleIdentityService != null) {
-      unawaited(
-        googleIdentityService.signOut().catchError((_) {
-          log('Native Google sign-out could not be completed.');
-        }),
-      );
-    }
     try {
       await _authenticatedRequests.execute(
         replayPolicy: AuthenticatedReplayPolicy.idempotent,
@@ -137,6 +128,13 @@ class AuthRepositoryImpl implements AuthRepository {
       // Remote revocation is best effort; SessionNotifier owns local cleanup.
       log('Remote logout could not be completed.');
     }
+  }
+
+  @override
+  Future<void> signOutFromGoogle() async {
+    final googleIdentityService = _googleIdentityService;
+    if (googleIdentityService == null) return;
+    await _bestEffortGoogleSignOut(googleIdentityService);
   }
 
   Future<void> _bestEffortGoogleSignOut(

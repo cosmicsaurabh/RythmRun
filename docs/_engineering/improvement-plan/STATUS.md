@@ -14,7 +14,7 @@ proof open) · `In progress` · `Planned` · `Blocked` · `Deferred`
 in [ACTION-REQUIRED.md](./ACTION-REQUIRED.md). "Merged and tested locally" is not
 "done" anywhere in this program.
 
-_Last updated: 2026-08-11 against `main` at `de93182`._
+_Last updated: 2026-08-12 against `main` including the auth-hardening (IP-2 follow-up) slice._
 
 ## At a glance
 
@@ -34,10 +34,13 @@ approval to send the dependency inventory to npm). The rest are `Pending`.
 work is operational, not code.** Containment, exposure investigation, and
 credential rotation cannot be closed from the repository.
 
-Current `main` gates: backend 464 passed / 7 skipped / 471 total, typecheck
-clean; Flutter 359 passed; analyzer 9 issues, 0 warnings, 0 errors. The counted
-analyzer baseline is stamped Flutter 3.44.1 / Dart 3.12.1 to match CI, so it can
-only be checked on the pinned toolchain.
+Current `main` gates: backend 510 passed / 7 skipped / 517 total locally
+(517 passed / 517 total in CI with PostgreSQL enabled), typecheck clean; Flutter
+353 passed; analyzer 9 issues, 0 warnings, 0 errors. The counted analyzer
+baseline is stamped Flutter 3.44.1 / Dart 3.12.1 to match CI, so it can only be
+checked on the pinned toolchain. The rise from 464/471 and Flutter 359 is the
+auth-hardening slice (config spine, containment, refresh seams, error contract,
+core hardening) net of Phase 3a's deletion of 15 dead legacy-migration tests.
 
 ## Deployment reality — corrected 2026-08-11
 
@@ -151,9 +154,11 @@ and are not substitutes.
 | 2026-08-11 | Release fixes — OpenStreetMap attribution, deletion-request link, `1.2.0+21`; toolchain bump; `APP_ENV` define | PR #171 |
 | 2026-08-11 | IP-2.6 storage boundary slice (items 6–8) — presigned PUT with signed Content-Length/Content-Type, S3 metadata & checksum verification, user/activity quotas, abandoned upload cleanup | Local branch |
 | 2026-08-11 | IP-2.4 account deletion slice — re-authentication control (password/Google token), transactional `ObjectCleanupJob` outbox, atomic user delete, `ObjectCleanupRunner`, Flutter datasource & error mapping | Local branch |
+| 2026-08-12 | Auth-hardening follow-up (IP-2 seams) — tunable auth-timing config spine; M5 cleanup-runner scheduled on the sweep + M3 `DELETE /me` rate limit; client credential simplification (legacy plaintext-token migration + `requiresServerVerification` deleted) and refresh seams (same-session rotation accept, failed-flight eviction, idempotent avatar upload-url); `error`→`code` error contract across every mounted emitter; core hardening (unconsumed-reset-token invalidation, `verifyEmail` purpose guard, login-timing flattening, delete-account Google-503 pass-through); native Google sign-out on forced loss; presigned-URL-at-rest note added to the IP-2.7 threat model. A refresh-reuse grace window was tried and reverted (strict reuse detection restored). | Branch `auth-impr` (PRs #180/#181 merged; remainder local) |
 
 Each phase file's evidence log carries the detail, including what was
-deliberately *not* claimed.
+deliberately *not* claimed. The auth-hardening slice's per-phase detail lives in
+the [IP-2 evidence log](./IP-2-auth-account-privacy.md#evidence-log).
 
 ## Audit finding traceability
 
@@ -183,7 +188,7 @@ until its package's manual checks carry dated evidence.
 | Ordinary 750-point workout exceeds default JSON limit | P1 | IP-1.5, superseded by IP-4.2 | Interim 750-point fixture; bounded batch E2E |
 | Nested activity arrays/domain fields weakly validated | P1 | IP-1.5, IP-4.2 | Malformed/over-limit contract tests |
 | PATCH deletes status history when field omitted | P1 | IP-1.5 | Name-only PATCH preservation test |
-| Token refresh broken across route, secret, claim, storage, response | P1 | IP-2.1, IP-2.2 | Expiry→single refresh→retry E2E |
+| Token refresh broken across route, secret, claim, storage, response | P1 | IP-2.1, IP-2.2 | Expiry→single refresh→retry E2E. Auth-hardening then tightened the client seams (same-session rotation accepted, failed refresh flight evicted, idempotent avatar upload-url replay) and confirmed strict single-use reuse detection on real PostgreSQL — a refresh-reuse grace window was tried and reverted for violating the replacement-check constraint |
 | Registration stores client tokens inconsistently | P1/P2 | IP-2.1, IP-2.2 | Login/register equivalent state test |
 | Tokens plaintext in SharedPreferences/PostgreSQL | P1 | IP-2.1, IP-2.2 | DB digest assertion; device storage migration check |
 | Logout/password change leaves access sessions usable | P1 | IP-2.1 | Revoked access/refresh integration tests |
@@ -208,7 +213,7 @@ until its package's manual checks carry dated evidence.
 | Audit finding | Disposition |
 | --- | --- |
 | Multiple Prisma clients/pools | IP-1.6 centralized on one adapter-backed client; deployed connection measurement in MC-1.12/MC-1.13 |
-| Generic/string-matched backend errors | IP-2.6 delivered typed errors in the *mounted* image controller; the unmounted social controllers still branch on message strings |
+| Generic/string-matched backend errors | IP-2.6 delivered typed errors in the *mounted* image controller; the auth-hardening error contract (Phase 4) then moved the stable code from `error`→`code` across every mounted emitter (auth middleware incl. `AUTH_ACCESS_INVALID`, rate-limit, activity-image) and made the Flutter client branch on `code`, deleting its `error`-string heuristic; the unmounted social controllers still branch on message strings |
 | `app.ts` listens and starts jobs on import | Seam added in IP-0.5, ownership in IP-1.6; deployed shutdown is MC-1.13, readiness maturity IP-5.1 |
 | Environment loads after imported R2 dependencies | Fixed in IP-0.5 and live; a deployed fail-closed smoke is still owed (MC-0.5 area) |
 | Health ignores dependencies; cold start slow | IP-5.1 |

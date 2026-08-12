@@ -397,7 +397,40 @@ void main() {
     expect(gate.isActive, isFalse);
   });
 
-  test('logout does not wait for native Google sign-out', () async {
+  test(
+    'logout performs remote revocation without native Google sign-out',
+    () async {
+      // The native Google sign-out moved to session teardown (D3) so it runs on
+      // forced loss too. logout() is now purely the remote session revocation.
+      final gate = AuthenticationAttemptGate();
+      final httpClient = _testHttpClient();
+      addTearDown(httpClient.close);
+      final remote = _DelayedAuthRemoteDataSource(httpClient);
+      final local = _MemoryAuthLocalDataSource();
+      final invalidation = SessionInvalidationSignal();
+      addTearDown(invalidation.dispose);
+      final google = _FakeGoogleIdentityService();
+      final repository = AuthRepositoryImpl(
+        remote,
+        local,
+        authenticatedRequests: _coordinator(
+          gate: gate,
+          remote: remote,
+          local: local,
+          invalidation: invalidation,
+        ),
+        authenticationAttemptGate: gate,
+        googleIdentityService: google,
+      );
+
+      await repository.logout();
+
+      expect(remote.logoutCalls, 1);
+      expect(google.signOutCalls, 0);
+    },
+  );
+
+  test('signOutFromGoogle clears the native Google account only', () async {
     final gate = AuthenticationAttemptGate();
     final httpClient = _testHttpClient();
     addTearDown(httpClient.close);
@@ -405,13 +438,7 @@ void main() {
     final local = _MemoryAuthLocalDataSource();
     final invalidation = SessionInvalidationSignal();
     addTearDown(invalidation.dispose);
-    final signOutCompleter = Completer<void>();
-    addTearDown(() {
-      if (!signOutCompleter.isCompleted) signOutCompleter.complete();
-    });
-    final google = _FakeGoogleIdentityService(
-      signOutCompleter: signOutCompleter,
-    );
+    final google = _FakeGoogleIdentityService();
     final repository = AuthRepositoryImpl(
       remote,
       local,
@@ -425,11 +452,10 @@ void main() {
       googleIdentityService: google,
     );
 
-    await repository.logout();
+    await repository.signOutFromGoogle();
 
     expect(google.signOutCalls, 1);
-    expect(signOutCompleter.isCompleted, isFalse);
-    expect(remote.logoutCalls, 1);
+    expect(remote.logoutCalls, 0);
   });
 }
 
@@ -637,12 +663,10 @@ class _FakeGoogleIdentityService implements GoogleIdentityService {
   _FakeGoogleIdentityService({
     this.idToken = 'google-id-token',
     this.authenticationCompleter,
-    this.signOutCompleter,
   });
 
   final String? idToken;
   final Completer<String?>? authenticationCompleter;
-  final Completer<void>? signOutCompleter;
   int authenticateCalls = 0;
   int signOutCalls = 0;
 
@@ -655,6 +679,5 @@ class _FakeGoogleIdentityService implements GoogleIdentityService {
   @override
   Future<void> signOut() async {
     signOutCalls += 1;
-    await signOutCompleter?.future;
   }
 }
