@@ -84,6 +84,7 @@ class AvatarRemoteDataSourceImpl implements AvatarRemoteDataSource {
     int sizeBytes,
   ) async {
     final response = await authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
       request:
           (authHeaders) => httpClient.post(
             AppConfig.getUrl('/avatar/upload-url'),

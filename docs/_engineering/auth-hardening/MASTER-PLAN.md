@@ -4,7 +4,7 @@ published: false
 
 # Auth Hardening & Tunable Timing — Master Plan
 
-**Status:** Phases 0–2 done · Phase 3a complete — awaiting review · **Owner:** maintainer · **Created:** 2026-08-11
+**Status:** Phases 0–2 done · Phase 3 complete (3a + 3b) — awaiting review · **Owner:** maintainer · **Created:** 2026-08-11
 **Source:** auth + refresh audit (16 confirmed findings, 1 plausible, 2 refuted)
 **Relationship to the improvement program:** this is IP-2 follow-up work. It does
 not replace `IP-2-auth-account-privacy.md`; when a phase here lands, its evidence
@@ -641,9 +641,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 ### Phase 3 — Client credential simplification
 - [x] **3a** legacy migration + `requiresServerVerification` / `markServerVerified` deleted across 5 lib files (net −854 lines). Kept a simplified gate-protected `markCurrentCredentialsServerVerified` — its only surviving job is the sync-timer reset, not a verification stamp.
 - [x] **3a** dead legacy-migration + verification-stamp tests removed (15 tests); suite green at 344, analyzer 9
-- [ ] **M2** same-session rotation accepted (on simplified coordinator)
-- [ ] **A3** failed flights evicted
-- [ ] **A4** avatar replay policy
+- [x] **M2** same-session rotation accepted in `_completeSuccessfulRequest` — a request that succeeds while a concurrent refresh rotates the pair is no longer failed; only a cleared vault or a different `sid`/`sub` throws. Undecodable tokens fail closed.
+- [x] **A3** failed refresh flights evicted the moment they error (a failing refresh never advances the revision, so the cached failure would otherwise be replayed to every overlapping request); a success stays cached until the last operation ends
+- [x] **A4** `getUploadUrl` now sends `replayPolicy: idempotent` — a lost-response retry re-mints a presigned PUT + single-use intent instead of failing the upload
+- [x] **3b** new tests: same-session rotation returns its result; different-session rotation rejected; failed flight evicted → later request retries fresh; avatar upload-url opts into idempotent replay. Suite 344 → 348, analyzer 9
 
 ### Phase 4 — Error contract
 - [ ] **M4** change-password via `ErrorHandler`
@@ -701,7 +702,9 @@ true starting point. Phase 0 adds config-spine tests, taking the backend to
 the M5 sweep and M3 rate-limit tests → 508 passed / 7 skipped / 515 total.
 Phase 2 adds four grace-window rotation tests → 512 passed / 7 skipped / 519
 total. Phase 3a is client-only and **deliberately drops** the Flutter count from
-359 to 344 by deleting 15 dead legacy-migration / verification-stamp tests.)
+359 to 344 by deleting 15 dead legacy-migration / verification-stamp tests.
+Phase 3b adds four refresh-seam tests (M2 same-session accept/reject, A3
+failed-flight eviction, A4 avatar replay policy) → Flutter 348.)
 
 **Four known traps** (from `CLAUDE.md`, repeated because they cost real time):
 1. Use `npm test`, never `npx jest` — the suite is native ESM.

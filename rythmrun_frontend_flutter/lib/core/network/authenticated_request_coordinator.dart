@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:jwt_decoder/jwt_decoder.dart';
+
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/models/auth_response_model.dart';
 import '../services/auth_token_store.dart';
@@ -167,6 +169,21 @@ class AuthenticatedRequestCoordinator implements AuthenticatedRequestExecutor {
 
     final flight = _performRefresh(expected);
     _refreshFlights[expected.revision] = flight;
+    // A failed rotation must not linger for later requests on this revision: a
+    // failing refresh never advances the revision, so the cached failure would
+    // be replayed to every overlapping request. Evict it the moment it errors so
+    // the next request starts a fresh attempt. A success stays cached until the
+    // last operation ends, keeping concurrent requests on one rotation.
+    unawaited(
+      flight.then(
+        (_) {},
+        onError: (Object _, StackTrace _) {
+          if (identical(_refreshFlights[expected.revision], flight)) {
+            _refreshFlights.remove(expected.revision);
+          }
+        },
+      ),
+    );
     return flight;
   }
 
@@ -378,6 +395,12 @@ class AuthenticatedRequestCoordinator implements AuthenticatedRequestExecutor {
     final current = await _readSnapshot();
     if (_sameCredentials(current, expected)) return;
 
+    // A concurrent refresh may have rotated the pair while this request was in
+    // flight. The request still succeeded against the backend, so accept a
+    // same-session rotation and fail only when the vault was cleared or now
+    // holds a different account or session.
+    if (current != null && _sameSession(current, expected)) return;
+
     throw const AuthSessionUnavailable(
       AuthSessionUnavailableReason.credentialsChanged,
     );
@@ -399,6 +422,36 @@ class AuthenticatedRequestCoordinator implements AuthenticatedRequestExecutor {
     return left != null &&
         left.revision == right.revision &&
         left.pair == right.pair;
+  }
+
+  /// True when both access tokens name the same account and session, i.e. one
+  /// is a rotation of the other. A token that cannot be decoded, or is missing
+  /// either claim, is treated as a mismatch so the caller fails closed.
+  static bool _sameSession(
+    AuthCredentialSnapshot left,
+    AuthCredentialSnapshot right,
+  ) {
+    final leftClaims = _sessionClaims(left.pair.accessToken);
+    if (leftClaims == null) return false;
+    final rightClaims = _sessionClaims(right.pair.accessToken);
+    if (rightClaims == null) return false;
+    return leftClaims.sid == rightClaims.sid &&
+        leftClaims.sub == rightClaims.sub;
+  }
+
+  static ({String sid, String sub})? _sessionClaims(String accessToken) {
+    final Map<String, dynamic> claims;
+    try {
+      claims = JwtDecoder.decode(accessToken);
+    } catch (_) {
+      return null;
+    }
+    final sid = claims['sid'];
+    final sub = claims['sub'];
+    if (sid is! String || sid.isEmpty || sub is! String || sub.isEmpty) {
+      return null;
+    }
+    return (sid: sid, sub: sub);
   }
 
   static Map<String, String> _headersFor(AuthCredentialSnapshot snapshot) {

@@ -45,6 +45,24 @@ void main() {
       });
     });
 
+    test('requests upload authorization with idempotent replay', () async {
+      final authenticatedRequests = _FakeAuthenticatedRequests();
+      final dataSource = AvatarRemoteDataSourceImpl(
+        _FakeRemoteHttpClient(),
+        authenticatedRequests,
+      );
+
+      // Fetching an upload URL is safe to replay after a refresh: it only mints
+      // a fresh presigned PUT and single-use intent, so a lost-response retry
+      // must not fail the upload.
+      await dataSource.getUploadUrl('jpg', 'image/jpeg', 321);
+
+      expect(
+        authenticatedRequests.lastReplayPolicy,
+        AuthenticatedReplayPolicy.idempotent,
+      );
+    });
+
     test('fetches an authenticated signed avatar read URL', () async {
       final httpClient = _FakeRemoteHttpClient();
       final dataSource = AvatarRemoteDataSourceImpl(
@@ -336,11 +354,14 @@ class _FakeAuthRepository implements AuthRepository {
 }
 
 class _FakeAuthenticatedRequests implements AuthenticatedRequestExecutor {
+  AuthenticatedReplayPolicy? lastReplayPolicy;
+
   @override
   Future<T> execute<T>({
     required Future<T> Function(Map<String, String> authHeaders) request,
     AuthenticatedReplayPolicy replayPolicy = AuthenticatedReplayPolicy.never,
   }) {
+    lastReplayPolicy = replayPolicy;
     return request(const <String, String>{
       'Authorization': 'Bearer access-token',
     });
