@@ -164,7 +164,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
   }
 
   /// Initialize session on app startup
-  Future<void> _initializeSession() async {
+  Future<void> _initializeSession({bool isStartup = true}) async {
     final generation = _beginSessionOperation();
     if (generation == null) return;
     state = state.copyWith(
@@ -215,51 +215,88 @@ class SessionNotifier extends StateNotifier<SessionData> {
     }
 
     try {
-      // First, check if we have user data and if we need token refresh
-      final userData = await _authRepository.getCurrentUser();
+      // Parallelize independent async disk reads to optimize startup latency
+      final results = await Future.wait([
+        _authRepository.getCurrentUser(),
+        _authRepository.needsTokenRefresh(),
+        _authRepository.canStayLoggedInOffline(),
+      ]);
       if (!_isSessionOperationCurrent(generation)) return;
-      final needsRefresh = await _authRepository.needsTokenRefresh();
-      if (!_isSessionOperationCurrent(generation)) return;
+
+      final userData = results[0] as UserEntity?;
+      final needsRefresh = results[1] as bool;
+      final canStayOffline = results[2] as bool;
 
       if (userData != null) {
-        if (needsRefresh) {
-          await _refreshToken(generation);
-          return;
-        }
-
-        final canStayOffline = await _authRepository.canStayLoggedInOffline();
-        if (!_isSessionOperationCurrent(generation)) return;
-        if (!canStayOffline) {
-          log(
-            'SessionProvider: 7-day sync requirement not met, attempting backend verification',
-          );
-        }
-
-        final validation = await _authRepository.validateSession();
-        if (!_isSessionOperationCurrent(generation)) return;
-        switch (validation) {
-          case SessionValidationStatus.valid:
+        if (canStayOffline) {
+          if (needsRefresh) {
+            if (isStartup) {
+              // Optimistically admit the user offline immediately so the app opens instantly.
+              _publishAuthenticated(
+                userData,
+                sessionState: SessionState.authenticatedOffline,
+                expectedGeneration: generation,
+              );
+              // Trigger token refresh asynchronously in the background.
+              unawaited(_refreshTokenBackground(generation, userData));
+            } else {
+              // Non-startup: block and refresh with traditional UI.
+              await _refreshToken(generation);
+            }
+          } else {
+            // The access token is still fresh! We can admit them fully online.
             _publishAuthenticated(
               userData,
               sessionState: SessionState.authenticated,
               expectedGeneration: generation,
             );
-            break;
-          case SessionValidationStatus.invalid:
-            await handleForcedAuthenticationLoss();
-            break;
-          case SessionValidationStatus.unavailable:
-            if (canStayOffline) {
+            if (isStartup) {
+              // Verify session validation in the background without blocking.
+              unawaited(_validateSessionBackground(generation, userData));
+            } else {
+              // Non-startup: block and validate.
+              final validation = await _authRepository.validateSession();
+              if (!_isSessionOperationCurrent(generation)) return;
+              switch (validation) {
+                case SessionValidationStatus.valid:
+                  break;
+                case SessionValidationStatus.invalid:
+                  await handleForcedAuthenticationLoss();
+                  break;
+                case SessionValidationStatus.unavailable:
+                  _publishAuthenticated(
+                    userData,
+                    sessionState: SessionState.authenticatedOffline,
+                    errorMessage: 'Offline mode - limited functionality available',
+                    expectedGeneration: generation,
+                  );
+                  break;
+              }
+            }
+          }
+        } else {
+          // 7-day offline sync window exceeded. We MUST block and verify with backend.
+          state = state.copyWith(
+            state: SessionState.checking,
+            errorMessage: 'Verifying session online...',
+          );
+          final validation = await _authRepository.validateSession();
+          if (!_isSessionOperationCurrent(generation)) return;
+          switch (validation) {
+            case SessionValidationStatus.valid:
               _publishAuthenticated(
                 userData,
-                sessionState: SessionState.authenticatedOffline,
-                errorMessage: 'Offline mode - limited functionality available',
+                sessionState: SessionState.authenticated,
                 expectedGeneration: generation,
               );
-            } else {
+              break;
+            case SessionValidationStatus.invalid:
+              await handleForcedAuthenticationLoss();
+              break;
+            case SessionValidationStatus.unavailable:
               _publishVerificationRequired(generation);
-            }
-            break;
+              break;
+          }
         }
         return;
       }
@@ -336,6 +373,60 @@ class SessionNotifier extends StateNotifier<SessionData> {
       }
     } catch (_) {
       if (!_isSessionOperationCurrent(generation)) return;
+      _publishVerificationRequired(generation);
+    }
+  }
+
+  /// Run token refresh in the background to avoid blocking the main thread / startup
+  Future<void> _refreshTokenBackground(int generation, UserEntity userData) async {
+    try {
+      final user = await _authRepository.refreshToken();
+      if (!_isSessionOperationCurrent(generation)) return;
+      _publishAuthenticated(
+        user,
+        sessionState: SessionState.authenticated,
+        expectedGeneration: generation,
+      );
+    } on AuthSessionInvalid {
+      if (!_isSessionOperationCurrent(generation)) return;
+      await handleForcedAuthenticationLoss();
+    } catch (e) {
+      log('SessionProvider: Background token refresh failed: $e');
+    }
+  }
+
+  /// Run session validation in the background to avoid blocking startup
+  Future<void> _validateSessionBackground(int generation, UserEntity userData) async {
+    try {
+      final validation = await _authRepository.validateSession();
+      if (!_isSessionOperationCurrent(generation)) return;
+      switch (validation) {
+        case SessionValidationStatus.valid:
+          break;
+        case SessionValidationStatus.invalid:
+          await handleForcedAuthenticationLoss();
+          break;
+        case SessionValidationStatus.unavailable:
+          await _handleUnavailableBackground(generation, userData);
+          break;
+      }
+    } catch (e) {
+      log('SessionProvider: Background session validation failed: $e');
+      await _handleUnavailableBackground(generation, userData);
+    }
+  }
+
+  Future<void> _handleUnavailableBackground(int generation, UserEntity userData) async {
+    final canStayOffline = await _authRepository.canStayLoggedInOffline();
+    if (!_isSessionOperationCurrent(generation)) return;
+    if (canStayOffline) {
+      _publishAuthenticated(
+        userData,
+        sessionState: SessionState.authenticatedOffline,
+        errorMessage: 'Connection failed - offline mode enabled',
+        expectedGeneration: generation,
+      );
+    } else {
       _publishVerificationRequired(generation);
     }
   }
@@ -729,7 +820,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
 
   /// Force refresh session (useful for pull-to-refresh scenarios)
   Future<void> refreshSession() async {
-    await _initializeSession();
+    await _initializeSession(isStartup: false);
   }
 
   /// Force clear and reinitialize session (useful for debugging)
@@ -738,7 +829,7 @@ class SessionNotifier extends StateNotifier<SessionData> {
     final result = await handleForcedAuthenticationLoss();
     if (result.isCompleted) {
       state = const SessionData(state: SessionState.initial);
-      await _initializeSession();
+      await _initializeSession(isStartup: true);
     }
   }
 

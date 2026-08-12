@@ -10,6 +10,7 @@ import 'package:rythmrun_frontend_flutter/domain/usecases/login_user_usecase.dar
 import 'package:rythmrun_frontend_flutter/domain/usecases/login_with_google_usecase.dart';
 import 'package:rythmrun_frontend_flutter/domain/usecases/register_user_usecase.dart';
 import 'package:rythmrun_frontend_flutter/main.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/widgets/splash_screen.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/session_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/session/user_scope_teardown.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/login/providers/login_provider.dart';

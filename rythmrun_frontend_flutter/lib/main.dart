@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/widgets/splash_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/providers/connectivity_provider.dart';
 import 'package:rythmrun_frontend_flutter/presentation/features/landing/screens/landing_screen.dart';
@@ -460,44 +460,6 @@ class AuthWrapper extends StatelessWidget {
       unauthenticatedBuilder: unauthenticatedBuilder,
       loadingBuilder: loadingBuilder,
       sessionListenable: sessionListenable,
-    );
-  }
-}
-
-/// Simple splash screen shown while checking authentication
-class SplashScreen extends StatelessWidget {
-  const SplashScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // App logo or icon
-            Icon(fitnessIcon, size: 80, color: Theme.of(context).primaryColor),
-            const SizedBox(height: 24),
-            Text(
-              'RythmRun',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).primaryColor,
-              ),
-            ),
-            const SizedBox(height: 48),
-            // Loading indicator
-            CupertinoActivityIndicator(),
-            const SizedBox(height: 16),
-            Text(
-              'Loading...',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

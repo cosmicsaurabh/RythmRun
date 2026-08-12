@@ -668,7 +668,12 @@ void main() {
 
       expect(notifier.state.state, SessionState.unauthenticated);
       expect(notifier.state.user, isNull);
-      expect(events, <String>['mark-cleanup', 'teardown', 'clear']);
+      expect(events, <String>[
+        'activate:7',
+        'mark-cleanup',
+        'teardown',
+        'clear',
+      ]);
     });
 
     test(
