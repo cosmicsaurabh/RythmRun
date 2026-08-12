@@ -215,11 +215,17 @@ class SessionNotifier extends StateNotifier<SessionData> {
     }
 
     try {
-      // First, check if we have user data and if we need token refresh
-      final userData = await _authRepository.getCurrentUser();
+      // Parallelize independent async disk reads to optimize startup latency
+      final results = await Future.wait([
+        _authRepository.getCurrentUser(),
+        _authRepository.needsTokenRefresh(),
+        _authRepository.canStayLoggedInOffline(),
+      ]);
       if (!_isSessionOperationCurrent(generation)) return;
-      final needsRefresh = await _authRepository.needsTokenRefresh();
-      if (!_isSessionOperationCurrent(generation)) return;
+
+      final userData = results[0] as UserEntity?;
+      final needsRefresh = results[1] as bool;
+      final canStayOffline = results[2] as bool;
 
       if (userData != null) {
         if (needsRefresh) {
@@ -227,8 +233,6 @@ class SessionNotifier extends StateNotifier<SessionData> {
           return;
         }
 
-        final canStayOffline = await _authRepository.canStayLoggedInOffline();
-        if (!_isSessionOperationCurrent(generation)) return;
         if (!canStayOffline) {
           log(
             'SessionProvider: 7-day sync requirement not met, attempting backend verification',
