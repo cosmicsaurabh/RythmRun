@@ -12,6 +12,7 @@ import 'package:rythmrun_frontend_flutter/core/services/authentication_attempt_g
 import 'package:rythmrun_frontend_flutter/core/services/session_invalidation_signal.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/auth_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/models/auth_response_model.dart';
+import 'package:rythmrun_frontend_flutter/core/services/connectivity_service.dart';
 import 'package:rythmrun_frontend_flutter/data/models/user_model.dart';
 
 void main() {
@@ -22,6 +23,8 @@ void main() {
   late AuthenticatedRequestCoordinator coordinator;
 
   setUp(() {
+    ConnectivityService.mockInstance =
+        _FakeConnectivityService(ConnectivityStatus.disconnected);
     vault = _FakeCredentialVault(
       _snapshot(access: 'access-1', refresh: 'refresh-1'),
     );
@@ -42,6 +45,7 @@ void main() {
   });
 
   tearDown(() async {
+    ConnectivityService.mockInstance = null;
     unusedHttpClient.close();
     await invalidationSignal.dispose();
   });
@@ -682,4 +686,24 @@ class _FakeAuthRemoteDataSource extends AuthRemoteDataSource {
     }
     return handler(refreshToken);
   }
+}
+
+class _FakeConnectivityService implements ConnectivityService {
+  final ConnectivityStatus status;
+  _FakeConnectivityService(this.status);
+
+  @override
+  ConnectivityStatus get currentStatus => status;
+
+  @override
+  void startMonitoring() {}
+
+  @override
+  void stopMonitoring() {}
+
+  @override
+  Stream<ConnectivityStatus> get statusStream => const Stream.empty();
+
+  @override
+  void dispose() {}
 }

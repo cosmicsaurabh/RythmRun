@@ -21,6 +21,7 @@ void main() async {
 
   // Initialize services
   await SettingsService.initialize();
+  ConnectivityService().startMonitoring();
 
   // Print configuration on app startup
   AppConfig.printConfig();
