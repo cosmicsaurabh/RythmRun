@@ -35,28 +35,23 @@ final class AuthTokenPair {
 /// A coherent credential snapshot read from the secure store.
 ///
 /// [revision] is an opaque compare-and-set generation for refresh rotation.
-/// A migrated legacy pair requires a backend check before it is eligible for
-/// normal offline admission.
 ///
 /// [lastVerifiedAtMs] and [maxObservedAtMs] are integrity-sensitive session
 /// metadata used by the offline-admission policy (IP-2.3). They travel inside
 /// the same secure envelope as the credentials, are never client-writable in
 /// plaintext preferences, and default to `null` for an envelope written before
-/// IP-2.3 or for a migrated-but-unverified pair. `null` [lastVerifiedAtMs]
-/// means "never server-verified since IP-2.3" and fails closed on offline
-/// admission until an online verification stamps it.
+/// IP-2.3. `null` [lastVerifiedAtMs] means "never server-verified since IP-2.3"
+/// and fails closed on offline admission until an online verification stamps it.
 final class AuthCredentialSnapshot {
   const AuthCredentialSnapshot({
     required this.pair,
     required this.revision,
-    required this.requiresServerVerification,
     this.lastVerifiedAtMs,
     this.maxObservedAtMs,
   });
 
   final AuthTokenPair pair;
   final int revision;
-  final bool requiresServerVerification;
 
   /// Epoch milliseconds of the last successful server verification of this
   /// credential pair (login, refresh rotation, or `/me`). The offline window
@@ -75,7 +70,6 @@ final class AuthCredentialSnapshot {
   String toString() {
     return 'AuthCredentialSnapshot('
         'revision: $revision, '
-        'requiresServerVerification: $requiresServerVerification, '
         'lastVerifiedAtMs: $lastVerifiedAtMs, '
         'maxObservedAtMs: $maxObservedAtMs, '
         'credentials: <redacted>)';
@@ -92,11 +86,6 @@ abstract interface class AuthCredentialVault {
   Future<AuthCredentialSnapshot?> compareAndSetCredentials({
     required int expectedRevision,
     required AuthTokenPair replacement,
-    bool requiresServerVerification = false,
-  });
-
-  Future<AuthCredentialSnapshot?> markCredentialsServerVerified({
-    required int expectedRevision,
   });
 }
 
@@ -115,19 +104,11 @@ abstract interface class RejectedCredentialQuarantine {
 abstract interface class AuthTokenStore {
   Future<AuthCredentialSnapshot?> read();
 
-  Future<AuthCredentialSnapshot> write(
-    AuthTokenPair pair, {
-    bool requiresServerVerification = false,
-  });
+  Future<AuthCredentialSnapshot> write(AuthTokenPair pair);
 
   Future<AuthCredentialSnapshot?> compareAndSet({
     required int expectedRevision,
     required AuthTokenPair replacement,
-    bool requiresServerVerification = false,
-  });
-
-  Future<AuthCredentialSnapshot?> markServerVerified({
-    required int expectedRevision,
   });
 
   /// Records the current wall clock as the observed high-water mark without
@@ -220,23 +201,19 @@ final class SecureAuthTokenStore implements AuthTokenStore {
   }
 
   @override
-  Future<AuthCredentialSnapshot> write(
-    AuthTokenPair pair, {
-    bool requiresServerVerification = false,
-  }) {
+  Future<AuthCredentialSnapshot> write(AuthTokenPair pair) {
     return _exclusive(() async {
       final current = await _readUnsafe();
       final nowMs = _nowMs();
       return _writeUnsafe(
         pair,
         revision: _nextRevision(current),
-        requiresServerVerification: requiresServerVerification,
-        // A fresh non-migrated write is a direct backend authentication, so it
-        // anchors the verified time. A migrated pair is not yet verified.
-        lastVerifiedAtMs: requiresServerVerification ? null : nowMs,
-        // Establishing a new credential is a trusted reference point, so the
-        // observed high-water mark resets to now. This prevents a prior forward
-        // clock excursion from permanently poisoning the rollback tripwire.
+        // A fresh write is a direct backend authentication, so it anchors the
+        // verified time. Establishing a new credential is also a trusted
+        // reference point, so the observed high-water mark resets to now — this
+        // prevents a prior forward clock excursion from permanently poisoning
+        // the rollback tripwire.
+        lastVerifiedAtMs: nowMs,
         maxObservedAtMs: nowMs,
       );
     });
@@ -246,7 +223,6 @@ final class SecureAuthTokenStore implements AuthTokenStore {
   Future<AuthCredentialSnapshot?> compareAndSet({
     required int expectedRevision,
     required AuthTokenPair replacement,
-    bool requiresServerVerification = false,
   }) {
     return _exclusive(() async {
       final current = await _readUnsafe();
@@ -256,34 +232,8 @@ final class SecureAuthTokenStore implements AuthTokenStore {
       return _writeUnsafe(
         replacement,
         revision: _nextRevision(current),
-        requiresServerVerification: requiresServerVerification,
         // A successful refresh rotation is a backend verification of identity,
         // so it re-anchors both the verified time and the trusted observed mark.
-        lastVerifiedAtMs: requiresServerVerification ? null : nowMs,
-        maxObservedAtMs: nowMs,
-      );
-    });
-  }
-
-  @override
-  Future<AuthCredentialSnapshot?> markServerVerified({
-    required int expectedRevision,
-  }) {
-    return _exclusive(() async {
-      final current = await _readUnsafe();
-      if (current?.revision != expectedRevision) return null;
-
-      final nowMs = _nowMs();
-      return _writeUnsafe(
-        current!.pair,
-        // Revision identifies the credential pair, not envelope metadata. A
-        // verification-only write must not make an in-flight refresh CAS look
-        // stale after the backend has already consumed its refresh token.
-        revision: current.revision,
-        requiresServerVerification: false,
-        // A successful `/me` or first authenticated request re-anchors the
-        // verified time and the trusted observed mark even when the pair was
-        // already verified, recovering from any prior forward clock excursion.
         lastVerifiedAtMs: nowMs,
         maxObservedAtMs: nowMs,
       );
@@ -302,7 +252,6 @@ final class SecureAuthTokenStore implements AuthTokenStore {
       return _writeUnsafe(
         current.pair,
         revision: current.revision,
-        requiresServerVerification: current.requiresServerVerification,
         lastVerifiedAtMs: current.lastVerifiedAtMs,
         maxObservedAtMs: advanced,
       );
@@ -340,7 +289,6 @@ final class SecureAuthTokenStore implements AuthTokenStore {
       if (decoded is! Map<String, dynamic> ||
           decoded['version'] != _envelopeVersion ||
           decoded['revision'] is! int ||
-          decoded['requiresServerVerification'] is! bool ||
           decoded['accessToken'] is! String ||
           decoded['refreshToken'] is! String) {
         throw const CredentialStoreCorruptedException();
@@ -360,8 +308,6 @@ final class SecureAuthTokenStore implements AuthTokenStore {
       return AuthCredentialSnapshot(
         pair: pair,
         revision: revision,
-        requiresServerVerification:
-            decoded['requiresServerVerification'] as bool,
         // Session metadata is optional and forgiving: a value absent from a
         // pre-IP-2.3 envelope, or present but malformed, reads back as null.
         // That fails offline admission closed rather than corrupting the whole
@@ -392,14 +338,12 @@ final class SecureAuthTokenStore implements AuthTokenStore {
   Future<AuthCredentialSnapshot> _writeUnsafe(
     AuthTokenPair pair, {
     required int revision,
-    required bool requiresServerVerification,
     required int? lastVerifiedAtMs,
     required int? maxObservedAtMs,
   }) async {
     final envelope = <String, Object>{
       'version': _envelopeVersion,
       'revision': revision,
-      'requiresServerVerification': requiresServerVerification,
       'accessToken': pair.accessToken,
       'refreshToken': pair.refreshToken,
     };
@@ -419,7 +363,6 @@ final class SecureAuthTokenStore implements AuthTokenStore {
     return AuthCredentialSnapshot(
       pair: pair,
       revision: revision,
-      requiresServerVerification: requiresServerVerification,
       lastVerifiedAtMs: lastVerifiedAtMs,
       maxObservedAtMs: maxObservedAtMs,
     );

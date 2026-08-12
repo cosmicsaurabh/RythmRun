@@ -290,85 +290,6 @@ void main() {
   );
 
   test(
-    'verification-only metadata does not make an in-flight refresh stale',
-    () async {
-      vault.current = _snapshot(
-        access: 'migrated-access',
-        refresh: 'migrated-refresh',
-        requiresServerVerification: true,
-      );
-      final refreshStarted = Completer<void>();
-      final finishRefresh = Completer<AuthResponseModel>();
-      remote.onRefresh = (_) {
-        refreshStarted.complete();
-        return finishRefresh.future;
-      };
-      var refreshRequestCalls = 0;
-
-      final refreshingRequest = coordinator.execute<String>(
-        replayPolicy: AuthenticatedReplayPolicy.idempotent,
-        request: (_) async {
-          refreshRequestCalls++;
-          if (refreshRequestCalls == 1) {
-            throw UnauthorizedException(
-              'expired',
-              code: AuthenticatedRequestCoordinator.invalidAccessCode,
-            );
-          }
-          return 'refreshed';
-        },
-      );
-      await refreshStarted.future;
-
-      expect(
-        await coordinator.execute<String>(request: (_) async => 'verified'),
-        'verified',
-      );
-      expect(vault.current!.revision, 1);
-      expect(vault.current!.requiresServerVerification, isFalse);
-
-      finishRefresh.complete(
-        _response(access: 'access-2', refresh: 'refresh-2'),
-      );
-      expect(await refreshingRequest, 'refreshed');
-      expect(vault.current!.pair.accessToken, 'access-2');
-      expect(remote.refreshCalls, 1);
-    },
-  );
-
-  test(
-    'invalid refresh remains invalid after a concurrent verification-only write',
-    () async {
-      vault.current = _snapshot(
-        access: 'migrated-access',
-        refresh: 'migrated-refresh',
-        requiresServerVerification: true,
-      );
-      final refreshStarted = Completer<void>();
-      final finishRefresh = Completer<AuthResponseModel>();
-      remote.onRefresh = (_) {
-        refreshStarted.complete();
-        return finishRefresh.future;
-      };
-
-      final refreshingRequest = _accessRejectedRequest(coordinator);
-      await refreshStarted.future;
-      await coordinator.execute<void>(request: (_) async {});
-      expect(vault.current!.revision, 1);
-
-      finishRefresh.completeError(
-        UnauthorizedException(
-          'rejected',
-          code: AuthenticatedRequestCoordinator.invalidRefreshCode,
-        ),
-      );
-      await expectLater(refreshingRequest, throwsA(isA<AuthSessionInvalid>()));
-      expect(vault.current, isNull);
-      expect(vault.clearIfRevisionCalls, 1);
-    },
-  );
-
-  test(
     'a stale invalid refresh cannot clear a newer credential pair',
     () async {
       final refreshStarted = Completer<void>();
@@ -483,58 +404,6 @@ void main() {
     expect(vault.current!.pair.accessToken, 'access-2');
   });
 
-  test(
-    'successful protected request verifies a migrated pair with CAS',
-    () async {
-      vault.current = _snapshot(
-        access: 'migrated-access',
-        refresh: 'migrated-refresh',
-        requiresServerVerification: true,
-      );
-
-      final result = await coordinator.execute<String>(
-        request: (_) async => 'verified',
-      );
-
-      expect(result, 'verified');
-      expect(vault.markVerifiedCalls, 1);
-      expect(vault.current!.requiresServerVerification, isFalse);
-      expect(vault.current!.revision, 1);
-    },
-  );
-
-  test(
-    'concurrent first requests accept the same pair verified by a peer',
-    () async {
-      vault.current = _snapshot(
-        access: 'migrated-access',
-        refresh: 'migrated-refresh',
-        requiresServerVerification: true,
-      );
-      final releaseRequests = Completer<void>();
-      var enteredRequests = 0;
-
-      Future<String> run(String value) {
-        return coordinator.execute<String>(
-          request: (_) async {
-            enteredRequests++;
-            if (enteredRequests == 2) releaseRequests.complete();
-            await releaseRequests.future;
-            return value;
-          },
-        );
-      }
-
-      final results = await Future.wait(<Future<String>>[
-        run('one'),
-        run('two'),
-      ]);
-
-      expect(results, <String>['one', 'two']);
-      expect(vault.current!.requiresServerVerification, isFalse);
-      expect(vault.current!.pair.accessToken, 'migrated-access');
-    },
-  );
 }
 
 Future<void> _accessRejectedRequest(
@@ -555,12 +424,10 @@ AuthCredentialSnapshot _snapshot({
   required String access,
   required String refresh,
   int revision = 1,
-  bool requiresServerVerification = false,
 }) {
   return AuthCredentialSnapshot(
     pair: AuthTokenPair(accessToken: access, refreshToken: refresh),
     revision: revision,
-    requiresServerVerification: requiresServerVerification,
   );
 }
 
@@ -583,7 +450,6 @@ class _FakeCredentialVault
 
   AuthCredentialSnapshot? current;
   int compareAndSetCalls = 0;
-  int markVerifiedCalls = 0;
   int clearIfRevisionCalls = 0;
   bool failClear = false;
   bool cleanupPending = false;
@@ -595,7 +461,6 @@ class _FakeCredentialVault
   Future<AuthCredentialSnapshot?> compareAndSetCredentials({
     required int expectedRevision,
     required AuthTokenPair replacement,
-    bool requiresServerVerification = false,
   }) async {
     compareAndSetCalls++;
     final existing = current;
@@ -603,23 +468,6 @@ class _FakeCredentialVault
     current = AuthCredentialSnapshot(
       pair: replacement,
       revision: expectedRevision + 1,
-      requiresServerVerification: requiresServerVerification,
-    );
-    return current;
-  }
-
-  @override
-  Future<AuthCredentialSnapshot?> markCredentialsServerVerified({
-    required int expectedRevision,
-  }) async {
-    markVerifiedCalls++;
-    final existing = current;
-    if (existing == null || existing.revision != expectedRevision) return null;
-    if (!existing.requiresServerVerification) return existing;
-    current = AuthCredentialSnapshot(
-      pair: existing.pair,
-      revision: expectedRevision,
-      requiresServerVerification: false,
     );
     return current;
   }

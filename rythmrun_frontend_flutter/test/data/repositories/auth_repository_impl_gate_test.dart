@@ -557,7 +557,6 @@ class _MemoryAuthLocalDataSource extends AuthLocalDataSource {
       refreshToken: 'refresh-before',
     ),
     revision: 1,
-    requiresServerVerification: false,
   );
   UserEntity? user;
   bool hasLastBackendSync = false;
@@ -571,7 +570,6 @@ class _MemoryAuthLocalDataSource extends AuthLocalDataSource {
         refreshToken: authResponse.refreshToken,
       ),
       revision: (snapshot?.revision ?? 0) + 1,
-      requiresServerVerification: false,
     );
     user = authResponse.toUserEntity();
     hasLastBackendSync = true;
@@ -584,21 +582,14 @@ class _MemoryAuthLocalDataSource extends AuthLocalDataSource {
   Future<AuthCredentialSnapshot?> compareAndSetCredentials({
     required int expectedRevision,
     required AuthTokenPair replacement,
-    bool requiresServerVerification = false,
   }) async {
     if (snapshot?.revision != expectedRevision) return null;
     snapshot = AuthCredentialSnapshot(
       pair: replacement,
       revision: expectedRevision + 1,
-      requiresServerVerification: requiresServerVerification,
     );
     return snapshot;
   }
-
-  @override
-  Future<AuthCredentialSnapshot?> markCredentialsServerVerified({
-    required int expectedRevision,
-  }) async => snapshot;
 
   @override
   Future<void> updateUserData(UserEntity updatedUser) async {

@@ -96,23 +96,6 @@ void main() {
     );
   });
 
-  test('server verification uses revision CAS', () async {
-    final store = SecureAuthTokenStore(storage: _MemorySecureValueStore());
-    final migrated = await store.write(
-      AuthTokenPair(accessToken: 'access-a', refreshToken: 'refresh-a'),
-      requiresServerVerification: true,
-    );
-
-    expect(
-      await store.markServerVerified(expectedRevision: migrated.revision + 1),
-      isNull,
-    );
-    final verified = await store.markServerVerified(
-      expectedRevision: migrated.revision,
-    );
-    expect(verified?.requiresServerVerification, isFalse);
-    expect(verified?.revision, migrated.revision);
-  });
 }
 
 final class _MemorySecureValueStore implements SecureValueStore {

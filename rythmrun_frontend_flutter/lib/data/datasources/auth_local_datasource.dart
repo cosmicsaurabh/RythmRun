@@ -24,35 +24,18 @@ class AuthLocalDataSource
     return _persistenceService.readCredentialSnapshot();
   }
 
-  Future<AuthCredentialSnapshot> replaceCredentials(
-    AuthTokenPair replacement, {
-    bool requiresServerVerification = false,
-  }) {
-    return _persistenceService.replaceCredentials(
-      replacement,
-      requiresServerVerification: requiresServerVerification,
-    );
+  Future<AuthCredentialSnapshot> replaceCredentials(AuthTokenPair replacement) {
+    return _persistenceService.replaceCredentials(replacement);
   }
 
   @override
   Future<AuthCredentialSnapshot?> compareAndSetCredentials({
     required int expectedRevision,
     required AuthTokenPair replacement,
-    bool requiresServerVerification = false,
   }) {
     return _persistenceService.compareAndSetCredentials(
       expectedRevision: expectedRevision,
       replacement: replacement,
-      requiresServerVerification: requiresServerVerification,
-    );
-  }
-
-  @override
-  Future<AuthCredentialSnapshot?> markCredentialsServerVerified({
-    required int expectedRevision,
-  }) {
-    return _persistenceService.markCredentialsServerVerified(
-      expectedRevision: expectedRevision,
     );
   }
 

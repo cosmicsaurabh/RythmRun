@@ -9,8 +9,7 @@ import '../../domain/entities/user_entity.dart';
 import 'auth_token_store.dart';
 
 /// Narrow preference seam. Authentication credentials must never be written
-/// through this interface; it exists only for non-secret account metadata and
-/// safe migration from the two historical preference keys.
+/// through this interface; it exists only for non-secret account metadata.
 abstract interface class AuthPreferences {
   String? getString(String key);
 
@@ -79,8 +78,6 @@ class AuthPersistenceService {
            )),
        _now = now ?? DateTime.now;
 
-  static const String legacyAccessTokenKey = 'access_token';
-  static const String legacyRefreshTokenKey = 'refresh_token';
   static const String userDataKey = 'user_data';
   static const String lastBackendSyncKey = 'last_backend_sync';
   static const String authCleanupPendingKey = 'auth_cleanup_pending';
@@ -119,53 +116,26 @@ class AuthPersistenceService {
     defaultValue: 168,
   );
 
-  static final RegExp _uuidPattern = RegExp(
-    r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-    caseSensitive: false,
-  );
-
   final AuthTokenStore _tokenStore;
   final AuthPreferencesFactory _preferencesFactory;
   final DateTime Function() _now;
 
-  Future<AuthCredentialSnapshot?>? _migrationInFlight;
-  Future<void> _credentialLifecycleTail = Future<void>.value();
-  bool _migrationSettled = false;
-
-  Future<AuthCredentialSnapshot?> readCredentialSnapshot() async {
-    if (!_migrationSettled) return _ensureLegacyMigration();
+  Future<AuthCredentialSnapshot?> readCredentialSnapshot() {
     return _tokenStore.read();
   }
 
-  Future<AuthCredentialSnapshot> replaceCredentials(
-    AuthTokenPair replacement, {
-    bool requiresServerVerification = false,
-  }) async {
-    await _ensureLegacyMigration();
-    return _tokenStore.write(
-      replacement,
-      requiresServerVerification: requiresServerVerification,
-    );
+  Future<AuthCredentialSnapshot> replaceCredentials(AuthTokenPair replacement) {
+    return _tokenStore.write(replacement);
   }
 
   Future<AuthCredentialSnapshot?> compareAndSetCredentials({
     required int expectedRevision,
     required AuthTokenPair replacement,
-    bool requiresServerVerification = false,
-  }) async {
-    await _ensureLegacyMigration();
+  }) {
     return _tokenStore.compareAndSet(
       expectedRevision: expectedRevision,
       replacement: replacement,
-      requiresServerVerification: requiresServerVerification,
     );
-  }
-
-  Future<AuthCredentialSnapshot?> markCredentialsServerVerified({
-    required int expectedRevision,
-  }) async {
-    await _ensureLegacyMigration();
-    return _tokenStore.markServerVerified(expectedRevision: expectedRevision);
   }
 
   Future<void> saveAuthData(AuthResponseModel authResponse) async {
@@ -254,32 +224,16 @@ class AuthPersistenceService {
   }
 
   Future<void> clearCredentials() async {
-    // Prevent a new legacy migration from starting. The shared FIFO guarantees
-    // that an already-started migration finishes before this final delete, or
-    // that a clear which started first removes legacy values before any later
-    // read can consider migrating them.
-    _migrationSettled = true;
-    await _serializeCredentialLifecycle(_clearCredentialsUnsafe);
-  }
-
-  Future<void> _clearCredentialsUnsafe() async {
+    // The secure store serializes its own delete/read, so no extra FIFO is
+    // needed here now that legacy migration is gone.
     await _tokenStore.delete();
-    final preferences = await _preferencesFactory();
-    await _removeLegacyCredentials(preferences);
     if (await _tokenStore.read() != null) {
       throw StateError('Secure authentication credentials remain.');
     }
   }
 
-  Future<bool> clearCredentialsIfRevision(int expectedRevision) async {
-    await _ensureLegacyMigration();
-    final deleted = await _tokenStore.deleteIfRevision(expectedRevision);
-    if (!deleted) return false;
-
-    final preferences = await _preferencesFactory();
-    await _removeLegacyCredentials(preferences);
-    _migrationSettled = true;
-    return true;
+  Future<bool> clearCredentialsIfRevision(int expectedRevision) {
+    return _tokenStore.deleteIfRevision(expectedRevision);
   }
 
   Future<void> clearAuthData() async {
@@ -292,8 +246,6 @@ class AuthPersistenceService {
 
     if (preferences.containsKey(userDataKey) ||
         preferences.containsKey(lastBackendSyncKey) ||
-        preferences.containsKey(legacyAccessTokenKey) ||
-        preferences.containsKey(legacyRefreshTokenKey) ||
         await _tokenStore.read() != null) {
       throw StateError('Locally persisted authentication data remains.');
     }
@@ -364,7 +316,7 @@ class AuthPersistenceService {
   /// value, so a subsequent clock rollback below it is detectable.
   Future<bool> canStayLoggedInOffline() async {
     final snapshot = await readCredentialSnapshot();
-    if (snapshot == null || snapshot.requiresServerVerification) return false;
+    if (snapshot == null) return false;
     if (await getUserData() == null) return false;
     try {
       if (JwtDecoder.isExpired(snapshot.pair.refreshToken)) return false;
@@ -387,8 +339,8 @@ class AuthPersistenceService {
   bool _isWithinVerifiedOfflineWindow(AuthCredentialSnapshot snapshot) {
     final verifiedAtMs = snapshot.lastVerifiedAtMs;
     // A pair with no integrity-sensitive verification anchor (a pre-IP-2.3
-    // envelope or a never-verified migration) cannot enter offline mode until
-    // one online verification stamps it. Completed local data is not deleted.
+    // envelope) cannot enter offline mode until one online verification stamps
+    // it. Completed local data is not deleted.
     if (verifiedAtMs == null) return false;
 
     final nowMs = _now().millisecondsSinceEpoch;
@@ -407,170 +359,6 @@ class AuthPersistenceService {
 
     // Bounded seven-day window from the last integrity-checked verification.
     return nowMs - verifiedAtMs <= offlineWindow.inMilliseconds;
-  }
-
-  Future<AuthCredentialSnapshot?> _ensureLegacyMigration() {
-    final existing = _migrationInFlight;
-    if (existing != null) return existing;
-    if (_migrationSettled) return _tokenStore.read();
-
-    late final Future<AuthCredentialSnapshot?> operation;
-    operation = _serializeCredentialLifecycle(
-      _migrateLegacyCredentials,
-    ).whenComplete(() {
-      if (identical(_migrationInFlight, operation)) {
-        _migrationInFlight = null;
-      }
-    });
-    _migrationInFlight = operation;
-    return operation;
-  }
-
-  Future<T> _serializeCredentialLifecycle<T>(Future<T> Function() operation) {
-    final completer = Completer<T>();
-    _credentialLifecycleTail = _credentialLifecycleTail.then((_) async {
-      try {
-        completer.complete(await operation());
-      } catch (error, stackTrace) {
-        completer.completeError(error, stackTrace);
-      }
-    });
-    return completer.future;
-  }
-
-  Future<AuthCredentialSnapshot?> _migrateLegacyCredentials() async {
-    final preferences = await _preferencesFactory();
-    final secureSnapshot = await _tokenStore.read();
-
-    if (secureSnapshot != null) {
-      // A verified secure write always wins. This is also the retry path for a
-      // process interrupted after secure write but before preference cleanup.
-      await _removeLegacyCredentials(preferences);
-      _migrationSettled = true;
-      return secureSnapshot;
-    }
-
-    final accessToken = preferences.getString(legacyAccessTokenKey);
-    final refreshToken = preferences.getString(legacyRefreshTokenKey);
-    if (accessToken == null && refreshToken == null) {
-      _migrationSettled = true;
-      return null;
-    }
-
-    final userId = _storedUserId(preferences.getString(userDataKey));
-    if (accessToken == null ||
-        refreshToken == null ||
-        !_isCoherentIp21Pair(accessToken, refreshToken, userId: userId)) {
-      // An incomplete, malformed, expired, or pre-IP-2.1 pair cannot be used.
-      // Remove it from plaintext preferences and fail closed.
-      await _removeLegacyCredentials(preferences);
-      _migrationSettled = true;
-      return null;
-    }
-
-    final migrated = await _tokenStore.write(
-      AuthTokenPair(accessToken: accessToken, refreshToken: refreshToken),
-      requiresServerVerification: true,
-    );
-    final readBack = await _tokenStore.read();
-    if (readBack == null ||
-        readBack.revision != migrated.revision ||
-        readBack.pair != migrated.pair ||
-        !readBack.requiresServerVerification) {
-      throw StateError('Secure credential migration could not be verified.');
-    }
-
-    // Plaintext is removed only after the complete secure envelope is read
-    // back. Any failure here leaves the remaining key for a safe retry.
-    await _removeLegacyCredentials(preferences);
-    _migrationSettled = true;
-    return readBack;
-  }
-
-  String? _storedUserId(String? encodedUser) {
-    if (encodedUser == null) return null;
-    try {
-      final decoded = jsonDecode(encodedUser);
-      if (decoded is! Map<String, dynamic>) return null;
-      final id = decoded['id'];
-      return id is String ? id : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  bool _isCoherentIp21Pair(
-    String accessToken,
-    String refreshToken, {
-    String? userId,
-  }) {
-    final access = _decodeJwt(accessToken);
-    final refresh = _decodeJwt(refreshToken);
-    if (access == null || refresh == null) return false;
-
-    final accessSubject = access['sub'];
-    final refreshSubject = refresh['sub'];
-    final accessSession = access['sid'];
-    final refreshSession = refresh['sid'];
-    final accessJti = access['jti'];
-    final refreshJti = refresh['jti'];
-    final accessIssuedAt = access['iat'];
-    final refreshIssuedAt = refresh['iat'];
-    final accessExpiresAt = access['exp'];
-    final refreshExpiresAt = refresh['exp'];
-
-    if (accessSubject is! String ||
-        int.tryParse(accessSubject)?.toString() != accessSubject ||
-        int.parse(accessSubject) <= 0 ||
-        refreshSubject != accessSubject ||
-        (userId != null && userId != accessSubject) ||
-        access['typ'] != 'access' ||
-        refresh['typ'] != 'refresh' ||
-        accessSession is! String ||
-        !_uuidPattern.hasMatch(accessSession) ||
-        refreshSession != accessSession ||
-        accessJti is! String ||
-        !_uuidPattern.hasMatch(accessJti) ||
-        refreshJti is! String ||
-        !_uuidPattern.hasMatch(refreshJti) ||
-        refreshJti == accessJti ||
-        accessIssuedAt is! int ||
-        refreshIssuedAt != accessIssuedAt ||
-        accessExpiresAt is! int ||
-        refreshExpiresAt is! int ||
-        accessExpiresAt <= accessIssuedAt ||
-        refreshExpiresAt <= refreshIssuedAt ||
-        accessExpiresAt > refreshExpiresAt ||
-        refreshExpiresAt <= _now().millisecondsSinceEpoch ~/ 1000) {
-      return false;
-    }
-    return true;
-  }
-
-  Map<String, dynamic>? _decodeJwt(String token) {
-    try {
-      final parts = token.split('.');
-      if (parts.length != 3 || parts.any((part) => part.isEmpty)) return null;
-      final header = jsonDecode(
-        utf8.decode(base64Url.decode(base64Url.normalize(parts[0]))),
-      );
-      final payload = jsonDecode(
-        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
-      );
-      if (header is! Map<String, dynamic> ||
-          header['alg'] != 'HS256' ||
-          payload is! Map<String, dynamic>) {
-        return null;
-      }
-      return payload;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _removeLegacyCredentials(AuthPreferences preferences) async {
-    await _removePreference(preferences, legacyAccessTokenKey);
-    await _removePreference(preferences, legacyRefreshTokenKey);
   }
 
   Future<void> _writeString(
