@@ -12,8 +12,9 @@ enum ConnectivityStatus {
 
 /// Service for monitoring network connectivity and speed
 class ConnectivityService {
+  static ConnectivityService? mockInstance;
   static final ConnectivityService _instance = ConnectivityService._internal();
-  factory ConnectivityService() => _instance;
+  factory ConnectivityService() => mockInstance ?? _instance;
   ConnectivityService._internal();
 
   final Connectivity _connectivity = Connectivity();

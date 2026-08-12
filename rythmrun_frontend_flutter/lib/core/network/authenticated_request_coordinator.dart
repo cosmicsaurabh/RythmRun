@@ -7,6 +7,7 @@ import '../../data/models/auth_response_model.dart';
 import '../services/auth_token_store.dart';
 import '../services/authentication_attempt_gate.dart';
 import '../services/session_invalidation_signal.dart';
+import '../services/connectivity_service.dart';
 import 'auth_failures.dart';
 import 'http_client.dart';
 
@@ -233,7 +234,13 @@ class AuthenticatedRequestCoordinator implements AuthenticatedRequestExecutor {
         expected.pair.refreshToken,
       );
     } on NetworkException {
-      throw const AuthSessionUnavailable(AuthSessionUnavailableReason.network);
+      if (ConnectivityService().currentStatus == ConnectivityStatus.disconnected) {
+        throw const AuthSessionUnavailable(AuthSessionUnavailableReason.network);
+      } else {
+        throw const AuthSessionUnavailable(
+          AuthSessionUnavailableReason.serviceUnavailable,
+        );
+      }
     } on UnauthorizedException catch (error) {
       if (error.code == invalidRefreshCode) {
         await _rejectInvalidRefresh(expected);
