@@ -10,6 +10,7 @@ jest.unstable_mockModule('bcrypt', () => ({
 
 const bcrypt = await import('bcrypt');
 const { UserService } = await import('../services/user.service.js');
+const { googleAuthUnavailableError } = await import('../errors/auth.error.js');
 
 const user = {
   id: 7,
@@ -73,6 +74,7 @@ function harness() {
       upsert: jest.fn().mockResolvedValue({}),
       findUnique: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
   };
   const prisma = {
@@ -175,6 +177,7 @@ describe('UserService authentication lifecycle', () => {
     transaction.verificationToken.findUnique.mockResolvedValueOnce({
       userId: user.id,
       tokenDigest: 'digest',
+      purpose: 'EMAIL_VERIFICATION',
       consumedAt: null,
       expiresAt: new Date(Date.now() + 60_000),
     });
@@ -193,6 +196,7 @@ describe('UserService authentication lifecycle', () => {
     const { service, transaction } = harness();
     transaction.verificationToken.findUnique.mockResolvedValueOnce({
       userId: user.id,
+      purpose: 'EMAIL_VERIFICATION',
       consumedAt: new Date(),
       expiresAt: new Date(Date.now() + 60_000),
     });
@@ -569,6 +573,14 @@ describe('UserService authentication lifecycle', () => {
     expect(
       authSessions.revokeAllUserSessionsInTransaction,
     ).toHaveBeenCalledWith(transaction, verifiedOwner.id);
+    // B2: linking Google drops any outstanding password-reset capability.
+    expect(transaction.verificationToken.deleteMany).toHaveBeenCalledWith({
+      where: {
+        userId: verifiedOwner.id,
+        purpose: 'PASSWORD_RESET',
+        consumedAt: null,
+      },
+    });
     expect(transaction.user.create).not.toHaveBeenCalled();
     expect(authSessions.issueSessionInTransaction).toHaveBeenCalledWith(
       transaction,
@@ -651,7 +663,9 @@ describe('UserService authentication lifecycle', () => {
       }),
     ).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
 
-    expect(bcrypt.compare).not.toHaveBeenCalled();
+    // B4: the password-less branch still runs one bcrypt comparison (against a
+    // dummy hash) so it cannot be timed apart from a wrong-password rejection.
+    expect(bcrypt.compare).toHaveBeenCalledTimes(1);
   });
 
   it('updates the password and revokes every session in one transaction', async () => {
@@ -709,5 +723,69 @@ describe('UserService authentication lifecycle', () => {
 
     expect(bcrypt.compare).not.toHaveBeenCalled();
     expect(authSessions.withSerializableTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a wrong-purpose token on the verify-email path (B3)', async () => {
+    const { service, transaction } = harness();
+    transaction.verificationToken.findUnique.mockResolvedValueOnce({
+      userId: user.id,
+      purpose: 'PASSWORD_RESET',
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(service.verifyEmail('reset-token')).rejects.toMatchObject({
+      code: 'AUTH_VERIFICATION_TOKEN_INVALID',
+    });
+    // A cross-purpose token is rejected before it can be consumed or verify.
+    expect(transaction.verificationToken.updateMany).not.toHaveBeenCalled();
+    expect(transaction.user.update).not.toHaveBeenCalled();
+  });
+
+  it('deletes an outstanding reset token when the password changes (B2)', async () => {
+    const { service, prisma, transaction } = harness();
+    prisma.user.findUnique.mockResolvedValue(user);
+    jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
+    jest.mocked(bcrypt.hash).mockResolvedValue('replacement-hash' as never);
+
+    await service.changePassword(user.id, {
+      currentPassword: 'old-password',
+      newPassword: 'new-password',
+    });
+
+    expect(transaction.verificationToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: user.id, purpose: 'PASSWORD_RESET', consumedAt: null },
+    });
+  });
+
+  it('runs a dummy password comparison for an unknown username (B4)', async () => {
+    const { service, prisma } = harness();
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.login({ username: 'ghost@example.com', password: 'guess' }),
+    ).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
+
+    // A missing account must cost the same as a wrong password, so a bcrypt
+    // comparison still runs even though there is no stored hash to check.
+    expect(bcrypt.compare).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes a Google outage through deletion as a retryable 503 (C5)', async () => {
+    const { service, prisma, googleIdentityVerifier } = harness();
+    prisma.user.findUnique.mockResolvedValue(googleUser);
+    jest
+      .mocked(googleIdentityVerifier.verifyIdToken)
+      .mockRejectedValueOnce(googleAuthUnavailableError());
+
+    // A transient Google outage must not collapse into a terminal 401 that tells
+    // the user their re-authentication was rejected.
+    await expect(
+      service.deleteAccount(googleUser.id, { googleIdToken: 'id-token' }),
+    ).rejects.toMatchObject({
+      code: 'AUTH_GOOGLE_UNAVAILABLE',
+      statusCode: 503,
+      retryable: true,
+    });
   });
 });

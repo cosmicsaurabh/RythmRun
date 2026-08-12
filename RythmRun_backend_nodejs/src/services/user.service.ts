@@ -39,6 +39,13 @@ import type { EmailSender } from './email.service.js';
 import type { GoogleIdentityVerifier } from './google-auth.service.js';
 
 const SALT_ROUNDS = 10;
+// A fixed bcrypt hash at the same cost (SALT_ROUNDS) as real passwords. The
+// no-password login branch compares against it so a missing or password-less
+// account spends the same time as a wrong-password check — denying a
+// username-enumeration timing side channel. It is not a secret: no real
+// password hashes to it. Keep the cost in sync with SALT_ROUNDS.
+const DUMMY_PASSWORD_HASH =
+  '$2b$10$mkq4/q4aL7QBg1TKcA.Z4.m8OSHc1JSbps2CoehZBimhzzMAyW5cq';
 const EMAIL_VERIFICATION_PURPOSE = 'EMAIL_VERIFICATION' as const;
 const PASSWORD_RESET_PURPOSE = 'PASSWORD_RESET' as const;
 
@@ -174,6 +181,12 @@ export class UserService {
           return 'invalid' as const;
         }
 
+        // A token minted for a different purpose (e.g. PASSWORD_RESET) must
+        // never verify an email — reject before consuming or reading the owner.
+        if (token.purpose !== EMAIL_VERIFICATION_PURPOSE) {
+          return 'invalid' as const;
+        }
+
         if (token.consumedAt !== null) {
           const owner = await transaction.user.findUnique({
             where: { id: token.userId },
@@ -187,6 +200,7 @@ export class UserService {
         const consumed = await transaction.verificationToken.updateMany({
           where: {
             tokenDigest,
+            purpose: EMAIL_VERIFICATION_PURPOSE,
             consumedAt: null,
             expiresAt: { gt: now },
           },
@@ -334,6 +348,7 @@ export class UserService {
         const consumed = await transaction.verificationToken.updateMany({
           where: {
             tokenDigest,
+            purpose: PASSWORD_RESET_PURPOSE,
             consumedAt: null,
             expiresAt: { gt: now },
           },
@@ -450,6 +465,9 @@ export class UserService {
       where: { username },
     });
     if (user === null || user.password === null) {
+      // Spend the same time as a real password check so a missing or
+      // password-less account is not faster to reject (B4: no enumeration).
+      await bcrypt.compare(loginDto.password, DUMMY_PASSWORD_HASH);
       throw invalidCredentialsError();
     }
 
@@ -537,6 +555,15 @@ export class UserService {
                   transaction,
                   emailOwner.id,
                 );
+                // Linking a Google identity is a credential change like a
+                // password change, so drop any outstanding reset capability.
+                await transaction.verificationToken.deleteMany({
+                  where: {
+                    userId: emailOwner.id,
+                    purpose: PASSWORD_RESET_PURPOSE,
+                    consumedAt: null,
+                  },
+                });
                 return this.authSessions.issueSessionInTransaction(
                   transaction,
                   { ...emailOwner, googleSubject: identity.subject },
@@ -641,6 +668,16 @@ export class UserService {
           transaction,
           userId,
         );
+        // A new password invalidates any outstanding reset capability: an
+        // unconsumed PASSWORD_RESET token issued before the change must not
+        // remain usable afterward.
+        await transaction.verificationToken.deleteMany({
+          where: {
+            userId,
+            purpose: PASSWORD_RESET_PURPOSE,
+            consumedAt: null,
+          },
+        });
       },
     );
   }
@@ -718,6 +755,15 @@ export class UserService {
         }
       } catch (error) {
         if (error instanceof AccountDeletionServiceError) throw error;
+        // A genuine Google outage (503, retryable) must pass through rather than
+        // collapse into a terminal 401 — the caller should retry, not be told
+        // their re-authentication was rejected.
+        if (
+          error instanceof AuthApplicationError &&
+          error.code === 'AUTH_GOOGLE_UNAVAILABLE'
+        ) {
+          throw error;
+        }
         throw accountDeletionGoogleInvalidError();
       }
     }

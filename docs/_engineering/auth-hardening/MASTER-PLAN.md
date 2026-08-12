@@ -4,7 +4,7 @@ published: false
 
 # Auth Hardening & Tunable Timing — Master Plan
 
-**Status:** Phases 0, 1, 3, 4 done · **Phase 2 (M1 grace window) reverted** — broken on real PostgreSQL, restored strict reuse detection · Next: Phase 5 · **Owner:** maintainer · **Created:** 2026-08-11
+**Status:** Phases 0, 1, 3, 4, 5 done · **Phase 2 (M1 grace window) reverted** — broken on real PostgreSQL, restored strict reuse detection · Next: Phase 6 (privacy follow-ups + retire this plan) · **Owner:** maintainer · **Created:** 2026-08-11
 **Source:** auth + refresh audit (16 confirmed findings, 1 plausible, 2 refuted)
 **Relationship to the improvement program:** this is IP-2 follow-up work. It does
 not replace `IP-2-auth-account-privacy.md`; when a phase here lands, its evidence
@@ -646,10 +646,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] **P1** stable code moved from `error` → `code` and `error` dropped **in every emitter the client reads**, not just `user.controller.ts`: also `auth.middleware.ts` (incl. the load-bearing `AUTH_ACCESS_INVALID` the coordinator branches on), `rate-limit.middleware.ts`, and `activity-image.controller.ts` (`activity.controller.ts` already emitted `code`). Client `http_client.dart` reads `code` only; `_looksLikeStableErrorCode` + the `error` fallback deleted. `retryable` added to the deletion envelope (`AccountDeletionServiceError` gained a `retryable = false` field for Phase 5's Google-503 case). Boundary test asserts every auth error carries a well-formed `code` and no `error` key; a client test locks that a legacy `error`-only body yields no code.
 
 ### Phase 5 — Auth core hardening
-- [ ] **B2** reset tokens killed on password change
-- [ ] **B3** `verifyEmail` purpose check
-- [ ] **B4** login timing flattened
-- [ ] **C5** Google 503 passes through deletion
+- [x] **B2** unconsumed `PASSWORD_RESET` tokens deleted in the same transaction on `changePassword` **and** the Google auto-link (both are credential changes that already revoke sessions), so an outstanding reset token cannot outlive them.
+- [x] **B3** `verifyEmail` rejects a token whose `purpose !== EMAIL_VERIFICATION` before consuming, and the guarded consume `updateMany` carries the `purpose`. Made the `resetPassword` consume symmetric (`purpose: PASSWORD_RESET` in its `updateMany`) so both consume paths encode their full precondition.
+- [x] **B4** the no-password login branch (unknown user or Google-only account) runs one `bcrypt.compare` against a fixed cost-10 `DUMMY_PASSWORD_HASH` before rejecting, so it cannot be timed apart from a wrong-password rejection (username-enumeration side channel closed).
+- [x] **C5** `deleteAccount` rethrows a genuine Google outage (`AUTH_GOOGLE_UNAVAILABLE`, 503, retryable) instead of collapsing it into a terminal 401 — pairs with the `retryable` field added to the deletion envelope in Phase 4. A genuinely invalid token still returns 401.
+- [x] New service tests for each (B2 change-password + auto-link deletion, B3 wrong-purpose rejection, B4 dummy-compare on unknown user + Google-only, C5 503 pass-through) → backend **517**.
 
 ### Phase 6 — Privacy follow-ups
 - [ ] **D3** Google sign-out on forced loss
@@ -704,7 +705,8 @@ failed-flight eviction, A4 avatar replay policy) → Flutter 348. Phase 4 (error
 contract) adds a backend boundary test → **513 passed / 513 total** CI-equivalent
 (506 / 7 skipped / 513 local) and client tests locking the removed `error`
 fallback, the new code arms, and the `AuthSessionFailure` branch → **Flutter 352**;
-analyzer holds at 9.)
+analyzer holds at 9. Phase 5 (auth hardening) adds four service tests →
+**517 passed / 517 total** CI-equivalent, 510 / 7 skipped / 517 local.)
 
 **Four known traps** (from `CLAUDE.md`, repeated because they cost real time):
 1. Use `npm test`, never `npx jest` — the suite is native ESM.
