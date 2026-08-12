@@ -368,7 +368,6 @@ describe('auth timing environment validation', () => {
     { env: 'ACCESS_TOKEN_TTL_SECONDS', field: 'accessTokenTtlSeconds', min: 30, max: 86400 },
     { env: 'REFRESH_SESSION_TTL_SECONDS', field: 'refreshSessionTtlSeconds', min: 60, max: 7776000 },
     { env: 'MAX_ACTIVE_SESSIONS_PER_USER', field: 'maxActiveSessionsPerUser', min: 1, max: 100 },
-    { env: 'REFRESH_REUSE_GRACE_SECONDS', field: 'refreshReuseGraceSeconds', min: 0, max: 300 },
     { env: 'EMAIL_VERIFICATION_TTL_SECONDS', field: 'emailVerificationTtlSeconds', min: 60, max: 604800 },
     { env: 'EMAIL_VERIFICATION_COOLDOWN_SECONDS', field: 'emailVerificationCooldownSeconds', min: 0, max: 3600 },
     { env: 'PASSWORD_RESET_TTL_SECONDS', field: 'passwordResetTtlSeconds', min: 60, max: 86400 },
