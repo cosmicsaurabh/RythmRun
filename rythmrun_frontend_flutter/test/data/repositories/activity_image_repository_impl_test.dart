@@ -1577,6 +1577,11 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<void> signOutFromGoogle() async {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<ChangePasswordResponseModel> changePassword(
     String currentPassword,
     String newPassword,

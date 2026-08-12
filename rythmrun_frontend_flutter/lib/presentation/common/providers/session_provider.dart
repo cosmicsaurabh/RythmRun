@@ -179,6 +179,11 @@ class SessionNotifier extends StateNotifier<SessionData> {
       if (!_isSessionOperationCurrent(generation)) return;
       if (hasPendingCleanup) {
         await _authenticationAttemptGate.suspendAndDrain();
+        // Finishing an exit interrupted by process death is still an exit:
+        // clear the native Google session here too, so a forced loss that
+        // completes on restart leaves the same clean state as one that ran to
+        // completion in `_exitSession`.
+        unawaited(_authRepository.signOutFromGoogle());
         try {
           await _authRepository.clearAuthData();
           if (!_isSessionOperationCurrent(generation)) return;
@@ -644,6 +649,12 @@ class SessionNotifier extends StateNotifier<SessionData> {
         );
         return result;
       }
+
+      // Clear the native Google session on every exit — voluntary logout and
+      // forced loss alike — so the next Google sign-in shows the account
+      // chooser instead of silently reusing the signed-out account. Fire and
+      // forget: a slow native sign-out must never block credential teardown.
+      unawaited(_authRepository.signOutFromGoogle());
 
       if (requestRemoteLogout) {
         try {

@@ -79,6 +79,7 @@ void main() {
           'remote',
           'clear',
         ]);
+        expect(repository.googleSignOutCalls, 1);
         expect(notifier.state.state, SessionState.unauthenticated);
         expect(notifier.state.user, isNull);
         expect(notifier.state.errorMessage, isNull);
@@ -182,6 +183,9 @@ void main() {
         );
         expect(repository.clearCalls, 0);
         expect(repository.authCleanupPending, isTrue);
+        // Teardown never completed, so the exit side effects — including the
+        // native Google sign-out — must not have fired.
+        expect(repository.googleSignOutCalls, 0);
         expect(events, <String>[
           'activate:7',
           'mark-cleanup',
@@ -229,6 +233,10 @@ void main() {
         expect(restartedNotifier.state.user, isNull);
         expect(repository.authCleanupPending, isFalse);
         expect(repository.clearCalls, 1);
+        // The first notifier's forced loss blocked before the exit side
+        // effects, so Google was not signed out then; completing the exit on
+        // restart must still clear the native Google session.
+        expect(repository.googleSignOutCalls, 1);
       },
     );
 
@@ -283,6 +291,9 @@ void main() {
           'teardown',
           'clear',
         ]);
+        // D3: a forced loss (invalid session) must also clear the native
+        // Google session, not just a voluntary logout.
+        expect(repository.googleSignOutCalls, 1);
         expect(notifier.state.state, SessionState.unauthenticated);
         expect(notifier.state.user, isNull);
       },
@@ -969,6 +980,7 @@ class _FakeAuthRepository implements AuthRepository {
   SessionValidationStatus validationStatus;
   int clearCalls = 0;
   int userWrites = 0;
+  int googleSignOutCalls = 0;
 
   _FakeAuthRepository({
     required this.events,
@@ -990,6 +1002,11 @@ class _FakeAuthRepository implements AuthRepository {
   Future<void> logout() async {
     events.add('remote');
     if (failRemoteLogout) throw StateError('simulated remote failure');
+  }
+
+  @override
+  Future<void> signOutFromGoogle() async {
+    googleSignOutCalls += 1;
   }
 
   @override
