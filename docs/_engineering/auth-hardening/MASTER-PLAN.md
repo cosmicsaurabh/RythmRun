@@ -4,7 +4,7 @@ published: false
 
 # Auth Hardening & Tunable Timing — Master Plan
 
-**Status:** Phases 0–2 done · Phase 3 complete (3a + 3b) — awaiting review · **Owner:** maintainer · **Created:** 2026-08-11
+**Status:** Phases 0, 1, 3 done · **Phase 2 (M1 grace window) reverted** — broken on real PostgreSQL, restored strict reuse detection · **Owner:** maintainer · **Created:** 2026-08-11
 **Source:** auth + refresh audit (16 confirmed findings, 1 plausible, 2 refuted)
 **Relationship to the improvement program:** this is IP-2 follow-up work. It does
 not replace `IP-2-auth-account-privacy.md`; when a phase here lands, its evidence
@@ -140,8 +140,7 @@ per-request session lookup finds no `ACTIVE` row.
         ├─ ACCESS_TOKEN_TTL_SECONDS ──┐               ├─ OFFLINE_WINDOW_HOURS
         ├─ REFRESH_SESSION_TTL_SECONDS┤               ├─ CLOCK_SKEW_TOLERANCE_SECONDS
         ├─ MAX_ACTIVE_SESSIONS        │               ├─ BACKEND_SYNC_INTERVAL_HOURS
-        ├─ REFRESH_REUSE_GRACE_SECONDS│               └─ REQUEST_TIMEOUT_MS
-        ├─ *_TTL_SECONDS (tokens)     │
+        ├─ *_TTL_SECONDS (tokens)     │               └─ REQUEST_TIMEOUT_MS
         └─ *_COOLDOWN_SECONDS         │
                                       │
                                  JWT `exp` claim
@@ -176,8 +175,8 @@ error-contract rename as one atomic both-sides change.
 
 ### 2.1 Database schema — reference only, **zero migrations**
 
-No finding in this plan requires a schema change. The grace window (Phase 2)
-reuses columns that already exist. Recorded here so the runbook is self-contained.
+No finding in this plan requires a schema change. Recorded here so the runbook is
+self-contained.
 
 **`AuthSession`** — one row per signed-in device.
 
@@ -237,7 +236,6 @@ until a variable is set.** All are optional; absent → default.
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` (15m) | 30 … 86400 | `ACCESS_TOKEN_LIFETIME_SECONDS` |
 | `REFRESH_SESSION_TTL_SECONDS` | `604800` (7d) | 60 … 7776000 | `REFRESH_SESSION_LIFETIME_SECONDS` |
 | `MAX_ACTIVE_SESSIONS_PER_USER` | `5` | 1 … 100 | same-named const |
-| `REFRESH_REUSE_GRACE_SECONDS` | `60` | 0 … 300 | **new** (Phase 2); `0` = strict, no grace |
 | `EMAIL_VERIFICATION_TTL_SECONDS` | `86400` (24h) | 60 … 604800 | `VERIFICATION_TOKEN_TTL_MS` |
 | `EMAIL_VERIFICATION_COOLDOWN_SECONDS` | `60` | 0 … 3600 | `VERIFICATION_RESEND_COOLDOWN_MS` |
 | `PASSWORD_RESET_TTL_SECONDS` | `1800` (30m) | 60 … 86400 | `PASSWORD_RESET_TTL_MS` |
@@ -277,7 +275,6 @@ export interface AuthTimingEnvironment {
   accessTokenTtlSeconds: number;
   refreshSessionTtlSeconds: number;
   maxActiveSessionsPerUser: number;
-  refreshReuseGraceSeconds: number;
   emailVerificationTtlSeconds: number;
   emailVerificationCooldownSeconds: number;
   passwordResetTtlSeconds: number;
@@ -392,10 +389,7 @@ fallback are deleted. One field, one meaning, both sides in the same commit.
   "retryable": false, "statusCode": 401, "timestamp": "..." }
 ```
 
-### 2.5 Refresh rotation state machine — with the Phase 2 grace window
-
-Current behavior on the left, the change on the right. **Everything except the
-boxed branch is unchanged.**
+### 2.5 Refresh rotation state machine — strict single-use with reuse detection
 
 ```
 presented refresh token
@@ -407,37 +401,33 @@ presented refresh token
   find record by jti · digest must match · sid/sub must match ──► fail ──► 401
         │
         ▼
-  ┌─────────────────── record.usedAt != null ? ───────────────────┐
-  │                                                               │
-  │  ┌─────────────────── NEW in Phase 2 ─────────────────────┐   │
-  │  │  within REFRESH_REUSE_GRACE_SECONDS                    │   │
-  │  │        AND successor (replacedByJti) exists            │   │
-  │  │        AND successor is unused + unrevoked + unexpired │   │
-  │  │                        │                               │   │
-  │  │            yes ────────┴──── no                        │   │
-  │  │             │                 │                        │   │
-  │  │             ▼                 ▼                        │   │
-  │  │   LOST-RESPONSE RETRY    TRUE REUSE (unchanged)        │   │
-  │  │   revoke successor only  revoke ENTIRE session         │   │
-  │  │   mint a fresh pair      401 AUTH_REFRESH_INVALID      │   │
-  │  │   link successor→new                                   │   │
-  │  └────────────────────────────────────────────────────────┘   │
-  └───────────────────────────────────────────────────────────────┘
-        │ (usedAt == null — the normal path, unchanged)
+  record.usedAt != null ? ──► yes ──► REUSE: revoke ENTIRE session family · 401
+        │
+        │ no  (the normal path)
         ▼
   reject if revoked / expired / session not ACTIVE
         ▼
   touch session.lastUsedAt · consume (usedAt = now) · mint pair · link old→new
 ```
 
-**Why this is safe.** The successor is revoked in the same transaction, so exactly
-one live refresh token per session is preserved. If the successor was *already
-used*, the legitimate client received and spent it — a re-presentation of the
-older token is then genuine reuse and still kills the family. Setting
-`REFRESH_REUSE_GRACE_SECONDS=0` disables the branch entirely, which is how the
-theft path gets tested.
+**Why strict.** A used refresh token re-presented is reuse — either a stolen token
+being replayed or a client retrying after it already rotated (a lost response). The
+two are indistinguishable at the token/DB layer, so rotation fails closed and kills
+the family; the client re-authenticates. This is the classic single-use-rotation
+reuse defence, fully covered by `auth-session.postgres.test.ts`.
 
-**Backward compatible.** Backend-only; the released app benefits with no change.
+**M1 (a refresh-reuse grace window) was tried in Phase 2 and reverted.** The intent
+was to forgive a lost-response retry (re-issue within a window while the successor
+is still unused). It could not work: the forgiveness write set `replacedByJti` on
+the *unused* successor, which violates the `RefreshTokenRecord_replacement_check`
+constraint (`replacedByJti IS NULL OR usedAt IS NOT NULL`). On real PostgreSQL the
+lost-response happy path therefore threw a raw DB error, and — because it threw
+before the revoke block — concurrent replay stopped revoking the family too. The
+mocked unit tests never saw the constraint; the hosted-CI `auth-session.postgres`
+suite did. Verified against a real Postgres, then reverted to strict. If
+lost-response tolerance is ever measured to matter, the clean way to add it is
+idempotent rotation (re-issue the already-minted successor), decided deliberately
+with its own tests — not a grace branch grafted onto reuse detection.
 
 ---
 
@@ -515,22 +505,25 @@ New tests: a stranded `PENDING` job is picked up by the sweep; the 6th failed de
 
 ---
 
-### Phase 2 — Refresh rotation grace window `[backend only]`
+### Phase 2 — Refresh rotation grace window `[reverted]`
 
-**Fixes M1.** Uses Phase 0's knobs to test.
+**M1 was implemented, found broken on real PostgreSQL, and reverted to strict reuse
+detection.** See §2.5 for the mechanism. The grace branch's forgiveness write set
+`replacedByJti` on the *unused* successor, violating
+`RefreshTokenRecord_replacement_check`, so every lost-response retry (the case it was
+built for) threw a raw DB error; and because it threw before the revoke block,
+concurrent replay stopped revoking the session family. The mocked unit tests passed
+because they do not enforce the DB constraint — the hosted-CI `auth-session.postgres`
+suite caught it after merge.
 
-- `src/services/auth-session.service.ts` — insert the grace branch at the `usedAt != null` check (§2.5)
-- Revoke the successor, mint a fresh pair, link `successor.replacedByJti → new`
+Reverted: grace branch removed from `rotateRefreshToken`, `REFRESH_REUSE_GRACE_SECONDS`
+/ `refreshReuseGraceSeconds` removed from the config spine, the four mocked grace unit
+tests deleted. `usedAt != null` → revoke family, exactly as before Phase 2.
 
-**Verification**
-```bash
-cd RythmRun_backend_nodejs && npm run typecheck && npm test && npm run build
-```
-New tests: (a) re-presenting a token whose successor is unused, inside the window → new pair, session stays `ACTIVE`; (b) successor already used → whole session revoked; (c) outside the window → revoked; (d) `REFRESH_REUSE_GRACE_SECONDS=0` → always revoked.
-
-Real-device proof: `ACCESS_TOKEN_TTL_SECONDS=30`, airplane-mode the device mid-refresh, restore connectivity → session survives.
-
-**⛔ STOP — review + commit**
+**Verification** — the failure was reproduced and the fix confirmed against a real
+local Postgres (`RUN_DATABASE_INTEGRATION=1`): the `auth-session.postgres` suite
+passes 7/7, and both the sequential lost-response retry and the concurrent
+double-rotation now behave as the strict model expects.
 
 ---
 
@@ -633,10 +626,9 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] **M3** `DELETE /me` rate limit — `accountDeletion` 5/hour, keyed by authenticated account, `count: 'all'`
 - [x] Tests: sweep drains the outbox (server-bootstrap); 6th deletion re-auth in an hour → `429` (api-abuse-controls)
 
-### Phase 2 — Refresh grace window
-- [x] **M1** grace branch in `rotateRefreshToken` (revoke successor only + mint fresh pair on a lost-response retry; else kill the family)
-- [x] Four rotation tests (grace / used successor / expired window / strict mode) — unit, all passing
-- [~] Real-device airplane-mode proof is a maintainer deploy check (use `ACCESS_TOKEN_TTL_SECONDS=30`)
+### Phase 2 — Refresh rotation grace window — REVERTED
+- [x] **M1 reverted.** The grace branch was broken on real Postgres: its forgiveness write set `replacedByJti` on the unused successor, violating `RefreshTokenRecord_replacement_check`, so the lost-response retry it targeted threw a raw DB error and (throwing before the revoke block) concurrent replay stopped revoking the family. Reproduced + fixed against a local Postgres, then reverted to strict reuse detection (`usedAt != null` → revoke family).
+- [x] Removed the grace branch, the `refreshReuseGraceSeconds` config-spine field + `REFRESH_REUSE_GRACE_SECONDS` env var + `.env.example` row, and the four mocked grace unit tests. `auth-session.postgres` concurrent-rotation test passes (7/7).
 
 ### Phase 3 — Client credential simplification
 - [x] **3a** legacy migration + `requiresServerVerification` / `markServerVerified` deleted across 5 lib files (net −854 lines). Kept a simplified gate-protected `markCurrentCredentialsServerVerified` — its only surviving job is the sync-timer reset, not a verification stamp.
@@ -700,9 +692,13 @@ Flutter 359 passed · analyzer 9 issues, 0 warnings, 0 errors. (The prior
 true starting point. Phase 0 adds config-spine tests, taking the backend to
 507 passed / 7 skipped / 514 total with Flutter unchanged at 359. Phase 1 adds
 the M5 sweep and M3 rate-limit tests → 508 passed / 7 skipped / 515 total.
-Phase 2 adds four grace-window rotation tests → 512 passed / 7 skipped / 519
-total. Phase 3a is client-only and **deliberately drops** the Flutter count from
-359 to 344 by deleting 15 dead legacy-migration / verification-stamp tests.
+Phase 2's four grace-window tests were added and then **removed when M1 was
+reverted** (see §2.5). Current verified backend baseline: **505 passed / 7 skipped
+/ 512 total** locally, and **512 passed / 512 total** in CI-equivalent runs with
+PostgreSQL enabled (`RUN_DATABASE_INTEGRATION=1`) — the `auth-session.postgres`
+suite passes 7/7. Phase 3a is client-only and **deliberately drops** the Flutter
+count from 359 to 344 by deleting 15 dead legacy-migration / verification-stamp
+tests.
 Phase 3b adds four refresh-seam tests (M2 same-session accept/reject, A3
 failed-flight eviction, A4 avatar replay policy) → Flutter 348.)
 

@@ -66,9 +66,6 @@ export interface AuthTimingEnvironment {
   accessTokenTtlSeconds: number;
   refreshSessionTtlSeconds: number;
   maxActiveSessionsPerUser: number;
-  // Consumed in Phase 2 (refresh reuse grace window); parsed now so the spine is
-  // complete and Phase 2 is a behavior-only change.
-  refreshReuseGraceSeconds: number;
   emailVerificationTtlSeconds: number;
   emailVerificationCooldownSeconds: number;
   passwordResetTtlSeconds: number;
@@ -85,7 +82,6 @@ export const DEFAULT_AUTH_TIMING: AuthTimingEnvironment = {
   accessTokenTtlSeconds: 900,
   refreshSessionTtlSeconds: 604800,
   maxActiveSessionsPerUser: 5,
-  refreshReuseGraceSeconds: 60,
   emailVerificationTtlSeconds: 86400,
   emailVerificationCooldownSeconds: 60,
   passwordResetTtlSeconds: 1800,
@@ -510,11 +506,6 @@ export function parseAuthTiming(
       source,
       'MAX_ACTIVE_SESSIONS_PER_USER',
       { fallback: DEFAULT_AUTH_TIMING.maxActiveSessionsPerUser, min: 1, max: 100 },
-    ),
-    refreshReuseGraceSeconds: parseIntEnv(
-      source,
-      'REFRESH_REUSE_GRACE_SECONDS',
-      { fallback: DEFAULT_AUTH_TIMING.refreshReuseGraceSeconds, min: 0, max: 300 },
     ),
     emailVerificationTtlSeconds: parseIntEnv(
       source,

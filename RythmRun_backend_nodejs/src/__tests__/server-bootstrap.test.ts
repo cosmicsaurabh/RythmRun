@@ -79,7 +79,6 @@ jest.unstable_mockModule('../config/env.js', () => ({
     accessTokenTtlSeconds: 900,
     refreshSessionTtlSeconds: 604800,
     maxActiveSessionsPerUser: 5,
-    refreshReuseGraceSeconds: 60,
     emailVerificationTtlSeconds: 86400,
     emailVerificationCooldownSeconds: 60,
     passwordResetTtlSeconds: 1800,
