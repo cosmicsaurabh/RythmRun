@@ -13,7 +13,7 @@ export interface AccessTokenAuthenticator {
 
 function sendInvalidAccess(res: Parameters<RequestHandler>[1]): void {
   res.status(401).json({
-    error: 'AUTH_ACCESS_INVALID',
+    code: 'AUTH_ACCESS_INVALID',
     message: 'Authentication is required',
     statusCode: 401,
     timestamp: new Date().toISOString(),
@@ -24,7 +24,7 @@ function sendAuthServiceUnavailable(
   res: Parameters<RequestHandler>[1],
 ): void {
   res.status(503).json({
-    error: 'AUTH_SERVICE_UNAVAILABLE',
+    code: 'AUTH_SERVICE_UNAVAILABLE',
     message: 'Authentication service is temporarily unavailable',
     statusCode: 503,
     retryable: true,

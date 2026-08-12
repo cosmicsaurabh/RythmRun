@@ -269,7 +269,7 @@ export function createRateLimiter(
         .status(error.statusCode)
         .set('Retry-After', String(retryAfterSeconds))
         .json({
-          error: error.code,
+          code: error.code,
           message: error.message,
           retryable: error.retryable,
           statusCode: error.statusCode,

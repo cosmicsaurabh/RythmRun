@@ -70,7 +70,7 @@ describe('access authentication middleware', () => {
     expect(result.status).toHaveBeenCalledWith(401);
     expect(result.json).toHaveBeenCalledWith(
       expect.objectContaining({
-        error: 'AUTH_ACCESS_INVALID',
+        code: 'AUTH_ACCESS_INVALID',
         message: 'Authentication is required',
         statusCode: 401,
       }),
@@ -87,7 +87,7 @@ describe('access authentication middleware', () => {
     expect(result.next).not.toHaveBeenCalled();
     expect(result.json).toHaveBeenCalledWith(
       expect.objectContaining({
-        error: 'AUTH_ACCESS_INVALID',
+        code: 'AUTH_ACCESS_INVALID',
         message: 'Authentication is required',
         statusCode: 401,
       }),
@@ -109,7 +109,7 @@ describe('access authentication middleware', () => {
     expect(result.status).toHaveBeenCalledWith(503);
     expect(result.json).toHaveBeenCalledWith(
       expect.objectContaining({
-        error: 'AUTH_SERVICE_UNAVAILABLE',
+        code: 'AUTH_SERVICE_UNAVAILABLE',
         message: 'Authentication service is temporarily unavailable',
         statusCode: 503,
         retryable: true,

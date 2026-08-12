@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rythmrun_frontend_flutter/core/network/auth_failures.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/error_handler.dart';
 
@@ -142,4 +143,49 @@ void main() {
     expect(message, isNot(contains('SocketException')));
     expect(message.toLowerCase(), contains('connect'));
   });
+
+  test('curates the change-password and register error family by code', () {
+    expect(
+      ErrorHandler.getErrorMessage(
+        HttpStatusException(409, 'x', code: 'AUTH_USERNAME_TAKEN'),
+      ),
+      contains('already registered'),
+    );
+    expect(
+      ErrorHandler.getErrorMessage(
+        UnauthorizedException('x', code: 'AUTH_PASSWORD_INVALID'),
+      ),
+      contains('Incorrect current password'),
+    );
+    expect(
+      ErrorHandler.getErrorMessage(
+        HttpStatusException(400, 'x', code: 'AUTH_PASSWORD_UNAVAILABLE'),
+      ),
+      contains('Google sign-in'),
+    );
+  });
+
+  test('curates AUTH_USER_NOT_FOUND instead of a generic 404', () {
+    // A 404 maps to NotFoundException; without the arm it would read
+    // 'The requested resource was not found.' on a change-password screen.
+    final message = ErrorHandler.getErrorMessage(
+      NotFoundException('User not found', code: 'AUTH_USER_NOT_FOUND'),
+    );
+
+    expect(message, 'Your account could not be found. Please sign in again.');
+    expect(message, isNot(contains('resource was not found')));
+  });
+
+  test(
+    'surfaces a typed session failure without welding on the class name',
+    () {
+      final message = ErrorHandler.getErrorMessage(
+        const AuthSessionUnavailable(AuthSessionUnavailableReason.offlineMode),
+      );
+
+      expect(message, 'This action needs an internet connection.');
+      expect(message, isNot(contains('AuthSessionUnavailable')));
+      expect(message, isNot(contains('AUTH_OFFLINE_MODE')));
+    },
+  );
 }

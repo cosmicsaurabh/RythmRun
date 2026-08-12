@@ -215,7 +215,7 @@ describe('IP-2.6 authentication rate limits', () => {
 
       expect(blocked.statusCode).toBe(429);
       expect(blocked.body).toMatchObject({
-        error: 'AUTH_RATE_LIMITED',
+        code: 'AUTH_RATE_LIMITED',
         retryable: true,
         statusCode: 429,
       });
@@ -563,7 +563,7 @@ describe('IP-2.6 authentication rate limits', () => {
       );
       expect(blocked.statusCode).toBe(429);
       expect(blocked.body).toMatchObject({
-        error: 'AUTH_RATE_LIMITED',
+        code: 'AUTH_RATE_LIMITED',
         statusCode: 429,
       });
     } finally {

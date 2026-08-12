@@ -8,6 +8,7 @@ export class AccountDeletionServiceError extends Error {
     readonly code: AccountDeletionErrorCode,
     readonly statusCode: number,
     message: string,
+    readonly retryable = false,
   ) {
     super(message);
     this.name = 'AccountDeletionServiceError';

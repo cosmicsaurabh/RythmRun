@@ -124,7 +124,7 @@ describe('UserController email verification', () => {
     );
 
     expect(res.statusCode).toBe(429);
-    expect((res.body as { error: string }).error).toBe(
+    expect((res.body as { code: string }).code).toBe(
       'AUTH_VERIFICATION_RATE_LIMITED',
     );
   });

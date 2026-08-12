@@ -4,7 +4,7 @@ published: false
 
 # Auth Hardening & Tunable Timing — Master Plan
 
-**Status:** Phases 0, 1, 3 done · **Phase 2 (M1 grace window) reverted** — broken on real PostgreSQL, restored strict reuse detection · **Owner:** maintainer · **Created:** 2026-08-11
+**Status:** Phases 0, 1, 3, 4 done · **Phase 2 (M1 grace window) reverted** — broken on real PostgreSQL, restored strict reuse detection · Next: Phase 5 · **Owner:** maintainer · **Created:** 2026-08-11
 **Source:** auth + refresh audit (16 confirmed findings, 1 plausible, 2 refuted)
 **Relationship to the improvement program:** this is IP-2 follow-up work. It does
 not replace `IP-2-auth-account-privacy.md`; when a phase here lands, its evidence
@@ -639,11 +639,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] **3b** new tests: same-session rotation returns its result; different-session rotation rejected; failed flight evicted → later request retries fresh; avatar upload-url opts into idempotent replay. Suite 344 → 348, analyzer 9
 
 ### Phase 4 — Error contract
-- [ ] **M4** change-password via `ErrorHandler`
-- [ ] **C2** `AuthSessionFailure` branch
-- [ ] **C3** `AUTH_USERNAME_TAKEN` arm + dead fallbacks deleted
-- [ ] **C4** dead validation parser removed
-- [ ] **P1** `error` field renamed to `code`; regex heuristic deleted; boundary test
+- [x] **M4** `change_password_provider` routes catches through `ErrorHandler.getErrorMessage` (typed `on AuthSessionFailure` + a catch-all), replacing the banned `toString().replaceFirst('Exception: ')`.
+- [x] **C2** `ErrorHandler` gains an early `AuthSessionFailure` branch that returns the failure's curated `.message`.
+- [x] **C3** switch arms added for `AUTH_USERNAME_TAKEN`, `AUTH_PASSWORD_INVALID`, `AUTH_PASSWORD_UNAVAILABLE` (and `AUTH_USER_NOT_FOUND`, added after an adversarial verification pass flagged it as an in-family code left uncurated — it is thrown from the same change-password/delete/profile flows and otherwise degraded to a generic 404); the dead string-matching credential/username block deleted.
+- [x] **C4** unreachable validation parser removed (`_parseValidationError` + `_friendlyValidationMessage` + `_getErrorPriority`, and the now-unused `dart:convert` import).
+- [x] **P1** stable code moved from `error` → `code` and `error` dropped **in every emitter the client reads**, not just `user.controller.ts`: also `auth.middleware.ts` (incl. the load-bearing `AUTH_ACCESS_INVALID` the coordinator branches on), `rate-limit.middleware.ts`, and `activity-image.controller.ts` (`activity.controller.ts` already emitted `code`). Client `http_client.dart` reads `code` only; `_looksLikeStableErrorCode` + the `error` fallback deleted. `retryable` added to the deletion envelope (`AccountDeletionServiceError` gained a `retryable = false` field for Phase 5's Google-503 case). Boundary test asserts every auth error carries a well-formed `code` and no `error` key; a client test locks that a legacy `error`-only body yields no code.
 
 ### Phase 5 — Auth core hardening
 - [ ] **B2** reset tokens killed on password change
@@ -700,7 +700,11 @@ suite passes 7/7. Phase 3a is client-only and **deliberately drops** the Flutter
 count from 359 to 344 by deleting 15 dead legacy-migration / verification-stamp
 tests.
 Phase 3b adds four refresh-seam tests (M2 same-session accept/reject, A3
-failed-flight eviction, A4 avatar replay policy) → Flutter 348.)
+failed-flight eviction, A4 avatar replay policy) → Flutter 348. Phase 4 (error
+contract) adds a backend boundary test → **513 passed / 513 total** CI-equivalent
+(506 / 7 skipped / 513 local) and client tests locking the removed `error`
+fallback, the new code arms, and the `AuthSessionFailure` branch → **Flutter 352**;
+analyzer holds at 9.)
 
 **Four known traps** (from `CLAUDE.md`, repeated because they cost real time):
 1. Use `npm test`, never `npx jest` — the suite is native ESM.

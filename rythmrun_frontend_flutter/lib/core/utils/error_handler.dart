@@ -1,12 +1,18 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import '../network/auth_failures.dart';
 import '../network/http_client.dart';
 import '../config/app_config.dart';
 
 class ErrorHandler {
   /// Converts any exception to a user-friendly error message
   static String getErrorMessage(dynamic exception) {
+    // Typed session failures from the auth coordinator already carry a curated,
+    // user-facing message keyed by their reason — surface it directly.
+    if (exception is AuthSessionFailure) {
+      return exception.message;
+    }
+
     String message = _readableMessage(exception);
 
     if (exception is HttpStatusException) {
@@ -48,6 +54,17 @@ class ErrorHandler {
           return 'Incorrect password. Account deletion cancelled.';
         case 'ACCOUNT_DELETION_GOOGLE_INVALID':
           return 'Google authentication could not be verified. Account deletion cancelled.';
+        case 'AUTH_USERNAME_TAKEN':
+          return 'This email is already registered. Please sign in instead.';
+        case 'AUTH_PASSWORD_INVALID':
+          return 'Incorrect current password. Please try again.';
+        case 'AUTH_PASSWORD_UNAVAILABLE':
+          return 'This account uses Google sign-in and has no password to change.';
+        case 'AUTH_USER_NOT_FOUND':
+          // Thrown from the same change-password/delete/profile flows as the
+          // arms above (e.g. the account was removed under a still-valid access
+          // token); a generic 404 "resource not found" reads as a bug there.
+          return 'Your account could not be found. Please sign in again.';
       }
     }
 
@@ -115,34 +132,10 @@ class ErrorHandler {
       return 'Connection timeout. Please check your internet connection and try again.';
     }
 
-    // Handle backend validation errors
-    if (message.contains('Validation failed:')) {
-      return _parseValidationError(message);
-    }
-
-    // Handle authentication errors
-    if (message.contains('UnauthorizedException') ||
-        message.contains('Authentication required')) {
-      return 'Please log in to continue.';
-    }
-
-    if (message.contains('Invalid credentials') ||
-        message.contains('Invalid username or password')) {
-      return 'Invalid email or password. Please try again.';
-    }
-
-    // Handle other specific errors
-    if (message.contains('Username already exists')) {
-      return 'This email is already registered';
-    } else if (message.contains('User not found')) {
-      return 'User not found';
-    } else if (message.contains('Registration failed')) {
-      return message;
-    } else if (message.contains('Login failed')) {
-      return 'Login failed. Please try again.';
-    } else {
-      return message;
-    }
+    // Unmapped errors degrade to the readable message. Backend errors now carry
+    // a stable `code` handled by the switch above; the old string-matching arms
+    // (and the `Validation failed:` JSON parser) are gone.
+    return message;
   }
 
   /// The human-readable text carried by an exception.
@@ -169,116 +162,5 @@ class ErrorHandler {
     // message field; the checks further down deliberately match on their
     // `toString()` text, so keep the existing derivation for them.
     return exception.toString().replaceAll('Exception: ', '');
-  }
-
-  static String _parseValidationError(String errorMessage) {
-    try {
-      // Extract JSON part from the message
-      final jsonStart = errorMessage.indexOf('[');
-      final jsonEnd = errorMessage.lastIndexOf(']') + 1;
-
-      if (jsonStart == -1 || jsonEnd == 0) {
-        return 'Please check your input and try again';
-      }
-
-      final jsonString = errorMessage.substring(jsonStart, jsonEnd);
-      final List<dynamic> validationErrors = json.decode(jsonString);
-
-      final errorMessages = <Map<String, dynamic>>[];
-
-      for (final error in validationErrors) {
-        if (error is Map<String, dynamic>) {
-          final property = error['property'] as String?;
-          final constraints = error['constraints'] as Map<String, dynamic>?;
-
-          if (constraints != null) {
-            for (final constraint in constraints.values) {
-              final message = _friendlyValidationMessage(
-                property,
-                constraint.toString(),
-              );
-              final priority = _getErrorPriority(
-                property,
-                constraint.toString(),
-              );
-              errorMessages.add({'message': message, 'priority': priority});
-            }
-          }
-        }
-      }
-
-      // Sort by priority (lower number = higher priority)
-      errorMessages.sort((a, b) => a['priority'].compareTo(b['priority']));
-      final sortedMessages =
-          errorMessages.map((e) => e['message'] as String).toList();
-
-      if (sortedMessages.isEmpty) {
-        return 'Please check your input and try again';
-      } else if (sortedMessages.length == 1) {
-        return sortedMessages.first;
-      } else {
-        // Multiple errors - show up to 3 most important ones
-        final limitedErrors = sortedMessages.take(3).toList();
-        return '• ${limitedErrors.join('\n• ')}';
-      }
-    } catch (e) {
-      return 'Please check your input and try again';
-    }
-  }
-
-  static String _friendlyValidationMessage(
-    String? property,
-    String constraint,
-  ) {
-    // Convert backend validation messages to user-friendly ones
-    switch (property) {
-      case 'password':
-        if (constraint.contains('longer than or equal to 8')) {
-          return 'Password must be at least 8 characters long';
-        } else if (constraint.contains('must contain')) {
-          return 'Password must contain uppercase, lowercase, number and special character';
-        }
-        return 'Password requirements not met';
-
-      case 'username':
-        if (constraint.contains('must be an email')) {
-          return 'Please enter a valid email address';
-        } else if (constraint.contains('should not be empty')) {
-          return 'Email is required';
-        }
-        return 'Please enter a valid email';
-
-      case 'firstname':
-        return 'First name is required';
-
-      case 'lastname':
-        return 'Last name is required';
-
-      default:
-        return constraint;
-    }
-  }
-
-  static int _getErrorPriority(String? property, String constraint) {
-    // Lower number = higher priority (shows first)
-
-    // Required field errors are most critical
-    if (constraint.contains('should not be empty') ||
-        constraint.contains('is required')) {
-      return 1;
-    }
-
-    // Format validation errors by field importance
-    switch (property) {
-      case 'username': // Email field
-        return 2;
-      case 'password':
-        return 3;
-      case 'firstname':
-      case 'lastname':
-        return 4;
-      default:
-        return 5;
-    }
   }
 }

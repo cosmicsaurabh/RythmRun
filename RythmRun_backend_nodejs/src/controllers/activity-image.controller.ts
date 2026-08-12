@@ -155,7 +155,7 @@ export class ActivityImageController {
     if (error instanceof ActivityImageServiceError) {
       return res.status(error.statusCode).json({
         status: 'error',
-        error: error.code,
+        code: error.code,
         message: error.message,
       });
     }
