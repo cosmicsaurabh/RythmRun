@@ -361,6 +361,16 @@ class AuthPersistenceService {
     return nowMs - verifiedAtMs <= offlineWindow.inMilliseconds;
   }
 
+  Future<bool> isHistoryRestored(String userId) async {
+    final preferences = await _preferencesFactory();
+    return preferences.getBool('history_restored_$userId') ?? false;
+  }
+
+  Future<void> setHistoryRestored(String userId, bool value) async {
+    final preferences = await _preferencesFactory();
+    await preferences.setBool('history_restored_$userId', value);
+  }
+
   Future<void> _writeString(
     AuthPreferences preferences,
     String key,

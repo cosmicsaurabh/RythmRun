@@ -54,4 +54,13 @@ abstract class WorkoutRepository {
 
   /// Clear all local workouts for a user
   Future<void> clearLocalWorkouts(int userId);
+
+  /// Check if the history has been fully restored from the server
+  Future<bool> isHistoryRestored();
+
+  /// Mark the history as restored (or not)
+  Future<void> setHistoryRestored(bool value);
+
+  /// Download historical workouts from the server and restore them locally
+  Future<void> downloadAndRestoreWorkouts();
 }

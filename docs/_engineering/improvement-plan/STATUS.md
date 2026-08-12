@@ -14,7 +14,7 @@ proof open) · `In progress` · `Planned` · `Blocked` · `Deferred`
 in [ACTION-REQUIRED.md](./ACTION-REQUIRED.md). "Merged and tested locally" is not
 "done" anywhere in this program.
 
-_Last updated: 2026-08-12 against `main` including the auth-hardening (IP-2 follow-up) slice._
+_Last updated: 2026-08-13 against `main` including the auth-hardening (IP-2 follow-up) slice and IP-2.7 bootstrapping._
 
 ## At a glance
 
@@ -22,7 +22,7 @@ _Last updated: 2026-08-12 against `main` including the auth-hardening (IP-2 foll
 | --- | --- | --- | --- |
 | IP-0 Security containment (P0) | **In progress** | 6 of 10 code packages | IP-0.1, 0.1A, 0.6, 0.7 — all operational |
 | IP-1 Tracking correctness | **Verification** | 7 of 7 | — |
-| IP-2 Auth, account, privacy | **Verification** | 7 of 8 + IP-2.9 code-delivered | IP-2.7 |
+| IP-2 Auth, account, privacy | **Verification** | 8 of 8 + IP-2.9 code-delivered | — |
 | IP-3 Workout durability | **Planned** | 0 of 5 | all |
 | IP-4 Sync & restore | **Planned** | 0 of 6 | all |
 | IP-5 Release readiness | **Planned** | 0 of 7 | all (5.7 `Deferred`) |
@@ -36,11 +36,12 @@ credential rotation cannot be closed from the repository.
 
 Current `main` gates: backend 510 passed / 7 skipped / 517 total locally
 (517 passed / 517 total in CI with PostgreSQL enabled), typecheck clean; Flutter
-353 passed; analyzer 9 issues, 0 warnings, 0 errors. The counted analyzer
+356 passed; analyzer 9 issues, 0 warnings, 0 errors. The counted analyzer
 baseline is stamped Flutter 3.44.1 / Dart 3.12.1 to match CI, so it can only be
 checked on the pinned toolchain. The rise from 464/471 and Flutter 359 is the
 auth-hardening slice (config spine, containment, refresh seams, error contract,
-core hardening) net of Phase 3a's deletion of 15 dead legacy-migration tests.
+core hardening) net of Phase 3a's deletion of 15 dead legacy-migration tests,
+plus the IP-2.7 bootstrapping work (3 net new tests).
 
 ## Deployment reality — corrected 2026-08-11
 
@@ -115,7 +116,7 @@ All seven delivered; each waits on a device, staging, or hosted gate.
 | 2.4 Profile, recovery, deletion | Verification | ✓ | Code delivered for profile, password recovery, and account deletion slices. Production exposure gated by MC-2.5 |
 | 2.5 Private routes; disable social | Verification | ✓ | Merged (PR #165, `bd78d9a`). Apply the migration on staging/production; complete the IP-5.6 policy review |
 | 2.6 API abuse controls & typed errors | Verification | ✓ | Code delivered for abuse-control and storage-boundary slices (items 1–9). MC-2.6 owns deployed edge configuration |
-| 2.7 Protect retained routes/photos at rest | Planned | ✗ | Not started; gated on an owner design spike (threat model, library/perf, backup and key-loss recovery) |
+| 2.7 Protect retained routes/photos at rest | Verification | ✓ | Code delivered: logout clears local SQLite data (workouts, points, status changes, images); login triggers full background bootstrap from `GET /api/activities` with pagination, dedup via `hasWorkout`, `history_restored` flag for kill-recovery, and a reactive `SyncHistoryBanner`. At-rest encryption (threat model, library/perf, backup, key-loss) remains a future design spike |
 | 2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. MC-2.4. Its no-implicit-link behavior is superseded by 2.9 |
 | 2.9 Email verification & safe linking | Verification | ✓ | Merged (PR #164). MC-2.5 |
 
@@ -140,7 +141,8 @@ Nothing delivered. See the phase files for the full specs.
 Lowest-numbered unblocked packages. The operational IP-0 gates run in parallel
 and are not substitutes.
 
-1. **IP-2.7 retained-data protection** — gated on the owner design spike.
+1. **IP-3 workout durability** — durable engine + checkpoint DAO, exactly-once
+   finalize, recovery UX, Android foreground/screen-off tracking.
 
 ## Delivery history
 
@@ -157,6 +159,7 @@ and are not substitutes.
 | 2026-08-12 | Auth-hardening follow-up (IP-2 seams) — tunable auth-timing config spine; M5 cleanup-runner scheduled on the sweep + M3 `DELETE /me` rate limit; client credential simplification (legacy plaintext-token migration + `requiresServerVerification` deleted) and refresh seams (same-session rotation accept, failed-flight eviction, idempotent avatar upload-url); `error`→`code` error contract across every mounted emitter; core hardening (unconsumed-reset-token invalidation, `verifyEmail` purpose guard, login-timing flattening, delete-account Google-503 pass-through); native Google sign-out on forced loss; presigned-URL-at-rest note added to the IP-2.7 threat model. A refresh-reuse grace window was tried and reverted (strict reuse detection restored). | Branch `auth-impr` (PRs #180/#181 merged; remainder local) |
 | 2026-08-13 | Startup optimization & launch fixes — extracted blurred Home Screen splash mockup (`splash_screen.dart`); parallelized startup disk reads; implemented non-blocking Optimistic Launch startup sequence with silent background token refresh (`_refreshTokenBackground`) and session validation (`_validateSessionBackground`); differentiated backend-down and device-offline states on NetworkException during refresh by checking `ConnectivityService`. | Branch `auth-impr` (PR pending / pushed to remote) |
 | 2026-08-13 | IP-2.7 local data clearing on logout — wiped SQLite database rows (workouts, points, status changes, and images) inside `invalidateUserState` during session teardown to prevent cross-account local data exposure on logout. | Branch `auth-impr` (PR pending / pushed to remote) |
+| 2026-08-13 | IP-2.7 full background bootstrap on login — `downloadAndRestoreWorkouts` fetches paginated server history via `GET /api/activities` (existing backend API, no backend changes), deduplicates via `hasWorkout` (by `clientSyncId` / `remoteActivityId`), persists to SQLite with `ActivitySyncModel.fromJson` mapping. `SyncCoordinator` checks `history_restored` flag (per-user in `SharedPreferences`) to skip on subsequent launches; app-kill recovery resumes from where it left off. `SyncProgress` enum + `syncProgressProvider` drives a reactive `SyncHistoryBanner` on the home screen. History screen auto-refreshes on restore completion. | Branch `auth-impr` (PR pending / pushed to remote) |
 
 
 Each phase file's evidence log carries the detail, including what was

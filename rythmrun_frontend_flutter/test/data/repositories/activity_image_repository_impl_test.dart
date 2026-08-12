@@ -1512,6 +1512,15 @@ class FakeWorkoutLocalDataSource implements WorkoutLocalDataSource {
   Future<int> getWorkoutCount(int userId) async {
     throw UnimplementedError();
   }
+
+  @override
+  Future<bool> hasWorkout({
+    required int userId,
+    required String clientSyncId,
+    int? remoteActivityId,
+  }) async {
+    return false;
+  }
 }
 
 class FakeAuthRepository implements AuthRepository {
@@ -1633,4 +1642,12 @@ class FakeAuthRepository implements AuthRepository {
   Future<void> updateLastBackendSync() async {
     throw UnimplementedError();
   }
+
+  @override
+  Future<bool> isHistoryRestored(String userId) async {
+    return false;
+  }
+
+  @override
+  Future<void> setHistoryRestored(String userId, bool value) async {}
 }

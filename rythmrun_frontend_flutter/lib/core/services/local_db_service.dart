@@ -1353,6 +1353,41 @@ class LocalDbService {
     });
   }
 
+  /// Check if a workout exists in the local database
+  Future<bool> hasWorkout({
+    required int userId,
+    required String clientSyncId,
+    int? remoteActivityId,
+  }) async {
+    final db = await database;
+
+    // Check by clientSyncId first
+    if (clientSyncId.trim().isNotEmpty) {
+      final rows = await db.query(
+        _workoutsTable,
+        columns: ['id'],
+        where: 'user_id = ? AND client_sync_id = ?',
+        whereArgs: [userId, clientSyncId],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) return true;
+    }
+
+    // Check by remoteActivityId if provided
+    if (remoteActivityId != null) {
+      final rows = await db.query(
+        _workoutsTable,
+        columns: ['id'],
+        where: 'user_id = ? AND remote_activity_id = ?',
+        whereArgs: [userId, remoteActivityId],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) return true;
+    }
+
+    return false;
+  }
+
   Future<void> close() async {
     final db = _database;
     _database = null;

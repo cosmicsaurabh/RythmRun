@@ -253,7 +253,15 @@ class TrackingHistoryNotifier extends StateNotifier<TrackingHistoryState> {
 final trackingHistoryProvider =
     StateNotifierProvider<TrackingHistoryNotifier, TrackingHistoryState>((ref) {
       final workoutRepository = ref.watch(workoutRepositoryProvider);
-      return TrackingHistoryNotifier(workoutRepository)..loadInitialData();
+      final notifier = TrackingHistoryNotifier(workoutRepository);
+
+      ref.listen<SyncProgress>(syncProgressProvider, (previous, next) {
+        if (next == SyncProgress.completed) {
+          notifier.loadInitialData();
+        }
+      });
+
+      return notifier..loadInitialData();
     });
 
 // Convenience providers

@@ -106,6 +106,98 @@ void main() {
     expect(workoutRepository.syncCalls, 1);
     expect(imageRepository.syncCalls, 1);
   });
+
+  test('syncAll triggers restore when history is not restored', () async {
+    final authRepository = _MutableAuthRepository(7);
+    final workoutRepository = _FakeWorkoutRepository();
+    final imageRepository = _FakeActivityImageRepository();
+    final operationGate = UserScopeOperationGate()..activate(7);
+
+    var startCalled = false;
+    var completeCalled = false;
+    var failedCalled = false;
+
+    final coordinator = SyncCoordinator(
+      workoutRepository: workoutRepository,
+      activityImageRepository: imageRepository,
+      authRepository: authRepository,
+      operationGate: operationGate,
+      onRestoreStart: () => startCalled = true,
+      onRestoreComplete: () => completeCalled = true,
+      onRestoreFailed: () => failedCalled = true,
+    );
+
+    expect(workoutRepository.historyRestoredValue, isFalse);
+
+    await coordinator.syncAll();
+
+    expect(workoutRepository.downloadAndRestoreWorkoutsCalls, 1);
+    expect(workoutRepository.setHistoryRestoredCalls, 1);
+    expect(workoutRepository.historyRestoredValue, isTrue);
+    expect(startCalled, isTrue);
+    expect(completeCalled, isTrue);
+    expect(failedCalled, isFalse);
+  });
+
+  test('syncAll skips restore when history is already restored', () async {
+    final authRepository = _MutableAuthRepository(7);
+    final workoutRepository = _FakeWorkoutRepository()..historyRestoredValue = true;
+    final imageRepository = _FakeActivityImageRepository();
+    final operationGate = UserScopeOperationGate()..activate(7);
+
+    var startCalled = false;
+    var completeCalled = false;
+
+    final coordinator = SyncCoordinator(
+      workoutRepository: workoutRepository,
+      activityImageRepository: imageRepository,
+      authRepository: authRepository,
+      operationGate: operationGate,
+      onRestoreStart: () => startCalled = true,
+      onRestoreComplete: () => completeCalled = true,
+    );
+
+    await coordinator.syncAll();
+
+    expect(workoutRepository.downloadAndRestoreWorkoutsCalls, 0);
+    expect(workoutRepository.setHistoryRestoredCalls, 0);
+    expect(startCalled, isFalse);
+    expect(completeCalled, isFalse);
+  });
+
+  test('syncAll triggers onRestoreFailed on error during restore', () async {
+    final authRepository = _MutableAuthRepository(7);
+    final workoutRepository = _FakeWorkoutRepository(
+      onDownloadAndRestore: () async {
+        throw Exception('Network error');
+      },
+    );
+    final imageRepository = _FakeActivityImageRepository();
+    final operationGate = UserScopeOperationGate()..activate(7);
+
+    var startCalled = false;
+    var completeCalled = false;
+    var failedCalled = false;
+
+    final coordinator = SyncCoordinator(
+      workoutRepository: workoutRepository,
+      activityImageRepository: imageRepository,
+      authRepository: authRepository,
+      operationGate: operationGate,
+      onRestoreStart: () => startCalled = true,
+      onRestoreComplete: () => completeCalled = true,
+      onRestoreFailed: () => failedCalled = true,
+    );
+
+    await expectLater(
+      coordinator.syncAll(),
+      throwsA(isA<Exception>()),
+    );
+
+    expect(startCalled, isTrue);
+    expect(completeCalled, isFalse);
+    expect(failedCalled, isTrue);
+  });
 }
 
 Future<void> _pumpMicrotasks() async {
@@ -115,14 +207,33 @@ Future<void> _pumpMicrotasks() async {
 
 class _FakeWorkoutRepository implements WorkoutRepository {
   final Future<void> Function()? onSync;
+  final Future<void> Function()? onDownloadAndRestore;
   int syncCalls = 0;
+  bool historyRestoredValue = false;
+  int downloadAndRestoreWorkoutsCalls = 0;
+  int setHistoryRestoredCalls = 0;
 
-  _FakeWorkoutRepository({this.onSync});
+  _FakeWorkoutRepository({this.onSync, this.onDownloadAndRestore});
 
   @override
   Future<void> syncWorkouts() async {
     syncCalls += 1;
     await onSync?.call();
+  }
+
+  @override
+  Future<bool> isHistoryRestored() async => historyRestoredValue;
+
+  @override
+  Future<void> setHistoryRestored(bool value) async {
+    setHistoryRestoredCalls++;
+    historyRestoredValue = value;
+  }
+
+  @override
+  Future<void> downloadAndRestoreWorkouts() async {
+    downloadAndRestoreWorkoutsCalls++;
+    await onDownloadAndRestore?.call();
   }
 
   @override
