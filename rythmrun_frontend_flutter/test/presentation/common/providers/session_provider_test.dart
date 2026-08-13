@@ -776,6 +776,29 @@ void main() {
       },
     );
 
+    test('authenticated observers see online sync access immediately', () {
+      final events = <String>[];
+      final guard = OnlineOperationGuard();
+      final notifier = SessionNotifier(
+        _FakeAuthRepository(events: events),
+        _FakeUserScopeTeardown(events: events),
+        onlineOperationGuard: guard,
+        autoInitialize: false,
+      );
+      addTearDown(notifier.dispose);
+      final observedGuardStates = <bool>[];
+
+      notifier.addListener((session) {
+        if (session.state == SessionState.authenticated) {
+          observedGuardStates.add(guard.isOnline);
+        }
+      });
+
+      notifier.onLoginSuccess(userA);
+
+      expect(observedGuardStates, <bool>[true]);
+    });
+
     test('applyProfileUpdate merges only names for the same owner', () async {
       final events = <String>[];
       final repository = _FakeAuthRepository(events: events);

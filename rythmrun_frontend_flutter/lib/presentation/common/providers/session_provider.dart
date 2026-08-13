@@ -101,8 +101,8 @@ class SessionNotifier extends StateNotifier<SessionData> {
   /// deny them.
   @override
   set state(SessionData value) {
-    super.state = value;
     _onlineOperationGuard?.setOnline(value.state == SessionState.authenticated);
+    super.state = value;
   }
 
   @override
@@ -267,7 +267,8 @@ class SessionNotifier extends StateNotifier<SessionData> {
                   _publishAuthenticated(
                     userData,
                     sessionState: SessionState.authenticatedOffline,
-                    errorMessage: 'Offline mode - limited functionality available',
+                    errorMessage:
+                        'Offline mode - limited functionality available',
                     expectedGeneration: generation,
                   );
                   break;
@@ -378,7 +379,10 @@ class SessionNotifier extends StateNotifier<SessionData> {
   }
 
   /// Run token refresh in the background to avoid blocking the main thread / startup
-  Future<void> _refreshTokenBackground(int generation, UserEntity userData) async {
+  Future<void> _refreshTokenBackground(
+    int generation,
+    UserEntity userData,
+  ) async {
     try {
       final user = await _authRepository.refreshToken();
       if (!_isSessionOperationCurrent(generation)) return;
@@ -396,7 +400,10 @@ class SessionNotifier extends StateNotifier<SessionData> {
   }
 
   /// Run session validation in the background to avoid blocking startup
-  Future<void> _validateSessionBackground(int generation, UserEntity userData) async {
+  Future<void> _validateSessionBackground(
+    int generation,
+    UserEntity userData,
+  ) async {
     try {
       final validation = await _authRepository.validateSession();
       if (!_isSessionOperationCurrent(generation)) return;
@@ -416,7 +423,10 @@ class SessionNotifier extends StateNotifier<SessionData> {
     }
   }
 
-  Future<void> _handleUnavailableBackground(int generation, UserEntity userData) async {
+  Future<void> _handleUnavailableBackground(
+    int generation,
+    UserEntity userData,
+  ) async {
     final canStayOffline = await _authRepository.canStayLoggedInOffline();
     if (!_isSessionOperationCurrent(generation)) return;
     if (canStayOffline) {
