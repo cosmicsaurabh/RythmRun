@@ -225,6 +225,13 @@ All tables are user-reachable only through a parent checkpoint scoped by `user_i
 
 ### IP-3.4 — Implement Android foreground/screen-off tracking
 
+**Design proposal (2026-08-17, awaiting maintainer approval, no code changed):**
+[Android background tracking and notification controls](../tracking/android-background-tracking-design.md)
+— one Dart isolate on a cached FlutterEngine, an app-local `location`-type foreground
+service that owns only the notification/actions/wake lock, no `ACCESS_BACKGROUND_LOCATION`,
+no new dependency. Its §8 splits IP-3.1–3.4 into PRs; its §11 lists the decisions needed
+before PR-1.
+
 **Primary files**
 
 - `rythmrun_frontend_flutter/android/app/src/main/AndroidManifest.xml`
@@ -354,3 +361,7 @@ At minimum:
 | Date | Work package | Evidence | Result | Notes |
 | --- | --- | --- | --- | --- |
 | — | — | No implementation evidence yet | Not started | Planning document only |
+| 2026-08-17 | IP-3.4 design (pre-3.1) | [Android background tracking design](../tracking/android-background-tracking-design.md); static read of code, plugin sources, embedding bytecode, and Android/Play docs; no build, test, or device run | Proposed — not approved, nothing delivered | Recommends an own minimal Kotlin foreground service + cached engine over geolocator's notification (insufficient for shade controls) or `flutter_foreground_task`; decisions listed in its §11 |
+| 2026-08-17 | IP-3 audit (pre-3.1) | [Battery and active-workout durability audit](../tracking/battery-durability-audit.md); static read of code, plugin/framework sources, and one local build artifact; no build, test, or device run | Audit only — nothing delivered | Failure-boundary matrix, battery findings `B-01`…`B-12`, durability findings `D-01`…`D-10`; endorses the IP-3.4 design with three departures (no default partial wake lock, GPS off on pause, lifecycle-gated tick) and adds four schema-free battery PRs before IP-3.1; lists drift (§7) incl. the unrecorded local debug assemble on the bumped toolchain and the transitively merged `FOREGROUND_SERVICE`/`WAKE_LOCK` |
+| 2026-08-18 | IP-3.3/3.4 UX (pre-3.1) | [Workout-tracking UX and accessibility audit](../tracking/workout-tracking-ux-accessibility-audit.md); static read of Track screen, provider/state, live map, recovery card, exit dialogs, theme, manifest, tests, and pinned `geolocator_android-5.0.3` permission source; no build, test, or device run | Audit only — nothing delivered | Findings `UX-01`…`UX-27`; journey table; exact strings `S0`…`S18` for the states IP-3.3 must present (recovery card Resume/Finish/Discard with a permission gate before Resume; loss acknowledged in duration/distance only); recommends the IP-3.4 two-tap notification Finish be **on** (in-app Finish is already confirmed; no undo exists) and a `Recording` / `Waiting for GPS` split in the notification text; stages 0–2 of its plan are schema-free and can precede IP-3.1 |
+| 2026-08-18 | IP-3.5 map layer (pre-3.1) | [Map rendering and tile-provider reliability audit](../tracking/map-tile-reliability-audit.md); static read of the map widgets and pinned `flutter_map 8.3.1` / `http 1.6.0` sources; OSMF policy quoted; no build, test, or device run | Audit only — nothing delivered | Confirms tracking/save are tile-independent; adds to the IP-3.5 scope two lifetime defects in `LiveMapFeed` (`M-05` leaked status listeners replaying stale camera moves per completion; `M-16` a new `NetworkTileProvider`/`HttpClient` per rebuild) that should not wait for the incremental-polyline work, plus `M-06` (whole-state watch → per-second re-projection) which IP-3.5 already owns; policy/privacy items (`M-01`…`M-04`, `M-07`, `M-08`, `M-10`) are Flutter-only and schema-free |

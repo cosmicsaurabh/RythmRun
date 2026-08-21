@@ -20,11 +20,20 @@ After this phase, a completed workout syncs through bounded, resumable, idempote
 
 ## Audit evidence
 
+The 2026-08-17 [Push/Pull Sync Reliability Audit](../sync/sync-reliability-audit.md)
+re-traced push, pull, and multi-device behaviour against the current code
+(`d0e5b92`). It carries the gap list `SYNC-01`…`SYNC-18` and the deferred-decision
+log `D-01`…`D-14`; the items below are the original 2026-07-10 findings. Two
+corrections since then: a bootstrap-only pull now exists (`IP-2.7`, one-shot per
+login, no cursor, no tombstones), and session teardown deletes unsynced local rows
+(`SYNC-01`, P0). The audit does not change this phase's target design; `SYNC-02`
+is a minimal delta pull that IP-4.5 later completes.
+
 - Flutter sends all locations/status changes in one JSON body.
 - Express previously used its default 100 KB body limit; IP-1 provides only a bounded interim increase.
 - Backend activity list and detail share `activityInclude`, eagerly loading all route points.
 - Major PostgreSQL foreign-key/query indexes are absent.
-- Flutter `ActivityRemoteDataSource` implements create/delete only; no pull/merge path exists.
+- Flutter `ActivityRemoteDataSource` implemented create/delete only; no pull/merge path existed. IP-2.7 later added `fetchActivities` and a one-shot bootstrap (see the audit note above); there is still no delta pull, cursor, or tombstone.
 - Local sync is a `synced` boolean with little actionable user feedback.
 - Activity PATCH can destroy child history unless presence-aware behavior from IP-1 is retained.
 - Backend activity deletion calls S3 before deleting the database row, so failures can leave cross-system inconsistency.
@@ -430,3 +439,4 @@ Digest contract: SHA-256 of the exact canonical UTF-8 JSON bytes. The v2 schema 
 | Date | Work package | Evidence | Result | Notes |
 | --- | --- | --- | --- | --- |
 | — | — | No implementation evidence yet | Not started | Planning document only |
+| 2026-08-17 | Audit (pre-4.1) | [Sync reliability audit](../sync/sync-reliability-audit.md), static trace of `d0e5b92`; no device runs, no suites executed | NOT READY: one P0 (unsynced work deleted at session exit), P1 multi-device propagation absent | Gap list `SYNC-01`…`SYNC-18` is the ticket source; deferred decisions `D-01`…`D-14` |
