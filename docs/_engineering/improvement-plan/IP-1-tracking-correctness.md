@@ -10,7 +10,7 @@ published: false
 | Priority | P1 |
 | Target | 7 focused work packages after IP-0 |
 | Owner | Unassigned |
-| Last updated | 2026-07-17 |
+| Last updated | 2026-08-22 |
 | Depends on | IP-0 patched deployment; incident containment remains active until IP-0 exits |
 | Exit condition | Metrics, account-switch, cascade, PATCH, long-payload, and CI gates pass |
 
@@ -19,6 +19,15 @@ published: false
 After this phase, a user can trust the app's distance, active duration, speed, pace, and calorie inputs; paused or rejected GPS movement cannot corrupt those metrics; completed local data is accessible only by its owner; SQLite cascades are enforced; unrelated backend edits preserve route history; and minimum CI protects the corrected behavior.
 
 Repository-only IP-1 work was explicitly selected by the maintainer on 2026-07-11 while IP-0 operational gates remain open. No migration execution, deployment, historic-value rewrite, or production enablement is authorized by this status change; those actions remain in [ACTION-REQUIRED.md](./ACTION-REQUIRED.md).
+
+The active [GPS route-quality audit](../tracking/gps-route-quality-audit.md)
+raised plausible stationary-jitter,
+warm-up, max-speed, elevation, and missing-field risks. It did not include device
+calibration and therefore does not establish replacement thresholds or reopen a
+delivered package by itself. IP-1 remains in Verification; MC-1.5 and runbook
+Step 6 decide whether the v1 policy remains or a versioned IP-1 follow-up is
+required. Do not interpret `altitude == 0.0` as missing data or copy synthetic
+constants into production without an availability seam and device evidence.
 
 ## Why this phase is next
 

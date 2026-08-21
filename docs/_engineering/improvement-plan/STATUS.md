@@ -14,7 +14,7 @@ proof open) · `In progress` · `Planned` · `Blocked` · `Deferred`
 in [ACTION-REQUIRED.md](./ACTION-REQUIRED.md). "Merged and tested locally" is not
 "done" anywhere in this program.
 
-_Last updated: 2026-08-13 against `main` including the auth-hardening (IP-2 follow-up) slice and IP-2.7 bootstrapping._
+_Last updated: 2026-08-22 against `origin/main` at `792bd52`, including the documentation-only reliability reconciliation prepared on `workout-reliability`._
 
 ## At a glance
 
@@ -22,10 +22,13 @@ _Last updated: 2026-08-13 against `main` including the auth-hardening (IP-2 foll
 | --- | --- | --- | --- |
 | IP-0 Security containment (P0) | **In progress** | 6 of 10 code packages | IP-0.1, 0.1A, 0.6, 0.7 — all operational |
 | IP-1 Tracking correctness | **Verification** | 7 of 7 | — |
-| IP-2 Auth, account, privacy | **Verification** | 8 of 8 + IP-2.9 code-delivered | — |
+| IP-2 Auth, account, privacy | **In progress** | 7 of 8 + IP-2.9 code-delivered | IP-2.7 local protection remains open |
 | IP-3 Workout durability | **Planned** | 0 of 5 | all |
 | IP-4 Sync & restore | **Planned** | 0 of 6 | all |
 | IP-5 Release readiness | **Planned** | 0 of 7 | all (5.7 `Deferred`) |
+
+`△` means partial repository behavior with a known unmet contract; it is not
+Verification.
 
 **32 manual/hosted checks, 0 verified.** One is `Blocked` (MC-0.10, pending your
 approval to send the dependency inventory to npm). The rest are `Pending`.
@@ -34,7 +37,8 @@ approval to send the dependency inventory to npm). The rest are `Pending`.
 work is operational, not code.** Containment, exposure investigation, and
 credential rotation cannot be closed from the repository.
 
-Current `main` gates: backend 510 passed / 7 skipped / 517 total locally
+Last recorded `main` gates (not rerun for this documentation checkpoint):
+backend 510 passed / 7 skipped / 517 total locally
 (517 passed / 517 total in CI with PostgreSQL enabled), typecheck clean; Flutter
 356 passed; analyzer 9 issues, 0 warnings, 0 errors. The counted analyzer
 baseline is stamped Flutter 3.44.1 / Dart 3.12.1 to match CI, so it can only be
@@ -116,13 +120,15 @@ All seven delivered; each waits on a device, staging, or hosted gate.
 | 2.4 Profile, recovery, deletion | Verification | ✓ | Code delivered for profile, password recovery, and account deletion slices. Production exposure gated by MC-2.5 |
 | 2.5 Private routes; disable social | Verification | ✓ | Merged (PR #165, `bd78d9a`). Apply the migration on staging/production; complete the IP-5.6 policy review |
 | 2.6 API abuse controls & typed errors | Verification | ✓ | Code delivered for abuse-control and storage-boundary slices (items 1–9). MC-2.6 owns deployed edge configuration |
-| 2.7 Protect retained routes/photos at rest | Verification | ✓ | Code delivered: logout clears local SQLite data (workouts, points, status changes, images); login triggers full background bootstrap from `GET /api/activities` with pagination, dedup via `hasWorkout`, `history_restored` flag for kill-recovery, and a reactive `SyncHistoryBanner`. At-rest encryption (threat model, library/perf, backup, key-loss) remains a future design spike |
+| 2.7 Protect retained routes/photos at rest | In progress | △ | Per-user SQL scoping and a one-shot background bootstrap exist. Current normal-session teardown purges all owner rows without awaiting it, violating D-004 and destroying unsynced work/queued deletes; runbook Step 2 corrects it. The threat-model, encrypted-store/library/performance, backup, and key-loss design gate remains open |
 | 2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. MC-2.4. Its no-implicit-link behavior is superseded by 2.9 |
 | 2.9 Email verification & safe linking | Verification | ✓ | Merged (PR #164). MC-2.5 |
 
 ### IP-3, IP-4, IP-5 — `Planned`
 
-Nothing delivered. See the phase files for the full specs.
+No package is implemented. The source reports remain active and are linked from
+the [implementation runbook](./IMPLEMENTATION-RUNBOOK.md); they are not delivery
+evidence. See the phase files for the full specs.
 
 - **IP-3** durable engine + checkpoint DAO · exactly-once finalize · recovery UX
   · Android foreground/screen-off tracking · remove long-session quadratic UI.
@@ -141,8 +147,9 @@ Nothing delivered. See the phase files for the full specs.
 Lowest-numbered unblocked packages. The operational IP-0 gates run in parallel
 and are not substitutes.
 
-1. **IP-3 workout durability** — durable engine + checkpoint DAO, exactly-once
-   finalize, recovery UX, Android foreground/screen-off tracking.
+1. **Runbook Step 2 / IP-2.7 correction** — retain every completed owner row and
+   queued operation across ordinary logout/account switch/forced loss while
+   preserving provider isolation and awaited teardown. This precedes IP-3.
 
 ## Delivery history
 
@@ -154,13 +161,12 @@ and are not substitutes.
 | 2026-07-27 | IP-2.6 abuse-control slice — CORS allowlist, proxy-hop trust, request budgets, typed `AUTH_RATE_LIMITED`, typed image errors, request IDs, security events | PRs #167/#169 |
 | 2026-07-28 | IP-0.4 avatar re-hardening — presigned PUT with signed `content-length`, authenticated read URLs, explicit buckets | PR #170 |
 | 2026-08-11 | Release fixes — OpenStreetMap attribution, deletion-request link, `1.2.0+21`; toolchain bump; `APP_ENV` define | PR #171 |
-| 2026-08-11 | IP-2.6 storage boundary slice (items 6–8) — presigned PUT with signed Content-Length/Content-Type, S3 metadata & checksum verification, user/activity quotas, abandoned upload cleanup | Local branch |
-| 2026-08-11 | IP-2.4 account deletion slice — re-authentication control (password/Google token), transactional `ObjectCleanupJob` outbox, atomic user delete, `ObjectCleanupRunner`, Flutter datasource & error mapping | Local branch |
-| 2026-08-12 | Auth-hardening follow-up (IP-2 seams) — tunable auth-timing config spine; M5 cleanup-runner scheduled on the sweep + M3 `DELETE /me` rate limit; client credential simplification (legacy plaintext-token migration + `requiresServerVerification` deleted) and refresh seams (same-session rotation accept, failed-flight eviction, idempotent avatar upload-url); `error`→`code` error contract across every mounted emitter; core hardening (unconsumed-reset-token invalidation, `verifyEmail` purpose guard, login-timing flattening, delete-account Google-503 pass-through); native Google sign-out on forced loss; presigned-URL-at-rest note added to the IP-2.7 threat model. A refresh-reuse grace window was tried and reverted (strict reuse detection restored). | Branch `auth-impr` (PRs #180/#181 merged; remainder local) |
-| 2026-08-13 | Startup optimization & launch fixes — extracted blurred Home Screen splash mockup (`splash_screen.dart`); parallelized startup disk reads; implemented non-blocking Optimistic Launch startup sequence with silent background token refresh (`_refreshTokenBackground`) and session validation (`_validateSessionBackground`); differentiated backend-down and device-offline states on NetworkException during refresh by checking `ConnectivityService`. | Branch `auth-impr` (PR pending / pushed to remote) |
-| 2026-08-13 | IP-2.7 local data clearing on logout — wiped SQLite database rows (workouts, points, status changes, and images) inside `invalidateUserState` during session teardown to prevent cross-account local data exposure on logout. | Branch `auth-impr` (PR pending / pushed to remote) |
-| 2026-08-13 | IP-2.7 full background bootstrap on login — `downloadAndRestoreWorkouts` fetches paginated server history via `GET /api/activities` (existing backend API, no backend changes), deduplicates via `hasWorkout` (by `clientSyncId` / `remoteActivityId`), persists to SQLite with `ActivitySyncModel.fromJson` mapping. `SyncCoordinator` checks `history_restored` flag (per-user in `SharedPreferences`) to skip on subsequent launches; app-kill recovery resumes from where it left off. `SyncProgress` enum + `syncProgressProvider` drives a reactive `SyncHistoryBanner` on the home screen. History screen auto-refreshes on restore completion. | Branch `auth-impr` (PR pending / pushed to remote) |
-
+| 2026-08-11 | IP-2.6 storage boundary slice (items 6–8) — presigned PUT with signed Content-Length/Content-Type, S3 metadata & checksum verification, user/activity quotas, abandoned upload cleanup | `main` |
+| 2026-08-11 | IP-2.4 account deletion slice — re-authentication control (password/Google token), transactional `ObjectCleanupJob` outbox, atomic user delete, `ObjectCleanupRunner`, Flutter datasource & error mapping | `main` |
+| 2026-08-12 | Auth-hardening follow-up (IP-2 seams) — tunable auth-timing config spine; M5 cleanup-runner scheduled on the sweep + M3 `DELETE /me` rate limit; client credential simplification (legacy plaintext-token migration + `requiresServerVerification` deleted) and refresh seams (same-session rotation accept, failed-flight eviction, idempotent avatar upload-url); `error`→`code` error contract across every mounted emitter; core hardening (unconsumed-reset-token invalidation, `verifyEmail` purpose guard, login-timing flattening, delete-account Google-503 pass-through); native Google sign-out on forced loss; presigned-URL-at-rest note added to the IP-2.7 threat model. A refresh-reuse grace window was tried and reverted (strict reuse detection restored). | `main` (PRs #176–#184) |
+| 2026-08-13 | Startup optimization & launch fixes — extracted blurred Home Screen splash mockup (`splash_screen.dart`); parallelized startup disk reads; implemented non-blocking Optimistic Launch startup sequence with silent background token refresh (`_refreshTokenBackground`) and session validation (`_validateSessionBackground`); differentiated backend-down and device-offline states on NetworkException during refresh by checking `ConnectivityService`. | `main` (PRs #185–#187) |
+| 2026-08-13 | IP-2.7 local data clearing on logout — merged in PRs #188/#189. This implementation purges every owner workout and queued delete during ordinary session teardown; the 2026-08-22 specification reconciliation found that it violates D-004 and the IP-2.7 retained-history contract. Correction is runbook Step 2; no correction is claimed here. | `main` (behavior to correct) |
+| 2026-08-13 | IP-2.7 one-shot background bootstrap — merged in PR #189. `downloadAndRestoreWorkouts` restarts from page 1 after interruption and deduplicates by `clientSyncId`/remote ID; `history_restored` is a per-user boolean. There is no cursor, revision, tombstone, ongoing pull, or remote-image restore. | `main` |
 
 Each phase file's evidence log carries the detail, including what was
 deliberately *not* claimed. The auth-hardening slice's per-phase detail lives in

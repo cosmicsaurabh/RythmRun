@@ -10,7 +10,7 @@ published: false
 | Priority | P1/P2 |
 | Target | 2–4 weeks with compatibility and load evidence |
 | Owner | Unassigned |
-| Last updated | 2026-07-17 |
+| Last updated | 2026-08-22 |
 | Depends on | IP-2 refresh/privacy; IP-3 durable local workout identity and finalization |
 | Exit condition | Resumable long-workout sync, visible states, query/index, restore, tombstone, and durable-cleanup gates pass |
 
@@ -20,11 +20,24 @@ After this phase, a completed workout syncs through bounded, resumable, idempote
 
 ## Audit evidence
 
+The detailed current-flow and gap trace remains in the active
+[sync reliability audit](../sync/sync-reliability-audit.md).
+
+The current branch adds a one-shot, insert-only bootstrap behind a per-user
+boolean. It starts at page 1 after an interrupted restore and deduplicates by
+local identity, but it has no cursor, revision, tombstone, ongoing pull, or image
+restore. A restore error aborts push/image work in the same pass. Normal session
+teardown also starts an un-awaited full owner purge, contradicting D-004 and
+destroying queued work. The runbook fixes that IP-2.7 safety defect before IP-3;
+it does not count as an IP-4 package. The full target below remains unchanged—do
+not add a throwaway timestamp pull, partial status enum, or route-thinning
+protocol that IP-4.1/4.2/4.5 would replace.
+
 - Flutter sends all locations/status changes in one JSON body.
 - Express previously used its default 100 KB body limit; IP-1 provides only a bounded interim increase.
 - Backend activity list and detail share `activityInclude`, eagerly loading all route points.
 - Major PostgreSQL foreign-key/query indexes are absent.
-- Flutter `ActivityRemoteDataSource` implements create/delete only; no pull/merge path exists.
+- Flutter now has `fetchActivities` and the one-shot bootstrap described above; there is still no delta pull, cursor, revision, tombstone, or remote-image restoration.
 - Local sync is a `synced` boolean with little actionable user feedback.
 - Activity PATCH can destroy child history unless presence-aware behavior from IP-1 is retained.
 - Backend activity deletion calls S3 before deleting the database row, so failures can leave cross-system inconsistency.
