@@ -10,7 +10,7 @@ published: false
 | Priority | P1/P2 |
 | Target | 2–4 weeks with compatibility and load evidence |
 | Owner | Unassigned |
-| Last updated | 2026-08-22 |
+| Last updated | 2026-08-31 |
 | Depends on | IP-2 refresh/privacy; IP-3 durable local workout identity and finalization |
 | Exit condition | Resumable long-workout sync, visible states, query/index, restore, tombstone, and durable-cleanup gates pass |
 
@@ -23,27 +23,43 @@ After this phase, a completed workout syncs through bounded, resumable, idempote
 The detailed current-flow and gap trace remains in the active
 [sync reliability audit](../sync/sync-reliability-audit.md).
 
-The current branch adds a one-shot, insert-only bootstrap behind a per-user
-boolean. It starts at page 1 after an interrupted restore and deduplicates by
-local identity, but it has no cursor, revision, tombstone, ongoing pull, or image
-restore. A restore error aborts push/image work in the same pass. Normal session
-teardown also starts an un-awaited full owner purge, contradicting D-004 and
-destroying queued work. The runbook fixes that IP-2.7 safety defect before IP-3;
-it does not count as an IP-4 package. The full target below remains unchanged—do
-not add a throwaway timestamp pull, partial status enum, or route-thinning
-protocol that IP-4.1/4.2/4.5 would replace.
+The current branch still uses a one-shot, insert-only bootstrap behind a
+per-user boolean. It starts at page 1 after an interrupted restore and
+deduplicates by local identity, but it has no cursor, revision, tombstone,
+ongoing pull, or image restore. W1 retains all owner rows across normal session
+exit and awaits the explicit old-owner flag reset before credentials clear.
+
+W2 commit `0b87574` isolates the transitional restore stage from push. A flag
+read, bootstrap, or `history_restored=true` write failure leaves the flag
+retryable, records the existing internal `SyncProgress.failed` state, and still
+runs owner-checked workout/delete/image push in the same coordinated pass. The
+UI renders only `SyncProgress.restoring`; failed restore state and manual retry
+are not user-visible. The restore GET now uses the existing idempotent
+post-refresh replay policy. One owner-bound coordinator flight coalesces
+same-owner requests into at most one follow-up pass, rejects stale owner
+completion between phases, and ends each workout/delete/image loop when that
+loop encounters a transport failure while its durable rows remain queued.
+
+The unstaged Step 4 worktree makes the existing v1 activity boundary
+deterministic and typed without adding an endpoint or migration. Equal start
+times order by descending activity ID; signed image metadata is awaited while
+internal `s3Key` remains hidden; and missing, replayed, or final-delete-raced
+DELETEs return typed `ACTIVITY_NOT_FOUND`. List/detail/delete storage failures
+log only an error category. The full target below remains unchanged—do not add
+a throwaway timestamp pull, partial status enum, or route-thinning protocol
+that IP-4.1/4.2/4.5 would replace.
 
 - Flutter sends all locations/status changes in one JSON body.
 - Express previously used its default 100 KB body limit; IP-1 provides only a bounded interim increase.
 - Backend activity list and detail share `activityInclude`, eagerly loading all route points.
 - Major PostgreSQL foreign-key/query indexes are absent.
-- Flutter now has `fetchActivities` and the one-shot bootstrap described above; there is still no delta pull, cursor, revision, tombstone, or remote-image restoration.
-- Local sync is a `synced` boolean with little actionable user feedback.
+- Flutter now has `fetchActivities` and the one-shot bootstrap described above; restore failure no longer blocks push, but there is still no per-item restore isolation, delta pull, cursor, revision, tombstone, or remote-image restoration.
+- Local sync is a `synced` boolean with little actionable user feedback; there is no full state UI or manual retry.
 - Activity PATCH can destroy child history unless presence-aware behavior from IP-1 is retained.
 - Backend activity deletion calls S3 before deleting the database row, so failures can leave cross-system inconsistency.
 - Image cleanup is an in-process timer handling 25 rows per web process and is not safely coordinated across replicas.
 - At audit time several backend modules created their own Prisma clients. IP-1.6 now centralizes repository ownership on one adapter-backed client/pool; real deployed replica/pool behavior remains unverified under MC-1.12/MC-1.13.
-- Connectivity state may not emit an initial connected value and uses a repeated TCP probe to a public DNS address.
+- Connectivity now emits its current platform-interface state before later changes, ignores stale monitor generations, and no longer creates the recurring public-DNS probe. Platform state does not prove server reachability; real request outcomes remain authoritative, and device/ACTION evidence is open.
 
 ## Scope
 
@@ -442,4 +458,5 @@ Digest contract: SHA-256 of the exact canonical UTF-8 JSON bytes. The v2 schema 
 
 | Date | Work package | Evidence | Result | Notes |
 | --- | --- | --- | --- | --- |
-| — | — | No implementation evidence yet | Not started | Planning document only |
+| 2026-08-31 | W2 schema-free sync safety | 79 focused Flutter tests; full Flutter suite 384 passed; analyzer reported the 9 existing infos with no warnings or errors | Repository behavior verified; committed and pushed as `0b87574` | No backend, HTTP API, or schema change. Cursor/revision pull, tombstones, image restore, full sync-state UI, manual retry, device proof, and ACTION gates remain open; this is not the complete IP-4 package. |
+| 2026-08-31 | Runbook Step 4 backend sync boundary | 54 focused native-ESM service/controller/in-process HTTP-boundary tests; Node 22.22.3 full backend gates, including 519 passed and 7 locally skipped PostgreSQL tests | Repository behavior verified; documentation reconciled and unstaged | Mocked Prisma/R2 HTTP evidence only. No schema, migration, new endpoint, cursor pull, image restore, durable deletion worker, real-provider, deployment, device, staging, production, or ACTION claim; no Step 4 commit. |

@@ -5,7 +5,7 @@ import type { ActivityService as ActivityServiceType } from '../services/activit
 jest.unstable_mockModule('../services/s3.service.js', () => ({
   __esModule: true,
   default: {
-    getActivityImageReadUrl: jest.fn((key: string) => ({
+    getActivityImageReadUrl: jest.fn(async (key: string) => ({
       url: `https://signed.example.com/${key}`,
       urlExpiresAt: '2026-06-09T10:15:00.000Z',
     })),
@@ -399,6 +399,22 @@ describe('ActivityService', () => {
   });
 
   describe('getActivities', () => {
+    it('orders equal start times by descending activity ID', async () => {
+      prisma.activity.findMany.mockResolvedValue([]);
+      prisma.activity.count.mockResolvedValue(0);
+
+      await service.getActivities(userId, { page: 1, limit: 10 });
+
+      expect(prisma.activity.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [
+            { startTime: 'desc' },
+            { id: 'desc' },
+          ],
+        }),
+      );
+    });
+
     it('should include statusChanges in results', async () => {
       prisma.activity.findMany.mockResolvedValue([mockActivityReturn]);
       prisma.activity.count.mockResolvedValue(1);
@@ -918,12 +934,35 @@ describe('ActivityService', () => {
     it('should reject deleting another user activity without S3 cleanup', async () => {
       prisma.activity.findFirst.mockResolvedValue(null);
 
-      await expect(service.deleteActivity(userId, 999)).rejects.toThrow(
-        'Activity not found or unauthorized',
-      );
+      const deletion = service.deleteActivity(userId, 999);
+
+      await expect(deletion).rejects.toBeInstanceOf(ActivityNotFoundError);
+      await expect(deletion).rejects.toMatchObject({
+        code: 'ACTIVITY_NOT_FOUND',
+        statusCode: 404,
+        message: 'Activity not found or unauthorized',
+        retryable: false,
+      });
 
       expect(s3Service.deleteObject).not.toHaveBeenCalled();
       expect(prisma.activity.delete).not.toHaveBeenCalled();
+    });
+
+    it('maps a raced final delete to the typed not-found error', async () => {
+      prisma.activity.findFirst.mockResolvedValue({
+        ...mockActivityReturn,
+        images: [],
+      });
+      prisma.activity.delete.mockRejectedValue({ code: 'P2025' });
+
+      const deletion = service.deleteActivity(userId, 1);
+
+      await expect(deletion).rejects.toBeInstanceOf(ActivityNotFoundError);
+      await expect(deletion).rejects.toMatchObject({
+        code: 'ACTIVITY_NOT_FOUND',
+        statusCode: 404,
+        retryable: false,
+      });
     });
   });
 });

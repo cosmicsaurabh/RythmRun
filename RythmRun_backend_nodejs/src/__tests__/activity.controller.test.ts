@@ -77,11 +77,16 @@ describe('ActivityController payload validation', () => {
   const activityService = {
     createActivity: jest.fn(),
     updateActivity: jest.fn(),
+    deleteActivity: jest.fn(),
   };
   const controller = new ActivityController(activityService as any);
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('accepts the audited 750-point request and dispatches the transformed DTO', async () => {
@@ -234,6 +239,59 @@ describe('ActivityController payload validation', () => {
       message: 'Activity not found or unauthorized',
       retryable: false,
     });
+  });
+
+  it('returns a typed 404 when a successful DELETE is replayed', async () => {
+    activityService.deleteActivity
+      .mockResolvedValueOnce({ message: 'Activity deleted successfully' })
+      .mockRejectedValueOnce(new ActivityNotFoundError());
+    const firstResponse = createResponse();
+    const replayResponse = createResponse();
+
+    await controller.deleteActivity(createRequest(undefined), firstResponse);
+    await controller.deleteActivity(createRequest(undefined), replayResponse);
+
+    expect(activityService.deleteActivity).toHaveBeenNthCalledWith(1, 17, 42);
+    expect(activityService.deleteActivity).toHaveBeenNthCalledWith(2, 17, 42);
+    expect(firstResponse.status).toHaveBeenCalledWith(200);
+    expect(replayResponse.status).toHaveBeenCalledWith(404);
+    expect(replayResponse.json).toHaveBeenCalledWith({
+      status: 'error',
+      code: 'ACTIVITY_NOT_FOUND',
+      message: 'Activity not found or unauthorized',
+      retryable: false,
+    });
+  });
+
+  it('does not derive DELETE status from the legacy error message', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    activityService.deleteActivity.mockRejectedValue(
+      new Error('Activity not found or unauthorized'),
+    );
+    const response = createResponse();
+
+    await controller.deleteActivity(createRequest(undefined), response);
+
+    expect(response.status).toHaveBeenCalledWith(500);
+    expect(consoleError).toHaveBeenCalledWith('Delete activity error (Error)');
+    consoleError.mockRestore();
+  });
+
+  it('does not log storage error details from DELETE', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    activityService.deleteActivity.mockRejectedValue(
+      new Error('SECRET_SIGNED_URL'),
+    );
+    const response = createResponse();
+
+    await controller.deleteActivity(createRequest(undefined), response);
+
+    expect(response.status).toHaveBeenCalledWith(500);
+    expect(consoleError).toHaveBeenCalledWith('Delete activity error (Error)');
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+      'SECRET_SIGNED_URL',
+    );
+    consoleError.mockRestore();
   });
 
   it.each(['42junk', '42.9', '0', '-1', '9007199254740992'])(

@@ -203,9 +203,10 @@ export class ActivityService {
             this.prisma.activity.findMany({
                 where,
                 include: this.activityInclude,
-                orderBy: {
-                    startTime: 'desc'
-                },
+                orderBy: [
+                    { startTime: 'desc' },
+                    { id: 'desc' }
+                ],
                 skip,
                 take: limit
             }),
@@ -218,7 +219,9 @@ export class ActivityService {
         const hasPreviousPage = page > 1;
 
         return {
-            activities: activities.map((activity) => this.addImageUrls(activity)),
+            activities: await Promise.all(
+                activities.map((activity) => this.addImageUrls(activity))
+            ),
             pagination: {
                 total,
                 totalPages,
@@ -422,7 +425,7 @@ export class ActivityService {
         });
 
         if (!activity) {
-            throw new Error('Activity not found or unauthorized');
+            throw new ActivityNotFoundError();
         }
 
         const imageKeys = [...new Set(activity.images.map((image) => image.s3Key))];
@@ -431,9 +434,17 @@ export class ActivityService {
         );
 
         // Delete activity (this will cascade delete locations due to our schema)
-        await this.prisma.activity.delete({
-            where: { id: activityId }
-        });
+        try {
+            await this.prisma.activity.delete({
+                where: { id: activityId }
+            });
+        } catch (error) {
+            if (isPrismaRecordNotFound(error)) {
+                throw new ActivityNotFoundError();
+            }
+
+            throw error;
+        }
 
         return { message: 'Activity deleted successfully' };
     }
@@ -469,17 +480,19 @@ export class ActivityService {
         return this.addImageUrls(activity);
     }
 
-    private addImageUrls<T extends ActivityWithImages | null>(activity: T): T {
+    private async addImageUrls<T extends ActivityWithImages | null>(activity: T): Promise<T> {
         if (!activity || !Array.isArray(activity.images)) {
             return activity;
         }
 
         return {
             ...activity,
-            images: activity.images.map(({ s3Key, ...image }) => ({
-                ...image,
-                ...s3Service.getActivityImageReadUrl(s3Key)
-            }))
+            images: await Promise.all(
+                activity.images.map(async ({ s3Key, ...image }) => ({
+                    ...image,
+                    ...(await s3Service.getActivityImageReadUrl(s3Key))
+                }))
+            )
         } as T;
     }
 }

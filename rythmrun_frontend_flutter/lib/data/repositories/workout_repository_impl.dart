@@ -29,6 +29,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   final ActivityRemoteDataSource _remoteDataSource;
   final UserScopeOperationGate? _operationGate;
   bool _isSyncing = false;
+  bool _syncRequested = false;
 
   WorkoutRepositoryImpl(
     this._localDataSource,
@@ -166,11 +167,12 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   @override
   Future<void> syncWorkouts() async {
     if (_isSyncing) {
+      _syncRequested = true;
       return;
     }
 
+    _syncRequested = false;
     _isSyncing = true;
-    UserScopeOperationLease? operationLease;
 
     try {
       final userId = await getCurrentUserId();
@@ -178,14 +180,35 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
         return;
       }
 
+      final firstPassCompleted = await _runSyncPass(userId);
+      // Requests observed during the first pass share one bounded follow-up.
+      // A request during that follow-up waits for the next normal trigger.
+      if (firstPassCompleted && _syncRequested) {
+        _syncRequested = false;
+        await _runSyncPass(userId);
+      }
+    } finally {
+      _syncRequested = false;
+      _isSyncing = false;
+    }
+  }
+
+  Future<bool> _runSyncPass(int userId) async {
+    UserScopeOperationLease? operationLease;
+
+    try {
+      if (!await _isCurrentUser(userId)) {
+        return false;
+      }
+
       operationLease = _operationGate?.tryAcquire(userId);
       if (_operationGate != null && operationLease == null) {
-        return;
+        return false;
       }
 
       await _localDataSource.ensureClientSyncIds(userId);
       if (!await _isCurrentUser(userId)) {
-        return;
+        return false;
       }
 
       await _localDataSource.resetStaleWorkoutDeletes(
@@ -194,7 +217,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
       );
 
       if (!await _syncPendingWorkoutDeletes(userId)) {
-        return;
+        return false;
       }
 
       final unsyncedWorkouts = await _localDataSource
@@ -205,7 +228,7 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
         // queued row so cached A credentials are never used for another A
         // request after B becomes active.
         if (!await _isCurrentUser(userId)) {
-          return;
+          return false;
         }
 
         final localWorkoutId = _parseLocalWorkoutId(workout.id);
@@ -228,14 +251,18 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
 
         try {
           if (!await _pushWorkout(workout, localWorkoutId, userId)) {
-            return;
+            return false;
           }
+        } on NetworkException {
+          log('Workout sync stopped after a transport failure');
+          return false;
         } catch (e) {
           await _handleWorkoutCreateFailure(e, workout, localWorkoutId, userId);
         }
       }
+
+      return true;
     } finally {
-      _isSyncing = false;
       operationLease?.release();
     }
   }
@@ -306,6 +333,9 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
         }
       } catch (error) {
         await _markWorkoutDeleteRetrying(deleteEntry, error, userId);
+        if (error is NetworkException) {
+          return false;
+        }
       }
     }
 

@@ -1,135 +1,126 @@
 import 'dart:async';
-import 'dart:io';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
 /// Enum representing network connectivity status
 enum ConnectivityStatus {
-  connected, // Good internet connection
-  slow, // Slow internet connection
-  disconnected, // No internet connection
+  connected, // A network interface is available
+  slow, // Retained for externally reported or legacy slow states
+  disconnected, // No network interface is available
 }
 
-/// Service for monitoring network connectivity and speed
+/// Service for monitoring platform-reported network connectivity.
 class ConnectivityService {
   static ConnectivityService? mockInstance;
   static final ConnectivityService _instance = ConnectivityService._internal();
   factory ConnectivityService() => mockInstance ?? _instance;
-  ConnectivityService._internal();
+  ConnectivityService._internal() : this._fromConnectivity(Connectivity());
+  ConnectivityService._fromConnectivity(Connectivity connectivity)
+    : _checkPlatformConnectivity = connectivity.checkConnectivity,
+      _connectivityChanges = connectivity.onConnectivityChanged;
 
-  final Connectivity _connectivity = Connectivity();
+  @visibleForTesting
+  ConnectivityService.test({
+    required Future<List<ConnectivityResult>> Function() checkConnectivity,
+    required Stream<List<ConnectivityResult>> connectivityChanges,
+  }) : _checkPlatformConnectivity = checkConnectivity,
+       _connectivityChanges = connectivityChanges;
+
+  final Future<List<ConnectivityResult>> Function() _checkPlatformConnectivity;
+  final Stream<List<ConnectivityResult>> _connectivityChanges;
   final StreamController<ConnectivityStatus> _statusController =
       StreamController<ConnectivityStatus>.broadcast();
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  Timer? _speedCheckTimer;
 
   ConnectivityStatus _currentStatus = ConnectivityStatus.connected;
   bool _isMonitoring = false;
+  int _monitoringGeneration = 0;
+  int _connectivityChangeRevision = 0;
 
   /// Stream of connectivity status changes
-  Stream<ConnectivityStatus> get statusStream => _statusController.stream;
+  Stream<ConnectivityStatus> get statusStream {
+    return Stream<ConnectivityStatus>.multi((controller) {
+      ConnectivityStatus? lastStatus;
+      void addStatus(ConnectivityStatus status) {
+        if (status == lastStatus) return;
+        lastStatus = status;
+        controller.add(status);
+      }
+
+      final subscription = _statusController.stream.listen(
+        addStatus,
+        onError: controller.addError,
+        onDone: controller.close,
+      );
+      controller.onCancel = subscription.cancel;
+      addStatus(_currentStatus);
+    });
+  }
 
   /// Current connectivity status
   ConnectivityStatus get currentStatus => _currentStatus;
 
   /// Start monitoring connectivity
-  void startMonitoring() {
+  Future<void> startMonitoring() async {
     if (_isMonitoring) return;
     _isMonitoring = true;
-
-    // Check initial status
-    _checkConnectivity();
+    final monitoringGeneration = ++_monitoringGeneration;
 
     // Listen to connectivity changes
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((
+    _connectivitySubscription = _connectivityChanges.listen((
       List<ConnectivityResult> results,
     ) {
+      if (!_isCurrentMonitoringGeneration(monitoringGeneration)) return;
+      _connectivityChangeRevision += 1;
       _handleConnectivityChange(results);
     });
 
-    // Periodically check internet speed by pinging a reliable server
-    _speedCheckTimer = Timer.periodic(
-      const Duration(seconds: 10),
-      (_) => _checkInternetSpeed(),
-    );
+    await _checkConnectivity(monitoringGeneration, _connectivityChangeRevision);
   }
 
   /// Stop monitoring connectivity
   void stopMonitoring() {
     _isMonitoring = false;
+    _monitoringGeneration += 1;
     _connectivitySubscription?.cancel();
-    _speedCheckTimer?.cancel();
     _connectivitySubscription = null;
-    _speedCheckTimer = null;
   }
 
   /// Check current connectivity status
-  Future<void> _checkConnectivity() async {
+  Future<void> _checkConnectivity(
+    int monitoringGeneration,
+    int expectedChangeRevision,
+  ) async {
     try {
-      final results = await _connectivity.checkConnectivity();
-      await _handleConnectivityChange(results);
+      final results = await _checkPlatformConnectivity();
+      if (_isCurrentMonitoringGeneration(monitoringGeneration) &&
+          _connectivityChangeRevision == expectedChangeRevision) {
+        _handleConnectivityChange(results);
+      }
     } catch (e) {
+      if (!_isCurrentMonitoringGeneration(monitoringGeneration) ||
+          _connectivityChangeRevision != expectedChangeRevision) {
+        return;
+      }
       debugPrint('❌ Error checking connectivity: $e');
       _updateStatus(ConnectivityStatus.disconnected);
     }
   }
 
+  bool _isCurrentMonitoringGeneration(int generation) {
+    return _isMonitoring && _monitoringGeneration == generation;
+  }
+
   /// Handle connectivity change
-  Future<void> _handleConnectivityChange(
-    List<ConnectivityResult> results,
-  ) async {
-    // If no connectivity at all
+  void _handleConnectivityChange(List<ConnectivityResult> results) {
     if (results.isEmpty || results.every((r) => r == ConnectivityResult.none)) {
       _updateStatus(ConnectivityStatus.disconnected);
       return;
     }
 
-    // If connected, check actual internet speed
-    await _checkInternetSpeed();
-  }
-
-  /// Check internet speed by attempting to connect to a reliable server
-  Future<void> _checkInternetSpeed() async {
-    try {
-      // Try to connect to a reliable server (Google DNS)
-      final stopwatch = Stopwatch()..start();
-
-      final socket = await Socket.connect(
-        '8.8.8.8',
-        53,
-        timeout: const Duration(seconds: 3),
-      ).timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          throw TimeoutException('Connection timeout');
-        },
-      );
-
-      stopwatch.stop();
-      socket.destroy();
-
-      final responseTime = stopwatch.elapsedMilliseconds;
-
-      // Determine status based on response time
-      if (responseTime < 500) {
-        _updateStatus(ConnectivityStatus.connected);
-      } else if (responseTime < 2000) {
-        _updateStatus(ConnectivityStatus.slow);
-      } else {
-        _updateStatus(ConnectivityStatus.slow);
-      }
-    } on SocketException {
-      // No internet connection
-      _updateStatus(ConnectivityStatus.disconnected);
-    } on TimeoutException {
-      // Very slow or no connection
-      _updateStatus(ConnectivityStatus.slow);
-    } catch (e) {
-      debugPrint('❌ Error checking internet speed: $e');
-      // On error, assume disconnected
-      _updateStatus(ConnectivityStatus.disconnected);
-    }
+    _updateStatus(ConnectivityStatus.connected);
   }
 
   /// Update status and notify listeners
@@ -146,13 +137,4 @@ class ConnectivityService {
     stopMonitoring();
     _statusController.close();
   }
-}
-
-/// Exception for timeout
-class TimeoutException implements Exception {
-  final String message;
-  TimeoutException(this.message);
-
-  @override
-  String toString() => 'TimeoutException: $message';
 }

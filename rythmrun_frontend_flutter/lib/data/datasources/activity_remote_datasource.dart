@@ -65,6 +65,7 @@ class ActivityRemoteDataSource {
     int limit = 50,
   }) async {
     final response = await _authenticatedRequests.execute(
+      replayPolicy: AuthenticatedReplayPolicy.idempotent,
       request:
           (authHeaders) => _httpClient.get(
             AppConfig.getUrl(

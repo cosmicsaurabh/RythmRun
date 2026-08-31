@@ -250,6 +250,40 @@ void main() {
       expect(localDataSource.images[1]!.lastError, contains('network down'));
     });
 
+    test('transport failure stops before the next queued image', () async {
+      remoteDataSource.uploadError = const NetworkException('offline');
+      localDataSource
+        ..addImage(
+          _image(
+            localId: 1,
+            localWorkoutId: localWorkoutId,
+            clientImageId: clientImageId,
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.queued,
+          ),
+        )
+        ..addImage(
+          _image(
+            localId: 2,
+            localWorkoutId: localWorkoutId,
+            clientImageId: 'img_client_second',
+            localPath: appPrivatePath,
+            thumbnailPath: thumbnailPath,
+            status: ActivityImageSyncStatus.queued,
+          ),
+        );
+
+      await repository.syncPendingImages();
+
+      expect(remoteDataSource.requestUploadUrlCount, 1);
+      expect(
+        localDataSource.images[1]!.status,
+        ActivityImageSyncStatus.retrying,
+      );
+      expect(localDataSource.images[2]!.status, ActivityImageSyncStatus.queued);
+    });
+
     test(
       'delete during in-flight upload queues remote delete after confirm',
       () async {

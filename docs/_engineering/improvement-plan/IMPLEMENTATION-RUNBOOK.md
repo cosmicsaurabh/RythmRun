@@ -66,7 +66,8 @@ evidence owns durable results; git history owns old implementation detail.
 
 Snapshot taken 2026-08-22 after reading the improvement program, staged audits,
 relevant Flutter/backend code, Android configuration, tests, and branch graph;
-updated 2026-08-31 for the W0 commit and W1 repository correction.
+updated 2026-08-31 for the W1/W2 commits and the unstaged Step 4 repository
+correction.
 
 - Working branch: `workout-reliability`, created from `origin/main` at
   `792bd52` (PR #190). The tree at the former local `auth-impr` HEAD `d0e5b92`
@@ -84,8 +85,11 @@ updated 2026-08-31 for the W0 commit and W1 repository correction.
   were run for that documentation-only commit.
 - The W0 follow-up was committed locally as `53cb751` with subject
   `docs(plan): reconcile reliability handoff and audit map`.
-  `origin/workout-reliability` now points to it. W1 has no commit and remains
-  unstaged.
+  W1 was then committed as `1315378` with subject
+  `fix(storage): retain owner workouts across session exit`. W2 was committed
+  and pushed as `0b87574` with subject
+  `fix(sync): preserve push progress when restore is unavailable`; HEAD and
+  `origin/workout-reliability` point to W2. Step 4 remains unstaged.
 
 Verified current behavior that controls the order:
 
@@ -104,9 +108,18 @@ Verified current behavior that controls the order:
 - Completed-workout save is local-first and transactional. Push is idempotent by
   `(userId, clientSyncId)`, and remote workout deletion already has a durable
   owner-scoped queue.
-- Restore is a one-shot insert-only bootstrap behind a boolean flag. It has no
-  cursor, revision, tombstones, ongoing pull, or image restore; a restore error
-  currently prevents the same pass from pushing local work.
+- Restore remains a one-shot insert-only bootstrap behind a boolean flag. It has
+  no cursor, revision, tombstones, ongoing pull, or image restore. W2 isolates
+  restore read/download/completion-write failure so an owner-valid pass still
+  pushes queued workout/delete/image work; the read-only GET uses idempotent
+  authenticated replay. Full sync flights and workout passes coalesce one
+  bounded follow-up, typed transport failure stops remaining queue work, and
+  owner/gate checks reject stale completion.
+- Connectivity now uses platform interface state without the recurring public
+  DNS socket/timer. It replays current state safely, treats recovery to `slow`
+  or `connected` as one trigger, and defers resume sync while a workout is
+  active or paused. Interface availability does not prove internet reachability;
+  real request outcomes remain authoritative.
 - One production GPS stream feeds the notifier. Older claims that the map owns a
   second GPS subscription are stale. Active workout state is still memory-only,
   the first SQLite write is at Finish, pause leaves high-accuracy GPS running,
@@ -127,8 +140,8 @@ Verified current behavior that controls the order:
 | ID | Workstream | State | Owning contract | Review note |
 | --- | --- | --- | --- | --- |
 | W0 | Program control and audit consolidation | **Committed** as `53cb751` on `origin/workout-reliability` | README, STATUS, runbook, audit register | Documentation-only; no application gate claimed |
-| W1 | Retained owner data at session exit | **Documentation reconciled; unstaged** | D-004, IP-2.7, IP-1.3 | Runtime, tests, full Flutter gates, and owning docs are ready for maintainer review |
-| W2 | Schema-free sync safety | Pending | IP-2.7, IP-4 | Requires W1 acceptance and commit plus explicit maintainer W2 authorization; must not introduce a throwaway pull protocol |
+| W1 | Retained owner data at session exit | **Committed** as `1315378` on `origin/workout-reliability` | D-004, IP-2.7, IP-1.3 | Repository gates passed; external/ACTION evidence remains open |
+| W2 | Schema-free sync safety | **Committed** as `0b87574` on `origin/workout-reliability` | IP-2.7, IP-4 | Repository gates passed; no throwaway pull protocol added; external/ACTION evidence remains open |
 | W3 | Tracking truth, permission, accessibility, and resource fixes | Pending | IP-1, IP-3.3/3.5, IP-5.6 | Behavior changes split into focused commits |
 | W4 | GPS/route-quality measurement and policy version | Pending | IP-1.2, IP-3.1 | Measurement-gated; do not guess thresholds |
 | W5 | Durable workout schema, engine, finalization, and recovery | Pending | IP-3.1–3.3 | Blocked from rollout by IP-2.7 storage decision |
@@ -201,11 +214,12 @@ restore passed; all 366 Flutter tests passed; analysis reported nine existing
 infos and no warnings or errors; formatting changed none of the 13 Dart files;
 root `git diff --check` passed. W1 changes an internal Flutter repository API,
 but there is no backend or server HTTP API, schema, migration, exit-time sync, or
-account-deletion E2E change. A failed `history_restored=true` completion write can
-still abort a sync pass before push while work remains queued; Step 3 owns that
-isolation. The runtime, tests, and owning documents are reconciled but unstaged;
-there is no W1 commit. Proposed commit after maintainer review:
-`fix(storage): retain owner workouts across session exit`.
+account-deletion E2E change. At this checkpoint a failed
+`history_restored=true` completion write could still abort a sync pass before
+push while work remained queued; Step 3 owns that later correction. W1 was
+committed as `1315378` with subject
+`fix(storage): retain owner workouts across session exit` and pushed to
+`origin/workout-reliability`.
 
 ### Step 3 — Isolate restore failure from push and make sync passes complete
 
@@ -231,13 +245,39 @@ switch rejects stale completion; no recurring DNS socket is created.
 row. Same branch, one staged Flutter checkpoint. Proposed commit:
 `fix(sync): preserve push progress when restore is unavailable`.
 
-### Step 4 — Correct backend sync-boundary defects without changing contracts
+**Outcome, evidence, and git.** W2 isolates restore read, download, and
+completion-flag failures from queued push while preserving owner/gate checks;
+the read-only restore GET opts into existing idempotent authenticated replay.
+The coordinator serializes the whole restore/workout/image flight into the
+active pass plus at most one same-owner follow-up, and the workout repository
+does the same for direct pass requests. Typed `NetworkException` stops the
+remaining create/delete/image loop only after retryable queue state is
+preserved; classified HTTP failures retain their existing behavior.
+Connectivity now uses platform interface events with immediate race-safe replay
+and monitoring-generation rejection, with no recurring timer or public-DNS
+socket. `disconnected` recovery to either `slow` or `connected` requests one
+sync, and lifecycle resume defers while an active or paused workout exists.
+
+One focused command across seven suites passed 79 tests. Locked restore passed;
+all 384 Flutter tests passed; analysis reported the same nine existing infos and
+no warnings or errors; changed-file formatting and root `git diff --check`
+passed. The counted analyzer comparison correctly rejected local Dart 3.12.2
+against its CI-only Dart 3.12.1 stamp. W2 changes no backend/server HTTP API,
+schema, or migration. It does not add cursor/revision/tombstone pull, remote
+image restore, restore item isolation/projections, a rendered failed state or
+manual retry, the full sync enum/backoff model, or device/staging/production
+evidence. The runtime, tests, and owning documents were committed and pushed as
+`0b87574`; that commit is repository evidence, not device, staging, production,
+or release proof.
+
+### Step 4 — Correct backend sync-boundary defects without breaking released contracts
 
 **Implementation.** Make list ordering deterministic; await signed image URL
 generation before constructing responses; replace activity message-string 404
 mapping with the existing typed error; add restore/list/delete integration
-coverage and fix any verified fidelity/race defects without changing v1 response
-shapes.
+coverage and fix any verified fidelity/race defects while preserving existing
+v1 fields and semantics. Additive typed error metadata is compatible; removing
+or renaming released fields is not.
 
 **Why now and dependencies.** These are small current-contract correctness fixes,
 not the IP-4 redesign. They can follow the client regression net. Because merging
@@ -250,6 +290,26 @@ released app.
 rollout facts change, plus STATUS/runbook evidence. Keep the checkpoint on the
 current branch; do not combine it with a migration. Proposed commit:
 `fix(sync): make activity reads deterministic and typed`.
+
+**Outcome, evidence, and git.** Step 4 adds descending activity ID as the
+secondary v1 list order; awaits signed image `url`/`urlExpiresAt` metadata for
+list/detail/create/update responses while continuing to hide `s3Key`; and maps
+missing, replayed, or final-delete-raced DELETEs through the existing typed
+`ACTIVITY_NOT_FOUND` response. The DELETE 404 preserves status/message and adds
+the stable `code`/`retryable` fields. List/detail/delete storage-path failures
+now log only the error category. The final-delete `P2025` mapping covers a
+concurrent double-delete after idempotent object cleanup.
+
+Three native-ESM focused service/controller/in-process HTTP-boundary suites pass
+54 tests. On Node 22.22.3, `npm ci --no-audit`, Prisma validate/generate,
+typecheck, full Jest, build, and built-runtime smoke pass. Full Jest reports 519
+passed and the expected seven local PostgreSQL skips (27 suites passed, one
+skipped; 526 tests total). The HTTP boundary uses mocked Prisma/R2. There is no
+schema, migration, new endpoint, real-provider, merge, deploy, device, staging,
+or production claim. Offset paging under concurrent mutations, remote-image
+restore, durable DB-first deletion, and the legacy detail-GET message branch
+remain open. Five backend paths and the owning documents are reconciled but
+unstaged; there is no Step 4 commit.
 
 ### Step 5 — Fix schema-free tracking truth and UI dead ends
 

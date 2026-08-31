@@ -446,6 +446,156 @@ void main() {
   );
 
   test(
+    'sync requests during an active pass coalesce into one follow-up pass',
+    () async {
+      const userId = 7;
+      final service = await harness.openService();
+      final localDataSource = _CountingWorkoutLocalDataSource(service);
+      final remoteDataSource = _BlockingActivityRemoteDataSource();
+      final repository = WorkoutRepositoryImpl(
+        localDataSource,
+        _FakeAuthRepository(userId),
+        remoteDataSource,
+      );
+      await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: 'first-pass', userId: userId),
+        userId: userId,
+      );
+      final reachedRemote = Completer<void>();
+      final allowRemote = Completer<void>();
+      remoteDataSource
+        ..reachedRemote = reachedRemote
+        ..allowRemote = allowRemote;
+
+      final firstSync = repository.syncWorkouts();
+      await reachedRemote.future;
+      await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: 'follow-up-pass', userId: userId),
+        userId: userId,
+      );
+      final overlappingSyncs = <Future<void>>[
+        repository.syncWorkouts(),
+        repository.syncWorkouts(),
+        repository.syncWorkouts(),
+      ];
+
+      allowRemote.complete();
+      await Future.wait(<Future<void>>[firstSync, ...overlappingSyncs]);
+
+      expect(localDataSource.syncPassCount, 2);
+      expect(remoteDataSource.attemptedClientSyncIds, <String>[
+        'first-pass',
+        'follow-up-pass',
+      ]);
+      expect(
+        await service.getUnsyncedWorkoutsFromLocalDatabase(userId),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'transport failure keeps rows queued and suppresses an active follow-up',
+    () async {
+      const userId = 7;
+      const firstClientSyncId = 'network-failure-first';
+      final service = await harness.openService();
+      final localDataSource = _CountingWorkoutLocalDataSource(service);
+      final remoteDataSource =
+          _BlockingActivityRemoteDataSource()
+            ..createErrorsByClientSyncId[firstClientSyncId] =
+                const NetworkException('offline');
+      final repository = WorkoutRepositoryImpl(
+        localDataSource,
+        _FakeAuthRepository(userId),
+        remoteDataSource,
+      );
+      await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: firstClientSyncId, userId: userId),
+        userId: userId,
+      );
+      await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(
+          clientSyncId: 'network-failure-second',
+          userId: userId,
+        ),
+        userId: userId,
+      );
+      final reachedRemote = Completer<void>();
+      final allowRemote = Completer<void>();
+      remoteDataSource
+        ..reachedRemote = reachedRemote
+        ..allowRemote = allowRemote;
+
+      final firstSync = repository.syncWorkouts();
+      await reachedRemote.future;
+      final overlappingSync = repository.syncWorkouts();
+      allowRemote.complete();
+      await Future.wait(<Future<void>>[firstSync, overlappingSync]);
+
+      expect(localDataSource.syncPassCount, 1);
+      expect(remoteDataSource.attemptedClientSyncIds, <String>[
+        firstClientSyncId,
+      ]);
+      expect(
+        await service.getUnsyncedWorkoutsFromLocalDatabase(userId),
+        hasLength(2),
+      );
+    },
+  );
+
+  test('delete transport failure stops before remaining queued work', () async {
+    const userId = 7;
+    final service = await harness.openService();
+    final remoteDataSource =
+        _BlockingActivityRemoteDataSource()
+          ..deleteErrorsByActivityId[701] = const NetworkException('offline');
+    final repository = WorkoutRepositoryImpl(
+      WorkoutLocalDataSource(service),
+      _FakeAuthRepository(userId),
+      remoteDataSource,
+    );
+    final firstWorkoutId = await service.saveWorkoutInLocalDatabase(
+      _completedWorkout(
+        clientSyncId: 'delete-network-first',
+        userId: userId,
+        remoteActivityId: 701,
+      ),
+      userId: userId,
+    );
+    final secondWorkoutId = await service.saveWorkoutInLocalDatabase(
+      _completedWorkout(
+        clientSyncId: 'delete-network-second',
+        userId: userId,
+        remoteActivityId: 702,
+      ),
+      userId: userId,
+    );
+    await service.deleteWorkoutFromLocalDatabase(
+      firstWorkoutId,
+      userId: userId,
+    );
+    await service.deleteWorkoutFromLocalDatabase(
+      secondWorkoutId,
+      userId: userId,
+    );
+
+    await repository.syncWorkouts();
+
+    expect(remoteDataSource.deletedActivityIds, <int>[701]);
+    final queue = await (await service.database).query(
+      'workout_delete_queue',
+      columns: <String>['remote_activity_id', 'status'],
+      orderBy: 'id ASC',
+    );
+    expect(queue, hasLength(2));
+    expect(queue.first['remote_activity_id'], 701);
+    expect(queue.first['status'], 'retrying');
+    expect(queue.last['remote_activity_id'], 702);
+    expect(queue.last['status'], 'queued');
+  });
+
+  test(
     'permanent create rejection blocks only that owned row and continues',
     () async {
       const userId = 7;
@@ -874,6 +1024,7 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
   final List<String> attemptedClientSyncIds = <String>[];
   final List<int> deletedActivityIds = <int>[];
   final Map<String, Object> createErrorsByClientSyncId = <String, Object>{};
+  final Map<int, Object> deleteErrorsByActivityId = <int, Object>{};
 
   @override
   Future<int> createActivity(Map<String, dynamic> activityJson) async {
@@ -902,6 +1053,10 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
     if (unauthorizedFirstDelete && deleteCalls == 1) {
       throw UnauthorizedException('expired');
     }
+    final deleteError = deleteErrorsByActivityId[activityId];
+    if (deleteError != null) {
+      throw deleteError;
+    }
   }
 
   @override
@@ -913,6 +1068,18 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
       'activities': <dynamic>[],
       'pagination': <String, dynamic>{'hasNextPage': false},
     };
+  }
+}
+
+class _CountingWorkoutLocalDataSource extends WorkoutLocalDataSource {
+  int syncPassCount = 0;
+
+  _CountingWorkoutLocalDataSource(super.localDbService);
+
+  @override
+  Future<void> ensureClientSyncIds(int userId) async {
+    syncPassCount += 1;
+    await super.ensureClientSyncIds(userId);
   }
 }
 

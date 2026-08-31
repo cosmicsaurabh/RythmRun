@@ -23,8 +23,9 @@ void main() {
   late AuthenticatedRequestCoordinator coordinator;
 
   setUp(() {
-    ConnectivityService.mockInstance =
-        _FakeConnectivityService(ConnectivityStatus.disconnected);
+    ConnectivityService.mockInstance = _FakeConnectivityService(
+      ConnectivityStatus.disconnected,
+    );
     vault = _FakeCredentialVault(
       _snapshot(access: 'access-1', refresh: 'refresh-1'),
     );
@@ -696,7 +697,7 @@ class _FakeConnectivityService implements ConnectivityService {
   ConnectivityStatus get currentStatus => status;
 
   @override
-  void startMonitoring() {}
+  Future<void> startMonitoring() async {}
 
   @override
   void stopMonitoring() {}
