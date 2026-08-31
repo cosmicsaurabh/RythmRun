@@ -5,16 +5,22 @@ this file and `AGENTS.md`.
 
 ## Start Here
 
-Any non-trivial change starts at `docs/_engineering/improvement-plan/`. Three
-files, three jobs:
+Any non-trivial change starts at `docs/_engineering/improvement-plan/`. Resume
+in this order:
 
-- **`README.md`** — how the program works: rules, definition of done,
-  verification commands, and decisions `D-001`…`D-018`. Read the decision table
-  before proposing anything that contradicts it.
-- **`STATUS.md`** — where the program stands: phase status, what is left per
-  package, audit-finding traceability.
-- **`ACTION-REQUIRED.md`** — the 32 manual and hosted checks that only the
-  maintainer can close. **Nothing in this repository can mark one verified.**
+- **`STATUS.md`** — the current branch/checkpoint handoff and what remains.
+- **`IMPLEMENTATION-RUNBOOK.md`** — dependency order, checkpoint scope, pause
+  and resume protocol, verification, and git handling.
+- **`AUDIT-REGISTER.md`** — every active/historical audit or design input and
+  the finding-to-checkpoint map.
+
+Then inspect `git status --short --branch`, `git diff`, and
+`git diff --cached`. If a complete checkpoint is staged, do not mix in the next
+one. Inspect the active checkpoint's owning phase and source reports, then read
+**`README.md`** for decisions `D-001`…`D-018` and **`ACTION-REQUIRED.md`** for
+maintainer-only gates before editing. Stage a completed checkpoint for review
+only when STATUS or the maintainer directs it; never commit or push unless the
+maintainer asks.
 
 The single most important standing fact: **IP-0 is a P0 release blocker and its
 blocking work is operational, not code.** Production containment, exposure
@@ -108,8 +114,8 @@ flutter analyze --no-pub --no-fatal-infos
 dart format --set-exit-if-changed <changed files only>
 ```
 
-Current `main` baseline: backend **464 passed / 7 skipped / 471 total**; Flutter
-**359 passed**; analyzer **9 issues, 0 warnings, 0 errors**.
+Do not copy a test-count snapshot into this file. The current recorded baseline
+and its exact commit live in `docs/_engineering/improvement-plan/STATUS.md`.
 
 Four traps that cost real time:
 

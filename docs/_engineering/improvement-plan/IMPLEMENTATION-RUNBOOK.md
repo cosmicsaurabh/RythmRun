@@ -29,13 +29,38 @@ operational blocker.** Repository work cannot complete any manual check.
 Each row advances through exactly these states:
 
 `Pending` → `In progress` → `Implemented` → `Documentation reconciled` →
-`Ready for review/commit`
+`Staged for review` → `Committed`
 
 Only one checkpoint is staged at a time. The maintainer reviews and commits it;
 the next checkpoint does not start while the prior staged checkpoint remains
 unreviewed. A checkpoint is not `Implemented` until its scoped verification has
-passed. `Ready for review/commit` is repository state, not deployment, device,
-staging, or release verification.
+passed. `Staged for review` is repository state, not deployment, device,
+staging, or release verification. A pre-existing commit is recorded, not
+rewritten, even when its message or process did not follow this lifecycle.
+
+## Start or resume a checkpoint
+
+Every future agent uses this sequence before editing:
+
+1. Read the handoff at the top of [STATUS.md](./STATUS.md).
+2. Read this runbook's workstream row and ordered active step.
+3. Read the mapped rows in [AUDIT-REGISTER.md](./AUDIT-REGISTER.md).
+4. Run `git status --short --branch`, inspect both `git diff` and
+   `git diff --cached`, and compare the branch/HEAD with the handoff. Git is the
+   authority when the snapshot is stale.
+5. Inspect the active checkpoint: read its owning phase, linked source reports,
+   the decision table in [README.md](./README.md), applicable maintainer gates in
+   [ACTION-REQUIRED.md](./ACTION-REQUIRED.md), and any existing staged/unstaged
+   implementation. If a complete checkpoint is already staged, verify and
+   report it; do not mix the next checkpoint into the index.
+6. Continue only the defined checkpoint. Run focused then applicable full gates,
+   reconcile maintained docs, stage only when STATUS or the maintainer directs
+   it, and inspect the exact staged diff. Never commit or push unless the
+   maintainer asks.
+
+When pausing, STATUS must name the branch, base/HEAD, staged and unstaged files,
+verification already run, blockers/nonclaims, and the single next action. Phase
+evidence owns durable results; git history owns old implementation detail.
 
 ## Repository snapshot
 
@@ -52,8 +77,10 @@ relevant Flutter/backend code, Android configuration, tests, and branch graph.
   audit/design reports and duplicate STATUS entries. Step 1 restores the reports
   verbatim but does not cherry-pick the duplicate status history.
 - The public remote refs were refreshed before the branch was created.
-- No source code changes belong to Step 1. Full backend/Flutter gates are not
-  evidence for this documentation-only checkpoint and must not be claimed.
+- The prior agent committed Step 1 locally as `6c75fb2` with subject
+  `i dont know`; it has not been pushed and its history must not be amended
+  without explicit maintainer approval. No application gates were run for that
+  documentation-only commit.
 
 Verified current behavior that controls the order:
 
@@ -89,8 +116,8 @@ Verified current behavior that controls the order:
 
 | ID | Workstream | State | Owning contract | Review note |
 | --- | --- | --- | --- | --- |
-| W0 | Program control and audit consolidation | **Ready for review/commit** | README, STATUS, this runbook | Documentation-only Step 1 |
-| W1 | Retained owner data at session exit | Pending | D-004, IP-2.7, IP-1.3 | First code checkpoint |
+| W0 | Program control and audit consolidation | **Staged for review** on top of local `6c75fb2` | README, STATUS, runbook, audit register | Review this documentation-only follow-up before any code work |
+| W1 | Retained owner data at session exit | Pending | D-004, IP-2.7, IP-1.3 | First code checkpoint; requires explicit maintainer instruction to begin |
 | W2 | Schema-free sync safety | Pending | IP-2.7, IP-4 | Must not introduce a throwaway pull protocol |
 | W3 | Tracking truth, permission, accessibility, and resource fixes | Pending | IP-1, IP-3.3/3.5, IP-5.6 | Behavior changes split into focused commits |
 | W4 | GPS/route-quality measurement and policy version | Pending | IP-1.2, IP-3.1 | Measurement-gated; do not guess thresholds |
@@ -115,14 +142,18 @@ cannot start from multiple contradictory plans. This step depends only on the
 repository inspection and changes no runtime behavior.
 
 **Input disposition.** The live reports and their step mapping are recorded in
-“Active audit register and retirement gates” below. Canonical requirements
-remain in IP-1 through IP-5; the reports retain detailed evidence, alternatives,
-test ideas, and unresolved findings until implementation proves their outcome.
+[AUDIT-REGISTER.md](./AUDIT-REGISTER.md). Canonical requirements remain in IP-1
+through IP-5; the reports retain detailed evidence, alternatives, test ideas,
+and unresolved findings until implementation proves their outcome.
 
-**Documentation and git.** Work on `workout-reliability`; stage the eight source
-reports, this runbook, and canonical-plan corrections; run whitespace and
-dangling-link/reference checks; do not run or claim application gates. Proposed commit:
-`docs(plan): consolidate reliability audits into an implementation runbook`.
+**Outcome and git.** The prior agent created `workout-reliability` from
+`origin/main@792bd52` and committed the eight source reports, this runbook, and
+canonical-plan corrections as local commit `6c75fb2`. It ran documentation
+checks only. The current documentation-only follow-up adds the missing complete
+audit register, live handoff, resume rules, and verified-current documentation
+corrections without rewriting that commit. It is staged for maintainer
+review. No runtime or test file belongs to this follow-up, and Step 2 has not
+started.
 
 ### Step 2 — Preserve all completed owner data across session exit
 
@@ -144,9 +175,10 @@ prove A later pushes/deletes exactly once; prove finish-and-exit yields one row;
 prove teardown awaits invalidation/reset; preserve explicit account-deletion
 purge coverage.
 
-**Documentation and git.** Update IP-2.7 and its evidence log, IP-1.3 evidence
-only if the tests actually change its claim, STATUS, and this row. Same branch,
-one staged checkpoint. Proposed commit:
+**Documentation and git.** Update IP-2.7 and its evidence log, the maintained
+authentication architecture, the sync-audit disposition, STATUS, audit
+register, and this row. Update IP-1.3 evidence only if the tests actually change
+its claim. Same branch, one staged checkpoint. Proposed commit:
 `fix(storage): retain owner workouts across session exit`.
 
 ### Step 3 — Isolate restore failure from push and make sync passes complete
@@ -362,9 +394,10 @@ schema must represent the final v2 lifecycle, not a disposable intermediate.
 **Tests.** All legacy combinations, stale callbacks, account switch, ambiguous
 acknowledgement, retry classification, and deterministic schedule.
 
-**Documentation and git.** Update IP-4.1, STATUS, and this row. Finish/rebase the
-Flutter reliability branch first; create `sync-v2` from then-current `main` for
-the backend/mobile compatibility series. Proposed commit:
+**Documentation and git.** Update IP-4.1, STATUS, and this row. After the Flutter
+reliability checkpoints land, decide whether the backend/mobile compatibility
+series needs a fresh `sync-v2` branch from then-current `main`; do not create it
+early. Proposed commit:
 `feat(sync): persist explicit activity sync state`.
 
 ### Step 13 — Add bounded v2 upload compatibly
@@ -460,22 +493,12 @@ Thresholds, wake locks, SQLite journal mode, tile cache size/TTL, sampling densi
 and exact route-quality constants are measurement decisions, not defaults copied
 from an audit.
 
-## Active audit register and retirement gates
+## Audit register and retirement gates
 
-All eight reports are **Active — implementation pending**. They remain linked
-source material, but do not override the phase decisions or count as delivery
-evidence.
-
-| Active report | Implementation steps | Durable owner / retirement gate |
-| --- | --- | --- |
-| [Sync reliability audit](../sync/sync-reliability-audit.md) | 2–4, 12–15 | IP-2.7/IP-4; retire only after every sync finding is dispositioned and the maintained sync architecture records the shipped state machine, restore/conflict rules, compatibility, and cleanup model |
-| [GPS tracking audit](../tracking/gps-tracking-audit.md) | 5–11 | IP-1/IP-3; retire after foreground, durability, signal truth, and performance findings have evidence |
-| [GPS route-quality audit](../tracking/gps-route-quality-audit.md) | 6–8 | IP-1.2/IP-3.1; retire after device calibration selects or rejects the proposed policy and replay/version behavior is documented |
-| [Battery and durability audit](../tracking/battery-durability-audit.md) | 3, 5, 8, 10, 11 | IP-3/IP-4; retire after measured lifecycle, GPS, timer, database, map, and battery dispositions exist |
-| [Map/tile reliability audit](../tracking/map-tile-reliability-audit.md) | 5, 11 | IP-3.5/IP-5.6; retire after current provider-policy review and shipped degradation/resource behavior are documented |
-| [Tracking UX/accessibility audit](../tracking/workout-tracking-ux-accessibility-audit.md) | 5, 9, 10 | IP-3.3/IP-3.4; retire after state copy, recovery controls, semantics, layout, and device accessibility proof are dispositioned |
-| [Android background-tracking design](../tracking/android-background-tracking-design.md) | 7–10 | IP-3.1–3.4; evolve or extract it into the maintained tracking-runtime document after the implemented architecture is known |
-| [Android foreground-service audit](../tracking/android-foreground-service-audit.md) | 10 | IP-3.4/ACTION; retire after platform corrections, Play declarations, notification controls, and device matrix have evidence |
+[AUDIT-REGISTER.md](./AUDIT-REGISTER.md) inventories the phase plans, all eight
+August reports, the original-audit provenance, maintained architecture, deferred
+integration plans, finding-to-checkpoint map, and retirement gates. It is the
+only audit register; do not recreate old parallel trackers.
 
 The intended maintained documents after implementation are:
 

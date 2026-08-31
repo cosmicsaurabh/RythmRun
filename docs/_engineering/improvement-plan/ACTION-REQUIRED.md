@@ -8,8 +8,10 @@ Everything on this page is work the repository **cannot** do for itself. Each
 item needs production access, a provider account, a GitHub setting, a physical
 device, or a staging environment. Code and local tests can never close one.
 
-**Delete an item when it's done.** When this file is empty, the program is
-finished. Nothing else in `_engineering/` tracks your to-do list — this is it.
+**Delete an item when it's done.** When this file is empty, the manual/hosted
+register is closed; the program is finished only when the phase exit criteria
+are also satisfied. Nothing else in `_engineering/` tracks maintainer-only
+to-do items — this is it.
 
 **One rule for all of it:** never commit secrets, tokens, raw logs, customer
 identifiers, exact routes, database snapshots, coordinates, or incident detail.

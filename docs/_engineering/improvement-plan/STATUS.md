@@ -14,7 +14,45 @@ proof open) · `In progress` · `Planned` · `Blocked` · `Deferred`
 in [ACTION-REQUIRED.md](./ACTION-REQUIRED.md). "Merged and tested locally" is not
 "done" anywhere in this program.
 
-_Last updated: 2026-08-22 against `origin/main` at `792bd52`, including the documentation-only reliability reconciliation prepared on `workout-reliability`._
+_Last updated: 2026-08-22 after the documentation-only repository-arming
+follow-up on `workout-reliability`._
+
+## Current handoff
+
+- **Branch/base:** `workout-reliability`, based on `origin/main@792bd52`.
+  Current HEAD is the pre-existing local, unpushed documentation commit
+  `6c75fb2` (`i dont know`), one commit ahead of `origin/main`. Do not amend,
+  reset, or push it without maintainer direction.
+- **Checkpoint:** W0 repository arming only. The complete audit register, resume
+  protocol, live handoff, and current-behavior documentation corrections are
+  ready in the worktree for maintainer review. All 12 changed paths are
+  documentation/control files and are staged for review. Nothing from this
+  follow-up is committed or pushed.
+- **Staged paths:** `AGENTS.md`, `CLAUDE.md`, root `README.md`, the auth
+  architecture and sync audit, plus `ACTION-REQUIRED.md`, the improvement
+  README, runbook, STATUS, IP-1/IP-2 phase files, and new
+  `AUDIT-REGISTER.md`.
+- **Current behavior:** ordinary logout, account switch, and forced
+  authentication loss still fire `clearLocalWorkouts(userId)` and
+  `setHistoryRestored(false)` without awaiting either future. The purge can
+  erase all owner rows and queued deletes. Runbook Step 2 records the correction
+  target, but no runtime or test change has begun.
+- **Finding disposition:** W0 resolves no runtime finding. `SYNC-01` and
+  `SYNC-09` remain open, every source audit is retained, and the audit register
+  maps each finding group to its later checkpoint and retirement gate.
+- **Verification:** documentation checks are recorded below. No application
+  gate is claimed for this documentation-only follow-up. The Flutter runtime and
+  test tree has no worktree diff from HEAD.
+- **Blockers/nonclaims:** IP-0 operational containment remains the release P0.
+  No ACTION item, runtime correction, encryption-at-rest design,
+  account-deletion E2E, merge, app release, device, staging, or production
+  behavior is verified by this checkpoint.
+- **Next action:** the maintainer reviews and commits the staged W0
+  documentation. Do not push or begin Step 2 unless the maintainer explicitly
+  asks.
+
+Always verify this snapshot with `git status --short --branch`, `git diff`, and
+`git diff --cached`; git wins if a later action made this handoff stale.
 
 ## At a glance
 
@@ -37,7 +75,7 @@ approval to send the dependency inventory to npm). The rest are `Pending`.
 work is operational, not code.** Containment, exposure investigation, and
 credential rotation cannot be closed from the repository.
 
-Last recorded `main` gates (not rerun for this documentation checkpoint):
+Last recorded `main` gates at `origin/main@792bd52` (not W0 verification):
 backend 510 passed / 7 skipped / 517 total locally
 (517 passed / 517 total in CI with PostgreSQL enabled), typecheck clean; Flutter
 356 passed; analyzer 9 issues, 0 warnings, 0 errors. The counted analyzer
@@ -46,6 +84,11 @@ checked on the pinned toolchain. The rise from 464/471 and Flutter 359 is the
 auth-hardening slice (config spine, containment, refresh seams, error contract,
 core hardening) net of Phase 3a's deletion of 15 dead legacy-migration tests,
 plus the IP-2.7 bootstrapping work (3 net new tests).
+
+W0 documentation verification on 2026-08-22: tracked diff whitespace check,
+all-changed-file trailing-whitespace scan, and relative Markdown-link scan pass;
+the staged checkpoint contains only documentation/control files, and both
+application trees match HEAD. No application gate is claimed for W0.
 
 ## Deployment reality — corrected 2026-08-11
 
@@ -120,15 +163,16 @@ All seven delivered; each waits on a device, staging, or hosted gate.
 | 2.4 Profile, recovery, deletion | Verification | ✓ | Code delivered for profile, password recovery, and account deletion slices. Production exposure gated by MC-2.5 |
 | 2.5 Private routes; disable social | Verification | ✓ | Merged (PR #165, `bd78d9a`). Apply the migration on staging/production; complete the IP-5.6 policy review |
 | 2.6 API abuse controls & typed errors | Verification | ✓ | Code delivered for abuse-control and storage-boundary slices (items 1–9). MC-2.6 owns deployed edge configuration |
-| 2.7 Protect retained routes/photos at rest | In progress | △ | Per-user SQL scoping and a one-shot background bootstrap exist. Current normal-session teardown purges all owner rows without awaiting it, violating D-004 and destroying unsynced work/queued deletes; runbook Step 2 corrects it. The threat-model, encrypted-store/library/performance, backup, and key-loss design gate remains open |
+| 2.7 Protect retained routes/photos at rest | In progress | △ | Per-user SQL scoping and a one-shot background bootstrap exist. Current normal-session teardown purges all owner rows without awaiting the purge or bootstrap-flag reset, violating D-004 and risking unsynced work/queued deletes. Runbook Step 2 is planned but not started. The threat-model, encrypted-store/library/performance, backup, key-loss, account-deletion E2E, and device gates remain open |
 | 2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. MC-2.4. Its no-implicit-link behavior is superseded by 2.9 |
 | 2.9 Email verification & safe linking | Verification | ✓ | Merged (PR #164). MC-2.5 |
 
 ### IP-3, IP-4, IP-5 — `Planned`
 
-No package is implemented. The source reports remain active and are linked from
-the [implementation runbook](./IMPLEMENTATION-RUNBOOK.md); they are not delivery
-evidence. See the phase files for the full specs.
+No package is implemented. The source reports remain active and are indexed in
+the [audit register](./AUDIT-REGISTER.md); they are not delivery evidence. See
+the phase files and [implementation runbook](./IMPLEMENTATION-RUNBOOK.md) for
+the full contracts and sequence.
 
 - **IP-3** durable engine + checkpoint DAO · exactly-once finalize · recovery UX
   · Android foreground/screen-off tracking · remove long-session quadratic UI.
@@ -147,9 +191,11 @@ evidence. See the phase files for the full specs.
 Lowest-numbered unblocked packages. The operational IP-0 gates run in parallel
 and are not substitutes.
 
-1. **Runbook Step 2 / IP-2.7 correction** — retain every completed owner row and
-   queued operation across ordinary logout/account switch/forced loss while
-   preserving provider isolation and awaited teardown. This precedes IP-3.
+1. **Review W0 repository arming** — inspect and commit the staged
+   control-document follow-up. No code work is authorized by this handoff.
+2. **Runbook Step 2 / IP-2.7 correction** — when the maintainer explicitly asks
+   to begin code, retain owner data across normal session exit and await teardown
+   reset/invalidation. Step 3 remains behind that checkpoint.
 
 ## Delivery history
 
@@ -194,7 +240,7 @@ until its package's manual checks carry dated evidence.
 | Map rejects GPS jumps after metrics accepted them | P1 | IP-1.2 | Shared accepted-point route/metric equivalence test |
 | Exact coordinates and paths appear in device logs | P1 | IP-1.2, IP-5.2 | Release-log scan and redaction tests |
 | Nullable state cannot clear user/errors/workout | P1/P2 | IP-1.3 | Explicit-null contracts plus fail→success transition tests |
-| User providers/tracking survive logout/account switch | P1 | IP-1.3 | A→logout→B invalidation, drains, durable local-clear retry, late-callback rejection |
+| User providers/tracking survive logout/account switch | P1 | IP-1.3 | A→logout→B invalidation, operation drains, retained owner rows/no purge, awaited bootstrap reset, late-callback rejection |
 | Local detail/delete uses row ID without owner | P1 | IP-1.4 | Foreign-ID denial, owner-change, and provider-result tests |
 | SQLite foreign keys/cascades are disabled | P1 | IP-1.4 | Fresh/reopen and v1–v5 migration tests for FKs, orphan repair, cascades, indexes, rollback |
 | Ordinary 750-point workout exceeds default JSON limit | P1 | IP-1.5, superseded by IP-4.2 | Interim 750-point fixture; bounded batch E2E |
@@ -206,9 +252,9 @@ until its package's manual checks carry dated evidence.
 | Logout/password change leaves access sessions usable | P1 | IP-2.1 | Revoked access/refresh integration tests |
 | Public activities expose exact route points | P1 | IP-2.5 | Cross-user exact-route denial test and private migration |
 | No rate limits and permissive CORS | P1/P2 | IP-2.6 | `429`, proxy, and origin tests — **code-delivered**, MC-2.6 open |
-| Presigned uploads don't enforce object size; image confirmation trusts declared metadata | P1/P2 | IP-2.6 | Oversize rejection and actual-object verification. **Open for activity images.** Avatars fixed in `76fa16f` but unproven against real R2 (MC-0.11) |
+| Presigned uploads don't enforce object size; image confirmation trusts declared metadata | P1/P2 | IP-2.6 | Signed size/type and metadata/quota cleanup slices are repository-delivered. Checksum is not enforced when storage returns no usable SHA-256; quota concurrency and real-R2 proof remain open. Avatars fixed in `76fa16f` but MC-0.11 must be rerun |
 | Local SQLite/routes/photos retained unencrypted | P1/P2 | IP-2.7 | Encrypted migration, file inspection, backup-exclusion, key-loss tests |
-| Password recovery / profile correction / account deletion missing | P1/P2 | IP-2.4 | Recovery, edit, delete E2E and cleanup proof. Recovery and edit delivered; **deletion open** — the settings link to the public request page removes a false claim, it does not implement deletion |
+| Password recovery / profile correction / account deletion missing | P1/P2 | IP-2.4 | Recovery, edit, and deletion code slices are delivered. Complete password/Google reauthentication, transaction/cascade/controller, cleanup-race, hosted, and staging E2E proof remains open |
 | Active workout exists only in memory | P1 | IP-3.1–3.3 | Kill-at-boundary recovery suite |
 | Reliable Android screen-off/background tracking missing | P1 | IP-3.4 | Physical-device locked-screen matrix |
 | Long live sessions rebuild the full route repeatedly | P1/P2 | IP-3.5 | Multi-hour memory/frame/write profile |
@@ -236,9 +282,9 @@ until its package's manual checks carry dated evidence.
 | `/home` route has no route-level auth guard | IP-2.2 |
 | Duplicate local/object-storage avatar implementations | Local pipeline removed in IP-0.3/0.4; deployed route inventory remains |
 | Conflicting Android Gradle files | Duplicate authority removed in `a9f2535`; toolchain bumped in `f6b9d0a`; foreground-service/signing/release proof stays IP-3.4/IP-5.5 |
-| Google identity added outside the audit sequence | Merged; MC-2.4 owns migration, console, device, branding, optional iOS |
+| Google identity added outside the audit sequence | Merged; MC-2.4 owns migration, console, Android device, and branding. D-008 keeps iOS out of release scope unless a later decision reopens it |
 | Connectivity may never emit initial state; polls public DNS | IP-4.1 |
-| iOS configuration/readiness incomplete | IP-5.5 — prove it or declare Android-only |
+| iOS configuration/readiness incomplete | D-008 already declares Android-only release scope; keep iOS scaffolding explicitly unsupported unless a later decision funds and proves it |
 | Production ad IDs / early monetization | IP-5.5/5.7 |
 | Stale README/backend/config/privacy claims | IP-5.6. Includes the open fact that both map screens fetch tiles from `tile.openstreetmap.org` while the privacy policy describes no third-party contact |
 | Missing notes/name capture despite model support | IP-5.7 |

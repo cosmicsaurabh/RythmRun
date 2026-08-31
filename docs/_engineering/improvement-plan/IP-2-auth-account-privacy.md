@@ -142,6 +142,11 @@ Items 1, 2, 4, 5, 9 and the proxy-aware part of item 3 were delivered and merged
 
 The app intentionally retains completed offline history across normal logout. Exact routes and photos therefore need a written device threat model and protection beyond hiding widgets.
 
+That sentence is the binding target, not current behavior. Current session
+teardown purges the owner's rows and fires the purge/bootstrap reset without
+awaiting either future; the evidence log records the failed specification
+review. Runbook Step 2 is planned to correct it and has not started.
+
 **Primary areas**
 
 - Local database initialization/migration

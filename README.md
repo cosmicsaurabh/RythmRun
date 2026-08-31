@@ -83,7 +83,7 @@ The backend is a strict-TypeScript Express modular monolith running as native No
 
 - **SQLite** stores workouts, accepted GPS points, status transitions, image state, and remote-deletion tombstones. Schema migrations preserve compatibility through database version 6.
 - **PostgreSQL** stores canonical server records and enforces relational ownership, cascading deletion, image identity, avatar intents, and `(userId, clientSyncId)` uniqueness.
-- **Cloudflare R2** stores binary media through its S3-compatible API. PostgreSQL stores object identity and lifecycle state rather than blobs; activity reads are short-lived signed URLs while configured public delivery supports the intended public objects.
+- **Cloudflare R2** stores binary media through its S3-compatible API. PostgreSQL stores object identity and lifecycle state rather than blobs; avatar and activity-image reads use short-lived signed URLs behind authentication. Neither bucket has a public delivery origin.
 - **Sessions** use short-lived access JWTs plus rotating refresh JWTs bound to server-side session families. PostgreSQL stores refresh digests rather than raw tokens, protected requests verify active session state, and mobile credential pairs live in a verified secure-storage envelope with bounded offline admission.
 
 There is no AI or LLM integration in the repository. Generated summaries are explicitly deferred rather than represented by unused infrastructure.
@@ -249,34 +249,24 @@ Known performance limits include image transforms on the Flutter UI isolate, eag
 
 - SQLite route data and retained activity-photo files are not yet encrypted at rest; IP-2.7 owns the threat model, key design, migration, and performance gate.
 - Secure-storage/session behavior is repository-tested but still lacks the MC-2.1 through MC-2.3 hosted PostgreSQL, destructive-cutover, physical-device, backup, clock, and release-log evidence.
-- Google identity is repository-delivered, but its non-rolling database migration, real OAuth/signing configuration, provider/device lifecycle, release branding, and optional-iOS policy remain MC-2.4.
+- Google identity is repository-delivered, but its non-rolling database migration, real OAuth/signing configuration, provider/device lifecycle, and release branding remain MC-2.4. Android is the only promised release platform.
 - The CORS/rate-limit implementation is repository-tested, but the production origin allowlist, real proxy depth, live `429` recovery, fail-closed boot, and single-replica assumption still require MC-2.6 deployment evidence. Counters are process-local, clear on restart, and do not support horizontal scaling.
 - Private-by-default activity behavior still needs its migration applied in staging/production. The policy pages now describe the repository behavior, but IP-5.6 still requires qualified review against a deployed release candidate.
 - Authenticated activity create/PATCH routes now have bounded nested validation, capped error output, an explicit 3 MiB parser, and interim per-user/process admission; deployed proxy alignment, resource limits, real PostgreSQL rollback/concurrency, and prior-client compatibility still require MC-1.8 staging proof.
-- Activity-image confirmation does not yet verify MIME type and checksum end to end; stale pending server uploads need orphan cleanup.
+- Activity-image confirmation verifies signed size/type and stored metadata, and abandoned-upload cleanup exists, but a checksum is not enforced when storage returns no usable SHA-256 value; quota concurrency and real-R2 proof remain open.
 - Hosted CI, dependency/security scanning, credential rotation evidence, infrastructure policy, backup/restore, and staging verification are not proven by source tests.
 
 These gaps are tracked as release work rather than hidden behind a blanket “secure” or “production-ready” label.
 
 ## Verification
 
-Current-tree local verification on **2026-07-27**. Backend dependencies were already installed, so a fresh `npm ci` is not claimed; the Flutter lockfile restore was rerun with enforcement.
-
-| Check | Result |
-| --- | --- |
-| Backend dependency state | Existing locked installation exercised on the available Node 26.3.0 host; the project targets Node 22.x and hosted CI pins 22.23.1, so run `npm ci --no-audit` on that authoritative toolchain before release |
-| Backend Jest suite | 25 executable native-ESM suites and 452 tests passed; the seven-test real-PostgreSQL suite was intentionally skipped locally |
-| TypeScript | `npm run typecheck` passed with NodeNext resolution, explicit `.js` specifiers, and generated-client type imports |
-| Prisma schema/client | Prisma 7.8 schema validation and generated-client build passed; applying the pending release migrations remains hosted/staging proof |
-| Backend build/runtime smoke | The clean production build passed; the emitted runtime started, returned `200` from `/health`, rejected an unauthenticated protected request with `401`, and shut down cleanly |
-| Flutter locked restore | `flutter pub get --enforce-lockfile` passed |
-| Flutter tests | 355/355 tests passed |
-| Flutter analyzer | 0 errors, 0 warnings, and 9 existing informational findings |
-| Changed Dart formatting | Both Dart files changed on `feat/api-abuse-controls` passed with zero changes |
-| Android package | Not rebuilt for this branch; the earlier debug-package result does not replace physical-device, signed-release, or current release-candidate proof |
-| Mobile release identity | `pubspec.yaml` remains `1.1.0+20`; increment the build number before an app-store submission unless the release pipeline supplies a reviewed override |
-
-The repository contains separate stable `Backend security` and `Flutter CI` workflows. The latter pins Flutter 3.44.1/Dart 3.12.1, enforces the lockfile, checks merge-base-changed Dart formatting, rejects warning/error analysis, compares the informational multiset baseline, and runs all Flutter tests. These files and local results are source evidence only: hosted success, independent failure probes, protected CI-control review, and required default-branch checks remain MC-0.7 through MC-0.9 and MC-1.9 through MC-1.11. Local backend verification used Node 26.3.0; the workflow's exact Node 22.23.1 plus PostgreSQL path still needs hosted proof.
+Current results, toolchain caveats, and the active checkpoint handoff live in
+[`docs/_engineering/improvement-plan/STATUS.md`](docs/_engineering/improvement-plan/STATUS.md).
+The canonical commands and definition of done live in the
+[`improvement-plan README`](docs/_engineering/improvement-plan/README.md).
+Do not copy volatile test counts here. Local source evidence never closes the
+hosted, production, provider, or physical-device checks in
+[`ACTION-REQUIRED.md`](docs/_engineering/improvement-plan/ACTION-REQUIRED.md).
 
 ## Getting started
 
@@ -366,7 +356,7 @@ dart run tool/ci/analyzer_baseline.dart check \
 The next steps are ordered by risk rather than feature visibility:
 
 1. **Close the operational release gate:** verify credential rotation, migrations, hosted CI, storage/CDN policy, staging behavior, backups, rollback, and deployment provenance.
-2. **Finish account and privacy hardening:** implement durable account deletion, deploy and verify the private-route and abuse-control slices, enforce storage-boundary upload size/type/integrity and cleanup, obtain qualified review of the updated policy text against the release candidate, and encrypt retained local routes/photos.
+2. **Finish account and privacy hardening:** complete account-deletion boundary/hosted proof, deploy and verify the private-route and abuse-control slices, close the remaining storage checksum/quota/lifecycle evidence, obtain qualified review of policy text against the release candidate, and encrypt retained local routes/photos.
 3. **Persist active workouts:** checkpoint the tracking timeline and accepted route so process death, reboot, and OS suspension can recover safely; add Android foreground-service behavior where required.
 4. **Add server-to-client restore:** introduce cursors, revisions, tombstones, chunked route transfer, and a documented conflict policy before calling synchronization bidirectional.
 5. **Externalize asynchronous cleanup:** replace process-local polling with leased durable work, add dependency-aware readiness and bounded graceful shutdown, and expand the current request IDs/security events into release metrics and alerts.

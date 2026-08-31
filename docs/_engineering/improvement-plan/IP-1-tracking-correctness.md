@@ -123,7 +123,7 @@ it, is below. The evidence log at the bottom of this file is the record.
 | Pause, move, resume | Paused and bridge movement add 0 m | Fake-stream test + device run |
 | Finish while paused | Open pause excluded exactly once | Fake-clock test |
 | GPS jump then valid point | Jump rejected; valid point uses last accepted anchor | Policy/provider test |
-| A logout → B login | A work drains; local clear succeeds; no A cache or late callback is visible under B | Session/provider/repository integration tests + MC-1.6 |
+| A logout → B login | A work drains; A rows remain owner-scoped and inaccessible under B; no A cache or late callback is visible under B | No-purge session/provider/repository integration tests + MC-1.6 |
 | Delete owned workout | All child rows cascade; foreign key check clean | SQLite migration test |
 | PATCH name only | Route/status rows unchanged | Controller/service plus Prisma query-shape/stateful fake; real PostgreSQL in MC-1.8 |
 | 750-point payload | Authenticated body is parsed and reaches the create handler | Final-tree socket-boundary test; persisted create in MC-1.8 |

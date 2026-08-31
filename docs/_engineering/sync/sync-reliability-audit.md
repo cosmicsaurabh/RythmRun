@@ -437,3 +437,16 @@ Counts at audit time (declarations, not executions): Flutter 345 `test`/`testWid
 - `STATUS.md` (IP-2.7 row) said app-kill recovery "resumes from where it left off". The code restarts from page 1; `hasWorkout` makes that idempotent. Corrected in this change.
 - `CLAUDE.md` / `AGENTS.md` still say completed workouts "are retained per account across logout". Since IP-2.7 (`b9d93de`, `eebe191`) logout clears them. Not edited here — flagged for the maintainer because the sentence also encodes a product decision that SYNC-01 will partially reverse for unsynced rows.
 - `IP-4-sync-data-restore.md` audit evidence says "no pull/merge path exists". A bootstrap-only pull now exists; a pointer to this audit was added there.
+
+## 11. Post-audit disposition
+
+This audit remains a point-in-time trace of `d0e5b92`; the current status of all
+findings lives in the
+[audit register](../improvement-plan/AUDIT-REGISTER.md). Do not rewrite the
+historical scenarios above as though they described the audited commit
+differently.
+
+| Date | Finding | Repository disposition | Evidence and remaining work |
+| --- | --- | --- | --- |
+| 2026-08-22 | `SYNC-01` / F-01 P0 data deletion | **Open.** Runbook Step 2 plans the stronger D-004 correction: normal logout/account switch/forced loss must retain every owner row and queued operation rather than only the unsynced subset proposed by this audit. Provider isolation and user-scoped SQL remain the cross-account boundary. No runtime correction has started. | Required evidence includes focused teardown/provider tests proving no purge and owner isolation, followed by the full Flutter gates. Optional best-effort exit sync and unsynced-work disclosure remain `SYNC-01b`; encryption-at-rest remains IP-2.7. |
+| 2026-08-22 | `SYNC-09` / F-09 reset race | **Open.** Runbook Step 2 plans to await the per-user `history_restored=false` write before provider invalidation and credential cleanup can complete. | Required delayed-future tests must cover voluntary and forced-loss ordering. The boolean remains transitional and is retired by `SYNC-02` cursor pull. |

@@ -20,8 +20,9 @@ sensitive evidence in an access-controlled tracker, never here.
 | I want to know… | Read |
 | --- | --- |
 | What do *I* need to do? | **[ACTION-REQUIRED.md](./ACTION-REQUIRED.md)** — everything blocked on production access, a device, a provider account, or a GitHub setting. Delete an item when it's done. |
-| Where does the program stand? | **[STATUS.md](./STATUS.md)** — phase status, what's left per package, audit-finding traceability, delivery history. |
+| Where does the program stand? | **[STATUS.md](./STATUS.md)** — current branch/checkpoint handoff, phase status, verification, blockers, and next action. |
 | What is the next reviewable implementation checkpoint? | **[IMPLEMENTATION-RUNBOOK.md](./IMPLEMENTATION-RUNBOOK.md)** — dependency order, workstream state, audit consolidation, verification, and git handling. |
+| Which audits/designs exist and where does each finding go? | **[AUDIT-REGISTER.md](./AUDIT-REGISTER.md)** — source disposition, unified finding map, dependencies, verification, documentation impact, and retirement gates. |
 | How do I work in this program? | This file — rules, decisions, definition of done, verification commands. |
 | What exactly does phase *N* require? | The phase file. Delivered packages keep only their evidence log; unbuilt packages keep their full spec. |
 
@@ -31,6 +32,12 @@ Phase files: [IP-0 security containment](./IP-0-security-containment.md) ·
 [IP-3 workout durability](./IP-3-workout-durability.md) ·
 [IP-4 sync & restore](./IP-4-sync-data-restore.md) ·
 [IP-5 release readiness](./IP-5-release-retention.md)
+
+To resume safely: read STATUS, read the runbook, read the audit register, inspect
+`git status` plus unstaged/staged diffs, then inspect the active checkpoint's
+phase and source reports. Continue only the next defined step. A staged
+checkpoint waits for maintainer review; do not add the next checkpoint to it or
+commit/push without instruction.
 
 ## Immediate warning
 
