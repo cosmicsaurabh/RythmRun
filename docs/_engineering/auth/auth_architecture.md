@@ -98,23 +98,30 @@ sequenceDiagram
 
 ## Session exit and retained owner data
 
-Current normal logout, account switch, and forced authentication loss quiesce
-tracking and drain admitted user work. Provider invalidation then calls
-`clearLocalWorkouts(userId)` and `setHistoryRestored(false)` without awaiting
-either future. The purge deletes every owner workout and queued remote deletion;
-SQLite cascades remove the related points, status changes, and activity-image
-rows.
+Normal logout, account switch, and forced authentication loss quiesce tracking
+and drain admitted user work. W1 makes user-state invalidation awaitable:
+the workout repository receives the explicit old-owner ID, teardown awaits that
+owner's `history_restored=false` write, invalidates the user-scoped providers,
+and only then allows credential cleanup to complete. The persistence service
+requires `setBool` success and a matching readback; reset failure leaves provider
+state and credentials available for recovery. A pending forced-loss marker
+reruns the old owner's teardown after restart before credentials are removed. It
+does not call `clearLocalWorkouts`, so every owner workout, queued deletion,
+point, status, and activity-image row survives normal session exit.
 
-Provider state and local reads/mutations are user-scoped, so another account
-cannot read any surviving rows. That boundary does not make the destructive
-normal-session purge safe: it can erase offline work and violates the retained
-history rule in D-004. This is an open IP-2.7 / `SYNC-01` defect.
+Provider state and local reads/mutations remain user-scoped. Account B cannot
+read account A's retained rows, and signing back in as A makes A's rows available
+again. The owner-scoped local purge primitive remains intact and reserved for a
+future explicit account-deletion path; the current app has no wired in-app
+deletion flow. These changes correct the repository portions of D-004,
+`SYNC-01`, and `SYNC-09`, while MC-1.6, MC-2.3, and account-deletion E2E still
+require external evidence. W1 changes an internal Flutter repository API, not
+the backend or server HTTP API.
 
-Runbook Step 2 is planned, not implemented. Its target is to retain every owner
-row across normal session exit, await the bootstrap-flag reset and provider
-invalidation, and reserve destructive purge for explicit account deletion. The
-IP-2.7 encrypted database/file migration, backup exclusion, key-loss behavior,
-and device proof also remain open.
+Retained SQLite data and activity-photo files are still plaintext at rest. The
+IP-2.7 encrypted database/file migration, wrapped-key and backup rules,
+performance and key-loss behavior, account-deletion E2E, and device proof remain
+open.
 
 ---
 
@@ -130,10 +137,12 @@ When a user authenticates and the per-user `history_restored` flag is false, the
    `clientSyncId`/remote ID. If the process stops before completion, the flag
    stays false and the next run restarts at page 1; deduplication makes the
    replay idempotent.
-3. It sets the flag true only after all pages complete. Current session exit
-   fires a reset to false without awaiting it and purges the owner's local rows.
-   Step 2 plans to await the reset while retaining those rows, so the same owner
-   can recheck remote history without losing local-first data.
+3. It sets the flag true only after all pages complete. Normal session exit now
+   awaits the old user's reset to false while retaining the owner's local rows,
+   so that owner can recheck remote history without losing local-first data.
+   The persistence service verifies each boolean write and readback. A failed
+   `history_restored=true` completion write can still abort that sync pass before
+   push while the durable work remains queued; runbook Step 3 owns isolation.
 
 This is transitional restore behavior, not full bidirectional sync. It has no
 cursor/revision, ongoing pull, remote tombstones, remote-image restore, or

@@ -133,6 +133,8 @@ void main() {
 
     expect(workoutRepository.downloadAndRestoreWorkoutsCalls, 1);
     expect(workoutRepository.setHistoryRestoredCalls, 1);
+    expect(workoutRepository.historyRestoredReadOwnerIds, <int>[7]);
+    expect(workoutRepository.historyRestoredWriteOwnerIds, <int>[7]);
     expect(workoutRepository.historyRestoredValue, isTrue);
     expect(startCalled, isTrue);
     expect(completeCalled, isTrue);
@@ -141,7 +143,8 @@ void main() {
 
   test('syncAll skips restore when history is already restored', () async {
     final authRepository = _MutableAuthRepository(7);
-    final workoutRepository = _FakeWorkoutRepository()..historyRestoredValue = true;
+    final workoutRepository =
+        _FakeWorkoutRepository()..historyRestoredValue = true;
     final imageRepository = _FakeActivityImageRepository();
     final operationGate = UserScopeOperationGate()..activate(7);
 
@@ -161,6 +164,8 @@ void main() {
 
     expect(workoutRepository.downloadAndRestoreWorkoutsCalls, 0);
     expect(workoutRepository.setHistoryRestoredCalls, 0);
+    expect(workoutRepository.historyRestoredReadOwnerIds, <int>[7]);
+    expect(workoutRepository.historyRestoredWriteOwnerIds, isEmpty);
     expect(startCalled, isFalse);
     expect(completeCalled, isFalse);
   });
@@ -189,10 +194,7 @@ void main() {
       onRestoreFailed: () => failedCalled = true,
     );
 
-    await expectLater(
-      coordinator.syncAll(),
-      throwsA(isA<Exception>()),
-    );
+    await expectLater(coordinator.syncAll(), throwsA(isA<Exception>()));
 
     expect(startCalled, isTrue);
     expect(completeCalled, isFalse);
@@ -212,6 +214,8 @@ class _FakeWorkoutRepository implements WorkoutRepository {
   bool historyRestoredValue = false;
   int downloadAndRestoreWorkoutsCalls = 0;
   int setHistoryRestoredCalls = 0;
+  final List<int> historyRestoredReadOwnerIds = <int>[];
+  final List<int> historyRestoredWriteOwnerIds = <int>[];
 
   _FakeWorkoutRepository({this.onSync, this.onDownloadAndRestore});
 
@@ -222,11 +226,15 @@ class _FakeWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<bool> isHistoryRestored() async => historyRestoredValue;
+  Future<bool> isHistoryRestored(int ownerUserId) async {
+    historyRestoredReadOwnerIds.add(ownerUserId);
+    return historyRestoredValue;
+  }
 
   @override
-  Future<void> setHistoryRestored(bool value) async {
+  Future<void> setHistoryRestored(int ownerUserId, bool value) async {
     setHistoryRestoredCalls++;
+    historyRestoredWriteOwnerIds.add(ownerUserId);
     historyRestoredValue = value;
   }
 

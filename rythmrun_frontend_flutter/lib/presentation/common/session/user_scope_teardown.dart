@@ -71,7 +71,6 @@ abstract interface class UserScopeTeardown {
 typedef UserScopeBoolReader = bool Function();
 typedef UserScopeAsyncBoolAction = Future<bool> Function();
 typedef UserScopeAsyncAction = Future<void> Function();
-typedef UserScopeVoidAction = void Function();
 typedef UserScopeActivateAction = void Function(String userId);
 
 /// Serializes live-workout finalization, sync draining, and cache teardown.
@@ -89,7 +88,7 @@ class DefaultUserScopeTeardown implements UserScopeTeardown {
   final UserScopeAsyncBoolAction _retryTrackingCleanup;
   final UserScopeAsyncAction _discardWorkout;
   final UserScopeAsyncAction _suspendAndDrainWork;
-  final UserScopeVoidAction _invalidateUserState;
+  final UserScopeAsyncAction _invalidateUserState;
   final UserScopeActivateAction _activateWork;
 
   bool _isTearingDown = false;
@@ -104,7 +103,7 @@ class DefaultUserScopeTeardown implements UserScopeTeardown {
     required UserScopeAsyncBoolAction retryTrackingCleanup,
     required UserScopeAsyncAction discardWorkout,
     required UserScopeAsyncAction suspendAndDrainWork,
-    required UserScopeVoidAction invalidateUserState,
+    required UserScopeAsyncAction invalidateUserState,
     required UserScopeActivateAction activateWork,
   }) : _hasActiveWorkout = hasActiveWorkout,
        _hasUnsavedWorkout = hasUnsavedWorkout,
@@ -246,7 +245,7 @@ class DefaultUserScopeTeardown implements UserScopeTeardown {
       }
 
       await _suspendAndDrainWork();
-      _invalidateUserState();
+      await _invalidateUserState();
       return const UserScopeTeardownResult.completed();
     } catch (_) {
       return const UserScopeTeardownResult.blocked(

@@ -131,6 +131,40 @@ void main() {
     expect(secure.values, isEmpty);
   });
 
+  test('failed history reset leaves the previous value intact', () async {
+    const historyKey = 'history_restored_7';
+    final preferences = _MemoryPreferences(<String, Object>{historyKey: true})
+      ..failNextSetBoolFor(historyKey);
+    final persistence = service(
+      secure: _MemorySecureValueStore(),
+      preferences: preferences,
+    );
+
+    await expectLater(
+      persistence.setHistoryRestored('7', false),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(await persistence.isHistoryRestored('7'), isTrue);
+  });
+
+  test('history reset rejects a stale readback', () async {
+    const historyKey = 'history_restored_7';
+    final preferences = _MemoryPreferences(<String, Object>{historyKey: true})
+      ..dropNextSetBoolFor(historyKey);
+    final persistence = service(
+      secure: _MemorySecureValueStore(),
+      preferences: preferences,
+    );
+
+    await expectLater(
+      persistence.setHistoryRestored('7', false),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(await persistence.isHistoryRestored('7'), isTrue);
+  });
+
   test(
     'verified session stays offline-eligible when only access expired',
     () async {
@@ -233,8 +267,14 @@ final class _MemoryPreferences implements AuthPreferences {
 
   final Map<String, Object> values;
   final Set<String> _failNextRemove = <String>{};
+  final Set<String> _failNextSetBool = <String>{};
+  final Set<String> _dropNextSetBool = <String>{};
 
   void failNextRemoveFor(String key) => _failNextRemove.add(key);
+
+  void failNextSetBoolFor(String key) => _failNextSetBool.add(key);
+
+  void dropNextSetBoolFor(String key) => _dropNextSetBool.add(key);
 
   @override
   bool containsKey(String key) => values.containsKey(key);
@@ -254,6 +294,8 @@ final class _MemoryPreferences implements AuthPreferences {
 
   @override
   Future<bool> setBool(String key, bool value) async {
+    if (_failNextSetBool.remove(key)) return false;
+    if (_dropNextSetBool.remove(key)) return true;
     values[key] = value;
     return true;
   }

@@ -65,7 +65,8 @@ evidence owns durable results; git history owns old implementation detail.
 ## Repository snapshot
 
 Snapshot taken 2026-08-22 after reading the improvement program, staged audits,
-relevant Flutter/backend code, Android configuration, tests, and branch graph.
+relevant Flutter/backend code, Android configuration, tests, and branch graph;
+updated 2026-08-31 for the W0 commit and W1 repository correction.
 
 - Working branch: `workout-reliability`, created from `origin/main` at
   `792bd52` (PR #190). The tree at the former local `auth-impr` HEAD `d0e5b92`
@@ -78,19 +79,28 @@ relevant Flutter/backend code, Android configuration, tests, and branch graph.
   verbatim but does not cherry-pick the duplicate status history.
 - The public remote refs were refreshed before the branch was created.
 - The prior agent committed Step 1 locally as `6c75fb2` with subject
-  `i dont know`; it has not been pushed and its history must not be amended
-  without explicit maintainer approval. No application gates were run for that
-  documentation-only commit.
+  `i dont know`; it is included in `origin/workout-reliability` and its history
+  must not be amended without explicit maintainer approval. No application gates
+  were run for that documentation-only commit.
+- The W0 follow-up was committed locally as `53cb751` with subject
+  `docs(plan): reconcile reliability handoff and audit map`.
+  `origin/workout-reliability` now points to it. W1 has no commit and remains
+  unstaged.
 
 Verified current behavior that controls the order:
 
-- Normal logout, account switch, and forced authentication loss call
-  `clearLocalWorkouts(userId)` from provider invalidation without awaiting it.
-  That transaction removes every owner workout and queued delete. This violates
-  D-004, IP-2.7, MC-1.6, and MC-2.3; preserving only unsynced rows would still
-  violate the decision that all completed history survives logout.
-- Provider state and SQLite queries are already user-scoped, and admitted work
-  drains before a new account scope is activated. Those controls stay.
+- Normal logout, account switch, and forced authentication loss retain every
+  owner workout and queued delete. The workout repository history contract now
+  takes the explicit owner ID. Teardown awaits that owner's restore-flag reset
+  and provider invalidation before credential cleanup completes; the persistence
+  service verifies write success and readback, and a failed reset retains the
+  recoverable scope. A pending forced-loss marker reruns owner teardown after
+  restart before credentials are removed. Provider state and SQLite queries
+  remain user-scoped, admitted work drains before a new account activates, and
+  A's retained rows remain inaccessible to B.
+- The owner-scoped local purge primitive remains intact and covered for a future
+  explicit account-deletion path. There is no wired in-app deletion flow, so W1
+  does not claim account-deletion E2E behavior.
 - Completed-workout save is local-first and transactional. Push is idempotent by
   `(userId, clientSyncId)`, and remote workout deletion already has a durable
   owner-scoped queue.
@@ -116,9 +126,9 @@ Verified current behavior that controls the order:
 
 | ID | Workstream | State | Owning contract | Review note |
 | --- | --- | --- | --- | --- |
-| W0 | Program control and audit consolidation | **Staged for review** on top of local `6c75fb2` | README, STATUS, runbook, audit register | Review this documentation-only follow-up before any code work |
-| W1 | Retained owner data at session exit | Pending | D-004, IP-2.7, IP-1.3 | First code checkpoint; requires explicit maintainer instruction to begin |
-| W2 | Schema-free sync safety | Pending | IP-2.7, IP-4 | Must not introduce a throwaway pull protocol |
+| W0 | Program control and audit consolidation | **Committed** as `53cb751` on `origin/workout-reliability` | README, STATUS, runbook, audit register | Documentation-only; no application gate claimed |
+| W1 | Retained owner data at session exit | **Documentation reconciled; unstaged** | D-004, IP-2.7, IP-1.3 | Runtime, tests, full Flutter gates, and owning docs are ready for maintainer review |
+| W2 | Schema-free sync safety | Pending | IP-2.7, IP-4 | Requires W1 acceptance and commit plus explicit maintainer W2 authorization; must not introduce a throwaway pull protocol |
 | W3 | Tracking truth, permission, accessibility, and resource fixes | Pending | IP-1, IP-3.3/3.5, IP-5.6 | Behavior changes split into focused commits |
 | W4 | GPS/route-quality measurement and policy version | Pending | IP-1.2, IP-3.1 | Measurement-gated; do not guess thresholds |
 | W5 | Durable workout schema, engine, finalization, and recovery | Pending | IP-3.1–3.3 | Blocked from rollout by IP-2.7 storage decision |
@@ -151,9 +161,8 @@ and unresolved findings until implementation proves their outcome.
 canonical-plan corrections as local commit `6c75fb2`. It ran documentation
 checks only. The current documentation-only follow-up adds the missing complete
 audit register, live handoff, resume rules, and verified-current documentation
-corrections without rewriting that commit. It is staged for maintainer
-review. No runtime or test file belongs to this follow-up, and Step 2 has not
-started.
+corrections without rewriting that commit. The follow-up was committed locally
+as `53cb751`; no runtime or test file belonged to W0.
 
 ### Step 2 — Preserve all completed owner data across session exit
 
@@ -162,23 +171,40 @@ contract. Remove the ordinary-session call to `clearLocalWorkouts`; retain all
 synced, unsynced, blocked, delete-pending, point, status, and image rows. Continue
 draining admitted work and invalidating every user-scoped provider before another
 account activates. Await the per-user restore-flag reset until IP-4 replaces it
-with a cursor. Keep destructive purge only for explicit account deletion.
+with a cursor. Keep the owner-scoped local purge primitive intact and reserve it
+for a future explicit account-deletion path.
 
-**Why now and dependencies.** This is the current repository’s highest code
-risk and violates a binding product decision. IP-3 recovery and IP-4 sync cannot
-be trusted while teardown can erase their durable state. It depends on Step 1,
-not on network availability; logout must never require a successful sync.
+**Why now and dependencies.** Before W1, this was the repository's highest code
+risk because teardown violated a binding product decision and could erase the
+durable state that IP-3 recovery and IP-4 sync must preserve. It depends on Step
+1, not on network availability; logout must never require a successful sync.
 
 **Tests.** Cover voluntary logout, forced loss, and A→B→A with synced and
 unsynced workouts, queued deletes, children, and images; prove B cannot access A;
 prove A later pushes/deletes exactly once; prove finish-and-exit yields one row;
-prove teardown awaits invalidation/reset; preserve explicit account-deletion
-purge coverage.
+prove teardown awaits invalidation/reset; preserve coverage of the owner-scoped
+local purge primitive. Account-deletion integration and E2E remain open.
 
-**Documentation and git.** Update IP-2.7 and its evidence log, the maintained
-authentication architecture, the sync-audit disposition, STATUS, audit
-register, and this row. Update IP-1.3 evidence only if the tests actually change
-its claim. Same branch, one staged checkpoint. Proposed commit:
+**Outcome, evidence, and git.** W1 removes the normal-session workout purge,
+makes user-state invalidation awaitable, awaits the old user's restore-flag
+reset through an explicit-owner repository contract, retains owner rows across
+A→B→A, and leaves the owner-scoped local purge primitive intact. Failed reset
+persistence blocks cleanup and retains provider access for recovery; a pending
+forced-loss restart reruns owner teardown before credential removal. The
+real-SQLite gate retains synced, unsynced, blocked, and delete-pending A rows with
+their point/status/image children and delete queue, performs no remote I/O during
+exit or B's session, then creates and deletes the correct remote IDs exactly once
+after A returns. A live finish-and-exit gate creates exactly one durable workout
+row. One focused command across seven suites passed 79 tests, including five
+local database ownership/purge cases and the real-SQLite gate tests. Locked
+restore passed; all 366 Flutter tests passed; analysis reported nine existing
+infos and no warnings or errors; formatting changed none of the 13 Dart files;
+root `git diff --check` passed. W1 changes an internal Flutter repository API,
+but there is no backend or server HTTP API, schema, migration, exit-time sync, or
+account-deletion E2E change. A failed `history_restored=true` completion write can
+still abort a sync pass before push while work remains queued; Step 3 owns that
+isolation. The runtime, tests, and owning documents are reconciled but unstaged;
+there is no W1 commit. Proposed commit after maintainer review:
 `fix(storage): retain owner workouts across session exit`.
 
 ### Step 3 — Isolate restore failure from push and make sync passes complete
@@ -192,10 +218,10 @@ the process-wide ten-second public-DNS probe and rely on platform state plus rea
 request outcomes.
 
 **Why now and dependencies.** These are schema-free loss/availability fixes and
-test seams needed before IP-3 creates more durable work. Step 2 must land first so
-the tests describe the retained local-first model. This step must not add an
-interim timestamp pull, partial sync enum, or route thinning that IP-4 would
-replace.
+test seams needed before IP-3 creates more durable work. W1 must be accepted and
+committed, and the maintainer must explicitly authorize W2, before this step
+starts. This step must not add an interim timestamp pull, partial sync enum, or
+route thinning that IP-4 would replace.
 
 **Tests.** Restore failure still runs push; failed push remains queued; a request
 during a pass schedules exactly one rerun; slow reconnect is observed; account

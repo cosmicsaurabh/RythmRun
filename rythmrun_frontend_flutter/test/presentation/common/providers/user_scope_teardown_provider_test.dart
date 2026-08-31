@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rythmrun_frontend_flutter/core/di/injection_container.dart';
@@ -21,8 +23,14 @@ import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history
 import 'package:rythmrun_frontend_flutter/presentation/features/tracking_history/providers/tracking_history_provider.dart';
 
 void main() {
-  test('A cache is invalidated again before activating B', () async {
-    final workoutRepository = _ScopedWorkoutRepository(currentUserId: 7);
+  test('teardown retains A data and isolates B', () async {
+    final workoutRepository = _ScopedWorkoutRepository(currentUserId: 7)
+      ..delayHistoryReset = true;
+    addTearDown(() {
+      if (!workoutRepository.allowHistoryReset.isCompleted) {
+        workoutRepository.allowHistoryReset.complete();
+      }
+    });
     final imageRepository = _ScopedImageRepository(workoutRepository);
     final container = ProviderContainer(
       overrides: <Override>[
@@ -83,11 +91,30 @@ void main() {
       'image-7',
     );
 
-    final teardown = await coordinator.teardown(
-      reason: UserScopeExitReason.voluntaryLogout,
-    );
+    var didComplete = false;
+    final pendingTeardown = coordinator
+        .teardown(reason: UserScopeExitReason.voluntaryLogout)
+        .then((result) {
+          didComplete = true;
+          return result;
+        });
+    await workoutRepository.historyResetStarted.future;
+    await _flushAsyncWork();
+
+    expect(workoutRepository.historyRestoredValues, <bool>[false]);
+    expect(workoutRepository.historyResetUserIds, <int>[7]);
+    expect(workoutRepository.clearedUserIds, isEmpty);
+    expect(workoutRepository.retainedUserIds, contains(7));
+    expect(didComplete, isFalse);
+    expect(container.read(liveTrackingProvider.notifier), same(liveNotifierA));
+
+    workoutRepository.allowHistoryReset.complete();
+    final teardown = await pendingTeardown;
     expect(teardown.isCompleted, isTrue);
-    expect(workoutRepository.clearedUserIds, contains(7));
+    expect(
+      container.read(liveTrackingProvider.notifier),
+      isNot(same(liveNotifierA)),
+    );
 
     workoutRepository.currentUserId = 8;
     coordinator.activateUserScope('8');
@@ -103,6 +130,18 @@ void main() {
       fireImmediately: true,
     );
     addTearDown(imagesSubscriptionB.close);
+    final foreignDetailsSubscription = container.listen(
+      trackingHistoryDetailsProvider((userId: 8, workoutId: 7)),
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(foreignDetailsSubscription.close);
+    final foreignImagesSubscription = container.listen(
+      activityImagesProvider((userId: 8, workoutId: 7)),
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(foreignImagesSubscription.close);
     await _flushAsyncWork();
 
     final stateForB = container.read(trackingHistoryProvider);
@@ -123,6 +162,16 @@ void main() {
           .single
           .clientImageId,
       'image-8',
+    );
+    expect(
+      container
+          .read(trackingHistoryDetailsProvider((userId: 8, workoutId: 7)))
+          .workout,
+      isNull,
+    );
+    expect(
+      container.read(activityImagesProvider((userId: 8, workoutId: 7))).images,
+      isEmpty,
     );
     expect(container.read(tabIndexProvider), 0);
     expect(container.read(calculatorProvider).age, isNull);
@@ -146,6 +195,55 @@ void main() {
       container.read(syncCoordinatorProvider),
       isNot(same(syncCoordinatorA)),
     );
+
+    final bTeardown = await coordinator.teardown(
+      reason: UserScopeExitReason.accountSwitch,
+    );
+    expect(bTeardown.isCompleted, isTrue);
+    expect(workoutRepository.clearedUserIds, isEmpty);
+    expect(workoutRepository.historyResetUserIds, <int>[7, 8]);
+
+    workoutRepository.currentUserId = 7;
+    coordinator.activateUserScope('7');
+    await _flushAsyncWork();
+
+    final stateForAAgain = container.read(trackingHistoryProvider);
+    expect(stateForAAgain.workouts, hasLength(1));
+    expect(stateForAAgain.workouts.single.userId, 7);
+    expect(workoutRepository.retainedUserIds, containsAll(<int>[7, 8]));
+  });
+
+  test('failed history reset blocks teardown without purging A', () async {
+    final workoutRepository = _ScopedWorkoutRepository(currentUserId: 7)
+      ..historyResetError = StateError('simulated reset failure');
+    final container = ProviderContainer(
+      overrides: <Override>[
+        workoutRepositoryProvider.overrideWithValue(workoutRepository),
+        activityImageRepositoryProvider.overrideWithValue(
+          _ScopedImageRepository(workoutRepository),
+        ),
+        avatarRepositoryProvider.overrideWithValue(_FakeAvatarRepository()),
+        liveTrackingRepositoryProvider.overrideWithValue(
+          _FakeLiveTrackingRepository(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    final coordinator = container.read(userScopeTeardownProvider);
+    coordinator.activateUserScope('7');
+    final liveNotifierA = container.read(liveTrackingProvider.notifier);
+
+    final result = await coordinator.teardown(
+      reason: UserScopeExitReason.voluntaryLogout,
+    );
+
+    expect(result.status, UserScopeTeardownStatus.blocked);
+    expect(result.requirement, UserScopeExitRequirement.accountCleanup);
+    expect(workoutRepository.historyRestoredValues, <bool>[false]);
+    expect(workoutRepository.historyResetUserIds, <int>[7]);
+    expect(workoutRepository.clearedUserIds, isEmpty);
+    expect(workoutRepository.retainedUserIds, contains(7));
+    expect(container.read(liveTrackingProvider.notifier), same(liveNotifierA));
   });
 }
 
@@ -153,6 +251,13 @@ class _ScopedWorkoutRepository implements WorkoutRepository {
   int currentUserId;
   final List<int> loadedUserIds = <int>[];
   final List<int> clearedUserIds = <int>[];
+  final List<bool> historyRestoredValues = <bool>[];
+  final List<int> historyResetUserIds = <int>[];
+  final Set<int> retainedUserIds = <int>{7, 8};
+  final Completer<void> historyResetStarted = Completer<void>();
+  final Completer<void> allowHistoryReset = Completer<void>();
+  bool delayHistoryReset = false;
+  Object? historyResetError;
 
   _ScopedWorkoutRepository({required this.currentUserId});
 
@@ -167,11 +272,15 @@ class _ScopedWorkoutRepository implements WorkoutRepository {
     bool loadTrackingPoints = false,
   }) async {
     loadedUserIds.add(currentUserId);
+    final workouts =
+        retainedUserIds.contains(currentUserId)
+            ? <WorkoutSessionEntity>[_workout(currentUserId)]
+            : <WorkoutSessionEntity>[];
     return PaginatedWorkouts(
-      workouts: <WorkoutSessionEntity>[_workout(currentUserId)],
+      workouts: workouts,
       currentPage: page,
       totalPages: 1,
-      totalCount: 1,
+      totalCount: workouts.length,
       hasNextPage: false,
       hasPreviousPage: false,
       limit: limit,
@@ -198,19 +307,34 @@ class _ScopedWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<WorkoutSessionEntity?> getWorkout(int workoutId) async {
+    if (!retainedUserIds.contains(currentUserId) ||
+        workoutId != currentUserId) {
+      return null;
+    }
     return _workout(currentUserId);
   }
 
   @override
   Future<void> clearLocalWorkouts(int userId) async {
     clearedUserIds.add(userId);
+    retainedUserIds.remove(userId);
   }
 
   @override
-  Future<bool> isHistoryRestored() async => false;
+  Future<bool> isHistoryRestored(int ownerUserId) async => false;
 
   @override
-  Future<void> setHistoryRestored(bool value) async {}
+  Future<void> setHistoryRestored(int ownerUserId, bool value) async {
+    historyRestoredValues.add(value);
+    historyResetUserIds.add(ownerUserId);
+    final error = historyResetError;
+    if (error != null) throw error;
+    if (value || !delayHistoryReset) return;
+    if (!historyResetStarted.isCompleted) {
+      historyResetStarted.complete();
+    }
+    await allowHistoryReset.future;
+  }
 
   @override
   Future<void> downloadAndRestoreWorkouts() async {}
@@ -229,6 +353,10 @@ class _ScopedImageRepository implements ActivityImageRepository {
     int localWorkoutId,
   ) async {
     final userId = workoutRepository.currentUserId;
+    if (!workoutRepository.retainedUserIds.contains(userId) ||
+        localWorkoutId != userId) {
+      return <ActivityImageEntity>[];
+    }
     final now = DateTime.utc(2026, 7, 11);
     return <ActivityImageEntity>[
       ActivityImageEntity(

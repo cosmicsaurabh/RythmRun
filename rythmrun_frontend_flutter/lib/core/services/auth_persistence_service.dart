@@ -368,7 +368,11 @@ class AuthPersistenceService {
 
   Future<void> setHistoryRestored(String userId, bool value) async {
     final preferences = await _preferencesFactory();
-    await preferences.setBool('history_restored_$userId', value);
+    final key = 'history_restored_$userId';
+    final didWrite = await preferences.setBool(key, value);
+    if (!didWrite || preferences.getBool(key) != value) {
+      throw StateError('Failed to persist workout history restoration state.');
+    }
   }
 
   Future<void> _writeString(

@@ -10,7 +10,7 @@ published: false
 | Priority | P1 |
 | Target | 2–4 weeks in independently shippable packages, plus external email/privacy decisions |
 | Owner | Unassigned |
-| Last updated | 2026-08-22 |
+| Last updated | 2026-08-31 |
 | Depends on | IP-0 secret/avatar fix; IP-1 user-scope teardown and minimum CI |
 | External prerequisites | Privacy/deletion retention decision. (Password-recovery email provider/domain resolved 2026-07-20 — Brevo + reshapeapp.ai, see D-018.) |
 | Exit condition | Auth expiry/rotation/revocation, secure storage, account lifecycle, and route-privacy gates pass |
@@ -142,10 +142,24 @@ Items 1, 2, 4, 5, 9 and the proxy-aware part of item 3 were delivered and merged
 
 The app intentionally retains completed offline history across normal logout. Exact routes and photos therefore need a written device threat model and protection beyond hiding widgets.
 
-That sentence is the binding target, not current behavior. Current session
-teardown purges the owner's rows and fires the purge/bootstrap reset without
-awaiting either future; the evidence log records the failed specification
-review. Runbook Step 2 is planned to correct it and has not started.
+W1 now delivers the repository retention portion of this package. Ordinary
+logout, account switch, and forced authentication loss retain every owner-scoped
+workout, queue, point, status, and activity-image row; teardown awaits the old
+user's explicit-owner bootstrap-flag reset and user-scope invalidation before
+credential cleanup completes. The persistence boundary verifies both `setBool`
+success and readback; reset failure blocks cleanup and retains provider access
+for recovery. A pending forced-loss marker reruns that owner's teardown after
+restart before credentials are removed. Owner scoping prevents another account
+from reading retained rows. The owner-scoped local purge primitive remains
+intact and reserved for a future explicit account-deletion path; the current app
+has no wired in-app deletion flow. This supersedes the 2026-08-13
+clear-on-logout behavior and corrects the repository portions of D-004,
+`SYNC-01`, and `SYNC-09`.
+
+Retained data still uses the current plaintext SQLite and activity-photo
+storage. W1 delivers no encrypted store, wrapped key, backup exclusion,
+migration, performance, key-loss, account-deletion E2E, or device proof, so
+IP-2.7 and its local-protection acceptance item remain open.
 
 **Primary areas**
 
@@ -283,3 +297,4 @@ Checked repository items below record delivered code and automated evidence only
 | 2026-08-13 | IP-2.7 (local data clearing on logout) | Flutter unit test (`user_scope_teardown_provider_test.dart` asserting database purge on teardown); count: 353 pass, analyzer 9 info issues | Repository gates pass | Implemented `clearLocalWorkouts(int userId)` wiping SQLite database rows (workouts, points, status changes, and images) inside `invalidateUserState` during session teardown, resolving multi-user data isolation at rest by clearing the sandbox completely upon logout. |
 | 2026-08-13 | IP-2.7 (full background bootstrap on login) | Full Flutter suite (`flutter test --no-pub`), `flutter analyze --no-pub --no-fatal-infos`, changed-file `dart format --set-exit-if-changed`; count: 356 pass (3 net new), analyzer 9 info issues | Repository gates pass | `downloadAndRestoreWorkouts` fetches paginated server history via `GET /api/activities?page=N&limit=50` (existing backend endpoint, zero backend changes), deduplicates via `hasWorkout` (by `clientSyncId` and `remoteActivityId`), persists to SQLite through `ActivitySyncModel.fromJson` mapping server JSON to `WorkoutSessionEntity` (including `locations` → `TrackingPointEntity`, `statusChanges` → `StatusChangeEvent`). `SyncCoordinator.syncAll` checks a per-user `history_restored` boolean in `SharedPreferences` (stored via `AuthPersistenceService`); when `false`, fires `onRestoreStart`, runs the pagination loop, sets the flag to `true`, and fires `onRestoreComplete`. Kill-recovery: if the app dies mid-restore, the flag remains `false` and the next launch re-runs the loop, skipping already-inserted rows via `hasWorkout`. `SyncProgress` enum and `syncProgressProvider` drive a reactive `SyncHistoryBanner` widget on the home screen (spinner + "Restoring your workout history…" while `restoring`, hidden otherwise). `trackingHistoryProvider` listens to `syncProgressProvider` and auto-refreshes the history list on `completed`. Logout resets the flag to `false` via `setHistoryRestored(false)` in `invalidateUserState`. No backend changes, no at-rest encryption, no manual device verification claimed. |
 | 2026-08-22 | IP-2.7 specification reconciliation | Static trace of D-004, IP-2.7, MC-1.6/MC-2.3, `user_scope_teardown_provider.dart`, and `local_db_service.dart`; no application gates run | Failed specification review; no code changed | The 2026-08-13 clear-on-logout slice did not resolve IP-2.7: it violates the binding retained-history contract and can erase unsynced workouts and queued deletes. Ordinary logout/account switch/forced loss must retain all owner rows while providers and key access are removed; explicit account deletion remains the purge path. Correction is Step 2 of the implementation runbook. The at-rest design/encryption gate remains open. |
+| 2026-08-31 | IP-2.7 / W1 retained owner data | One focused command across seven suites: 79 tests, including five local database ownership/purge cases and real-SQLite gate tests; `flutter pub get --enforce-lockfile`; `flutter test --no-pub`; `flutter analyze --no-pub --no-fatal-infos`; changed-file `dart format --set-exit-if-changed`; root `git diff --check` | Repository gates pass; MC-1.6/MC-2.3 and at-rest gates pending | Normal session exit no longer invokes the workout purge. The history contract uses an explicit owner ID; teardown awaits its reset and provider invalidation, reset persistence failure blocks cleanup, and pending forced-loss restart reruns owner teardown before credential removal. The real-SQLite A→B→A gate retains synced, unsynced, blocked, and delete-pending rows with points, status, image, and queue; performs zero remote I/O on exit or as B; then performs exactly one create and one delete for the correct IDs after A returns. Live finish-and-exit creates exactly one durable row. The full suite passed 366 tests; analysis reported nine existing infos, zero warnings, and zero errors; formatting changed none of 13 Dart files. The owner-scoped local purge primitive remains covered, but account-deletion E2E is open. W1 changes an internal Flutter repository API, not the backend/server HTTP API. A failed `history_restored=true` completion write can still abort a sync pass before push while work remains queued; Step 3 owns isolation. No schema, migration, exit-time sync/disclosure, encryption, account-deletion E2E, ACTION, device, staging, production, or release claim is made. |

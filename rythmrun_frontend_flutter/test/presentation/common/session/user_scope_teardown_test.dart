@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/session/user_scope_teardown.dart';
 
@@ -28,14 +30,16 @@ void main() {
     );
 
     test(
-      'forced auth loss finalizes before draining and invalidating',
+      'forced auth loss finalizes once before draining and invalidating',
       () async {
         var active = true;
+        var finishCalls = 0;
         final events = <String>[];
         final coordinator = _coordinator(
           hasActive: () => active,
           events: events,
           finish: () async {
+            finishCalls += 1;
             events.add('finish');
             active = false;
             return true;
@@ -47,9 +51,68 @@ void main() {
         );
 
         expect(result.isCompleted, isTrue);
+        expect(finishCalls, 1);
         expect(events, <String>['finish', 'drain', 'invalidate']);
+
+        final repeated = await coordinator.teardown(
+          reason: UserScopeExitReason.forcedAuthenticationLoss,
+        );
+
+        expect(repeated.isCompleted, isTrue);
+        expect(finishCalls, 1);
+        expect(events, <String>[
+          'finish',
+          'drain',
+          'invalidate',
+          'drain',
+          'invalidate',
+        ]);
       },
     );
+
+    test('teardown awaits user-state invalidation before completing', () async {
+      final events = <String>[];
+      final invalidationStarted = Completer<void>();
+      final allowInvalidation = Completer<void>();
+      addTearDown(() {
+        if (!allowInvalidation.isCompleted) {
+          allowInvalidation.complete();
+        }
+      });
+      final coordinator = _coordinator(
+        hasActive: () => false,
+        events: events,
+        invalidate: () async {
+          events.add('invalidate-start');
+          invalidationStarted.complete();
+          await allowInvalidation.future;
+          events.add('invalidate-complete');
+        },
+      );
+
+      var didComplete = false;
+      final pendingTeardown = coordinator
+          .teardown(reason: UserScopeExitReason.voluntaryLogout)
+          .then((result) {
+            didComplete = true;
+            return result;
+          });
+      await invalidationStarted.future;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(didComplete, isFalse);
+      expect(events, <String>['drain', 'invalidate-start']);
+
+      allowInvalidation.complete();
+      final result = await pendingTeardown;
+
+      expect(result.isCompleted, isTrue);
+      expect(events, <String>[
+        'drain',
+        'invalidate-start',
+        'invalidate-complete',
+      ]);
+    });
 
     test(
       'failed finalization blocks auth cleanup and requests recovery',
@@ -210,6 +273,7 @@ DefaultUserScopeTeardown _coordinator({
   Future<bool> Function()? retryCleanup,
   Future<bool> Function()? quiesce,
   Future<void> Function()? discard,
+  Future<void> Function()? invalidate,
 }) {
   return DefaultUserScopeTeardown(
     hasActiveWorkout: hasActive,
@@ -223,9 +287,11 @@ DefaultUserScopeTeardown _coordinator({
     suspendAndDrainWork: () async {
       events.add('drain');
     },
-    invalidateUserState: () {
-      events.add('invalidate');
-    },
+    invalidateUserState:
+        invalidate ??
+        () async {
+          events.add('invalidate');
+        },
     activateWork: (_) {},
   );
 }

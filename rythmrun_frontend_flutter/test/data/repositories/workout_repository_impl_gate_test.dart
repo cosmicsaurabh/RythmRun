@@ -2,16 +2,23 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rythmrun_frontend_flutter/core/network/http_client.dart';
+import 'package:rythmrun_frontend_flutter/core/services/live_tracking_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/user_scope_operation_gate.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/activity_remote_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/datasources/workout_local_datasource.dart';
 import 'package:rythmrun_frontend_flutter/data/models/change_password_response_model.dart';
 import 'package:rythmrun_frontend_flutter/data/repositories/workout_repository_impl.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/activity_image_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/login_request_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/registration_request_entity.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/status_change_event_entity.dart';
+import 'package:rythmrun_frontend_flutter/domain/entities/tracking_point_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/user_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/entities/workout_session_entity.dart';
 import 'package:rythmrun_frontend_flutter/domain/repositories/auth_repository.dart';
+import 'package:rythmrun_frontend_flutter/domain/repositories/live_tracking_repository.dart';
+import 'package:rythmrun_frontend_flutter/presentation/common/session/user_scope_teardown.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
 
 import '../../support/local_db_test_harness.dart';
 
@@ -90,6 +97,301 @@ void main() {
         remoteDataSource.createCalls,
         greaterThan(callsBeforeSuspendedSync),
       );
+    },
+  );
+
+  test(
+    'retained A work syncs and deletes once after forced A-B-A exit',
+    () async {
+      const userA = 7;
+      const userB = 8;
+      final service = await harness.openService();
+      final remoteDataSource = _BlockingActivityRemoteDataSource();
+      final authRepository = _FakeAuthRepository(userA);
+      final operationGate = UserScopeOperationGate()..activate(userA);
+      final repository = WorkoutRepositoryImpl(
+        WorkoutLocalDataSource(service),
+        authRepository,
+        remoteDataSource,
+        operationGate: operationGate,
+      );
+      final now = DateTime.utc(2026, 8, 31, 6);
+
+      final syncedWorkoutId = await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(
+          clientSyncId: 'retained-synced',
+          userId: userA,
+          remoteActivityId: 7001,
+        ).copyWith(
+          trackingPoints: <TrackingPointEntity>[
+            TrackingPointEntity(
+              latitude: 12.0,
+              longitude: 77.0,
+              timestamp: now,
+            ),
+          ],
+          statusChanges: <StatusChangeEvent>[
+            StatusChangeEvent(status: WorkoutStatus.completed, timestamp: now),
+          ],
+        ),
+        userId: userA,
+      );
+      await service.insertWorkoutImage(
+        ActivityImageEntity(
+          localWorkoutId: syncedWorkoutId,
+          clientImageId: 'retained-image',
+          localPath: '/synthetic/retained-image.jpg',
+          contentType: 'image/jpeg',
+          sizeBytes: 128,
+          status: ActivityImageSyncStatus.queued,
+          createdAt: now,
+          updatedAt: now,
+        ),
+        userId: userA,
+      );
+      await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: 'retained-upload', userId: userA),
+        userId: userA,
+      );
+      final blockedWorkoutId = await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(clientSyncId: 'retained-blocked', userId: userA),
+        userId: userA,
+      );
+      await service.markWorkoutSyncBlocked(
+        userId: userA,
+        localWorkoutId: blockedWorkoutId,
+        clientSyncId: 'retained-blocked',
+        reason: 'ACTIVITY_DOMAIN_INVALID',
+      );
+      final deletePendingWorkoutId = await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(
+          clientSyncId: 'retained-delete',
+          userId: userA,
+          remoteActivityId: 7002,
+        ),
+        userId: userA,
+      );
+      await service.deleteWorkoutFromLocalDatabase(
+        deletePendingWorkoutId,
+        userId: userA,
+      );
+      await service.saveWorkoutInLocalDatabase(
+        _completedWorkout(
+          clientSyncId: 'owner-b',
+          userId: userB,
+          remoteActivityId: 8001,
+        ),
+        userId: userB,
+      );
+
+      int? activeUserId = userA;
+      final teardown = DefaultUserScopeTeardown(
+        hasActiveWorkout: () => false,
+        hasUnsavedWorkout: () => false,
+        hasPendingTrackingCleanup: () => false,
+        quiesceTrackingOperations: () async => true,
+        finishWorkout: () async => true,
+        retryWorkoutSave: () async => true,
+        retryTrackingCleanup: () async => true,
+        discardWorkout: () async {},
+        suspendAndDrainWork: operationGate.suspendAndDrain,
+        invalidateUserState: () async {
+          final oldUserId = activeUserId;
+          if (oldUserId == null) {
+            throw StateError('No active owner to invalidate.');
+          }
+          await repository.setHistoryRestored(oldUserId, false);
+          activeUserId = null;
+        },
+        activateWork: (userId) {
+          final numericUserId = int.parse(userId);
+          authRepository.currentUserId = numericUserId;
+          operationGate.activate(numericUserId);
+          activeUserId = numericUserId;
+        },
+      );
+
+      final forcedExit = await teardown.teardown(
+        reason: UserScopeExitReason.forcedAuthenticationLoss,
+      );
+      expect(forcedExit.isCompleted, isTrue);
+      expect(authRepository.historyResetUserIds, <int>[userA]);
+
+      final database = await service.database;
+      expect(
+        await database.query(
+          'workouts',
+          where: 'user_id = ?',
+          whereArgs: <Object?>[userA],
+        ),
+        hasLength(4),
+      );
+      expect(
+        await database.query(
+          'tracking_points',
+          where: 'workout_id = ?',
+          whereArgs: <Object?>[syncedWorkoutId],
+        ),
+        hasLength(1),
+      );
+      expect(
+        await database.query(
+          'status_changes',
+          where: 'workout_id = ?',
+          whereArgs: <Object?>[syncedWorkoutId],
+        ),
+        hasLength(1),
+      );
+      expect(
+        await database.query(
+          'workout_images',
+          where: 'workout_id = ?',
+          whereArgs: <Object?>[syncedWorkoutId],
+        ),
+        hasLength(1),
+      );
+      expect(
+        await database.query(
+          'workout_delete_queue',
+          where: 'user_id = ?',
+          whereArgs: <Object?>[userA],
+        ),
+        hasLength(1),
+      );
+
+      teardown.activateUserScope('$userB');
+      expect(await repository.getWorkout(syncedWorkoutId), isNull);
+      expect(
+        await service.getWorkoutImages(syncedWorkoutId, userId: userB),
+        isEmpty,
+      );
+      expect(remoteDataSource.createCalls, 0);
+      expect(remoteDataSource.deleteCalls, 0);
+      expect(remoteDataSource.deletedActivityIds, isEmpty);
+
+      final bExit = await teardown.teardown(
+        reason: UserScopeExitReason.accountSwitch,
+      );
+      expect(bExit.isCompleted, isTrue);
+      expect(remoteDataSource.createCalls, 0);
+      expect(remoteDataSource.deleteCalls, 0);
+      teardown.activateUserScope('$userA');
+
+      await repository.syncWorkouts();
+      await repository.syncWorkouts();
+
+      expect(remoteDataSource.createCalls, 1);
+      expect(remoteDataSource.deleteCalls, 1);
+      expect(remoteDataSource.deletedActivityIds, <int>[7002]);
+      expect(remoteDataSource.attemptedClientSyncIds, <String>[
+        'retained-upload',
+      ]);
+      expect(authRepository.historyResetUserIds, <int>[userA, userB]);
+      expect(
+        await service.getUnsyncedWorkoutsFromLocalDatabase(userA),
+        isEmpty,
+      );
+      final blockedRows = await database.query(
+        'workouts',
+        columns: <String>['sync_blocked_reason'],
+        where: 'id = ?',
+        whereArgs: <Object?>[blockedWorkoutId],
+      );
+      expect(
+        blockedRows.single['sync_blocked_reason'],
+        'ACTIVITY_DOMAIN_INVALID',
+      );
+      expect(
+        await database.query(
+          'workout_delete_queue',
+          where: 'user_id = ?',
+          whereArgs: <Object?>[userA],
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  test('forced finish-and-exit writes one durable completed workout', () async {
+    const userId = 7;
+    final service = await harness.openService();
+    final remoteDataSource = _BlockingActivityRemoteDataSource();
+    final authRepository = _FakeAuthRepository(userId);
+    final operationGate = UserScopeOperationGate()..activate(userId);
+    final workoutRepository = WorkoutRepositoryImpl(
+      WorkoutLocalDataSource(service),
+      authRepository,
+      remoteDataSource,
+      operationGate: operationGate,
+    );
+    final trackingRepository = _ExitLiveTrackingRepository(
+      DateTime.utc(2026, 8, 31, 6),
+    );
+    final liveNotifier = LiveTrackingNotifier(
+      trackingRepository,
+      workoutRepository,
+      currentUserId: () => authRepository.currentUserId,
+      periodicTimerFactory: (_, _) => _NoopTimer(),
+    );
+    addTearDown(liveNotifier.dispose);
+
+    await liveNotifier.startWorkout(WorkoutType.running);
+    expect(liveNotifier.state.hasActiveSession, isTrue);
+    trackingRepository.currentTime = DateTime.utc(2026, 8, 31, 6, 10);
+
+    final teardown = DefaultUserScopeTeardown(
+      hasActiveWorkout: () => liveNotifier.state.hasActiveSession,
+      hasUnsavedWorkout: () => liveNotifier.hasUnsavedCompletedWorkout,
+      hasPendingTrackingCleanup: () => liveNotifier.hasPendingTrackingCleanup,
+      quiesceTrackingOperations: liveNotifier.quiesceForAccountExit,
+      finishWorkout: () async {
+        final result = await liveNotifier.stopWorkout();
+        return result.isDurablySaved &&
+            !liveNotifier.hasUnsavedCompletedWorkout;
+      },
+      retryWorkoutSave: liveNotifier.retryUnsavedWorkoutSave,
+      retryTrackingCleanup: liveNotifier.retryPendingTrackingCleanup,
+      discardWorkout: () async {
+        await liveNotifier.discardWorkout(forAccountExit: true);
+      },
+      suspendAndDrainWork: operationGate.suspendAndDrain,
+      invalidateUserState:
+          () => workoutRepository.setHistoryRestored(userId, false),
+      activateWork: (_) {},
+    );
+
+    final result = await teardown.teardown(
+      reason: UserScopeExitReason.forcedAuthenticationLoss,
+    );
+
+    expect(result.isCompleted, isTrue);
+    final workouts = await service.getWorkoutsFromLocalDatabase(userId);
+    expect(workouts, hasLength(1));
+    expect(workouts.single.status, WorkoutStatus.completed);
+    expect(workouts.single.endTime, trackingRepository.currentTime);
+    expect(authRepository.historyResetUserIds, <int>[userId]);
+  });
+
+  test(
+    'history reset targets its explicit owner despite current auth changes',
+    () async {
+      const ownerUserId = 7;
+      final service = await harness.openService();
+      final authRepository = _FakeAuthRepository(8);
+      final repository = WorkoutRepositoryImpl(
+        WorkoutLocalDataSource(service),
+        authRepository,
+        _BlockingActivityRemoteDataSource(),
+      );
+
+      await repository.setHistoryRestored(ownerUserId, false);
+      authRepository.currentUserId = null;
+      await repository.setHistoryRestored(ownerUserId, false);
+
+      expect(authRepository.historyResetUserIds, <int>[
+        ownerUserId,
+        ownerUserId,
+      ]);
     },
   );
 
@@ -570,6 +872,7 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
   int deleteCalls = 0;
   bool unauthorizedFirstDelete = false;
   final List<String> attemptedClientSyncIds = <String>[];
+  final List<int> deletedActivityIds = <int>[];
   final Map<String, Object> createErrorsByClientSyncId = <String, Object>{};
 
   @override
@@ -595,6 +898,7 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
   @override
   Future<void> deleteActivity(int activityId) async {
     deleteCalls += 1;
+    deletedActivityIds.add(activityId);
     if (unauthorizedFirstDelete && deleteCalls == 1) {
       throw UnauthorizedException('expired');
     }
@@ -612,6 +916,61 @@ class _BlockingActivityRemoteDataSource implements ActivityRemoteDataSource {
   }
 }
 
+class _ExitLiveTrackingRepository implements LiveTrackingRepository {
+  DateTime currentTime;
+
+  _ExitLiveTrackingRepository(this.currentTime);
+
+  @override
+  Stream<TrackingPointEntity> get locationStream => const Stream.empty();
+
+  @override
+  DateTime now() => currentTime;
+
+  @override
+  Future<LocationServiceStatus> checkPermissions() async {
+    return LocationServiceStatus.granted;
+  }
+
+  @override
+  Future<void> startTracking() async {}
+
+  @override
+  Future<void> stopTracking() async {}
+
+  @override
+  Future<TrackingPointEntity?> getCurrentLocation() async => null;
+
+  @override
+  double calculateDistance(
+    TrackingPointEntity point1,
+    TrackingPointEntity point2,
+  ) {
+    return 0;
+  }
+
+  @override
+  Future<double?> getCurrentElevation() async => null;
+
+  @override
+  Future<bool> requestLocationService() async => true;
+}
+
+class _NoopTimer implements Timer {
+  bool _isActive = true;
+
+  @override
+  bool get isActive => _isActive;
+
+  @override
+  int get tick => 0;
+
+  @override
+  void cancel() {
+    _isActive = false;
+  }
+}
+
 class _FakeAuthRepository implements AuthRepository {
   @override
   Future<UserEntity> refreshCurrentUser() => throw UnimplementedError();
@@ -623,6 +982,7 @@ class _FakeAuthRepository implements AuthRepository {
   Future<void> requestPasswordReset(String email) => throw UnimplementedError();
 
   int? currentUserId;
+  final List<int> historyResetUserIds = <int>[];
 
   _FakeAuthRepository(this.currentUserId);
 
@@ -739,5 +1099,7 @@ class _FakeAuthRepository implements AuthRepository {
   Future<bool> isHistoryRestored(String userId) async => false;
 
   @override
-  Future<void> setHistoryRestored(String userId, bool value) async {}
+  Future<void> setHistoryRestored(String userId, bool value) async {
+    if (!value) historyResetUserIds.add(int.parse(userId));
+  }
 }
