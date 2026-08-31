@@ -14,59 +14,57 @@ proof open) · `In progress` · `Planned` · `Blocked` · `Deferred`
 in [ACTION-REQUIRED.md](./ACTION-REQUIRED.md). "Merged and tested locally" is not
 "done" anywhere in this program.
 
-_Last updated: 2026-08-31 after the W2 schema-free sync-safety implementation,
-verification, and documentation reconciliation on `workout-reliability`._
+_Last updated: 2026-08-31 after the Runbook Step 4 backend sync-boundary
+implementation, verification, and documentation reconciliation on
+`workout-reliability`._
 
 ## Current handoff
 
 - **Branch/base:** `workout-reliability`, based on `origin/main@792bd52`.
-  Current HEAD is W1 commit `1315378`, three commits ahead of `origin/main` and
-  matching `origin/workout-reliability`. Do not amend, reset, commit, or push
-  the current checkpoint without maintainer direction.
-- **Checkpoint:** W2 schema-free sync safety. Runtime changes, focused tests,
-  full Flutter verification, and maintained-document reconciliation are
-  complete. W2 is **Documentation reconciled; unstaged**. The worktree contains
-  14 changed Dart paths (seven library and seven test) and six owning
-  documentation paths; the index is empty. There is no W2 commit.
-- **Current behavior:** restore read/download/completion-write failures remain
-  retryable and report restore failure, but no longer prevent queued workout,
-  delete, or image push in the same owner-valid pass. The restore GET opts into
-  the existing authenticated idempotent replay. Overlapping coordinator
-  requests serialize the whole restore/workout/image flight and schedule at
-  most one same-owner follow-up; the workout repository has the same bounded
-  pass behavior. Typed transport failures stop the remaining workout/delete or
-  image loop after preserving retryable queue state, while classified HTTP
-  status failures retain their existing per-item behavior. Connectivity now
-  follows platform interface state without a timer or public-DNS socket,
-  replays its current state without a listener gap, rejects stale monitor
-  generations, treats `disconnected` to `slow` or `connected` as one recovery,
-  and defers resume sync while a workout is active or paused.
-- **Finding disposition:** W1 is committed as `1315378`. W2 locally corrects
-  the Runbook Step 3 portions of `SYNC-03`, `SYNC-07`, `SYNC-08`, `SYNC-10`,
-  battery `B-03`, and battery `B-07`. The source findings remain active for
-  their broader IP-4 work, including restore item isolation/projections,
-  visible failed state/manual retry, durable sync-state/backoff, and external
-  evidence.
-- **Verification:** one focused command across seven suites passed 79 tests.
-  `flutter pub get --enforce-lockfile` passed; `flutter test --no-pub` passed
-  384 tests; `flutter analyze --no-pub --no-fatal-infos` reported the same nine
-  existing infos, zero warnings, and zero errors. The counted analyzer baseline
-  correctly refused this machine's Dart 3.12.2 because it is stamped for CI's
-  Dart 3.12.1; that designed toolchain guard is not a counted-baseline result.
-  Changed-file formatting and root `git diff --check` pass. W2 changes only
-  Flutter internals; no backend/server HTTP API, schema, or migration changed,
-  so no backend gate was required or claimed.
+  Current HEAD is W2 commit `0b87574`, four commits ahead of `origin/main` and
+  matching `origin/workout-reliability`. W2 was committed and pushed with
+  subject `fix(sync): preserve push progress when restore is unavailable`.
+  Do not amend, reset, commit, or push the current checkpoint without
+  maintainer direction.
+- **Checkpoint:** Runbook Step 4 backend sync-boundary corrections. Runtime,
+  native-ESM service/controller/HTTP-boundary tests, full backend gates, and
+  maintained-document reconciliation are complete. The five backend paths and
+  five owning documentation paths are **Documentation reconciled; unstaged**;
+  the index is empty and there is no Step 4 commit. The new
+  `activity-sync-boundary.test.ts` is untracked, so any later exact staging must
+  include it rather than relying on `git add -u`.
+- **Current behavior:** activity lists now break equal-`startTime` ties with
+  descending activity ID. List/detail/create/update responses await signed
+  image metadata before serialization and continue to hide `s3Key`. A missing,
+  replayed, or final-delete-raced activity DELETE raises the existing typed
+  `ACTIVITY_NOT_FOUND`; the 404 retains its status/message and additively emits
+  `code` and `retryable`. Activity list/detail/delete failures log only the
+  error category rather than a raw storage-path error.
+- **Finding disposition:** W1 is committed as `1315378`; W2 is committed and
+  pushed as `0b87574`. The unstaged Step 4 worktree corrects `SYNC-11`,
+  `SYNC-13`, and `SYNC-15`. The broader source findings remain active: offset
+  paging can still shift under concurrent mutations, remote-image restore is
+  absent, and deletion remains S3-first rather than a durable DB-first outbox.
+- **Verification:** the required gates ran with Node 22.22.3. Dependency restore
+  (`npm ci --no-audit`), Prisma validate/generate, typecheck, build, and
+  built-runtime smoke passed. The three focused
+  service/controller/in-process HTTP-boundary suites passed 54 tests. Full
+  native-ESM Jest passed 519 tests; seven
+  `auth-session.postgres.test.ts` cases skipped locally as expected (27 suites
+  passed, one skipped; 526 tests total). The HTTP boundary uses mocked Prisma
+  and R2, not a real database or storage provider. Root `git diff --check`
+  passes.
 - **Blockers/nonclaims:** IP-0 operational containment remains the release P0.
   No ACTION item, encrypted database/photo design, wrapped-key or backup rule,
   migration/performance/key-loss result, account-deletion E2E, merge, app
-  release, device, staging, or production behavior is verified by W2. W2 does
-  not deliver exit-time disclosure (`SYNC-01b`), a rendered failed state or
-  manual retry (`SYNC-04`), cursor/revision pull, tombstones, ongoing pull,
-  remote-image restore, the full IP-4 sync-state/backoff model, independent
-  coalescing of direct image-repository requests, or any backend/API work.
-- **Next action:** the maintainer reviews the unstaged W2 checkpoint and decides
-  whether to stage it. Do not stage, commit, or push without maintainer
-  direction. Do not begin Step 4 while W2 remains unreviewed.
+  release, device, staging, or production behavior is verified by Step 4. It
+  adds no schema, migration, endpoint, cursor/revision pull, tombstone,
+  projection, remote-image restore, or durable deletion worker. The activity
+  detail GET still uses its legacy message-string not-found branch. No real
+  PostgreSQL/R2, merge, deployment, or released-app behavior is claimed.
+- **Next action:** the maintainer reviews the unstaged Step 4 checkpoint and
+  decides whether to stage it. Do not stage, commit, or push without
+  maintainer direction.
 
 Always verify this snapshot with `git status --short --branch`, `git diff`, and
 `git diff --cached`; git wins if a later action made this handoff stale.
@@ -121,7 +119,7 @@ analysis reported the same nine existing infos and no warnings or errors;
 changed-file formatting and root diff whitespace checks passed. The local
 counted-baseline command was intentionally rejected because Dart 3.12.2 does
 not match its CI stamp of Dart 3.12.1. These are repository results, not manual
-or release evidence.
+or release evidence. W2 was committed and pushed as `0b87574`.
 
 ## Deployment reality — corrected 2026-08-11
 
@@ -202,12 +200,14 @@ All seven delivered; each waits on a device, staging, or hosted gate.
 
 ### IP-3, IP-4, IP-5 — `Planned`
 
-No full package is implemented. W2 locally corrects the schema-free Step 3
-portions of several IP-4 findings, but it is not IP-4.1 and does not change the
-`0 of 6` package count. The source reports remain active and are indexed in the
-[audit register](./AUDIT-REGISTER.md); they are not delivery evidence. See the
-phase files and [implementation runbook](./IMPLEMENTATION-RUNBOOK.md) for the
-full contracts and sequence.
+No full package is implemented. W2 commit `0b87574` corrects the schema-free
+Step 3 portions of several IP-4 findings, and the unstaged Step 4 worktree
+corrects three current v1 backend boundary defects. Neither is IP-4.1, so the
+`0 of 6` package count remains unchanged. The source reports remain active and
+are indexed in the [audit register](./AUDIT-REGISTER.md); they are not delivery
+evidence. See the phase files and
+[implementation runbook](./IMPLEMENTATION-RUNBOOK.md) for the full contracts
+and sequence.
 
 - **IP-3** durable engine + checkpoint DAO · exactly-once finalize · recovery UX
   · Android foreground/screen-off tracking · remove long-session quadratic UI.
@@ -226,11 +226,12 @@ full contracts and sequence.
 Lowest-numbered unblocked packages. The operational IP-0 gates run in parallel
 and are not substitutes.
 
-1. **Review W2 schema-free sync safety** — inspect the unstaged runtime, test,
-   and documentation checkpoint and decide whether to stage it.
-2. **Runbook Step 4 backend sync-boundary corrections** — only after W2 is
-   reviewed and committed with explicit maintainer direction; keep released-app
-   compatibility and do not combine it with a migration.
+1. **Review Runbook Step 4 backend sync-boundary corrections** — inspect the
+   unstaged runtime, test, and documentation checkpoint and decide whether to
+   stage it.
+2. **Runbook Step 5 schema-free tracking truth and UI dead ends** — begin only
+   after Step 4 is accepted; keep behavior changes focused and do not start the
+   durable schema early.
 
 ## Delivery history
 
@@ -249,6 +250,7 @@ and are not substitutes.
 | 2026-08-13 | IP-2.7 local data clearing on logout — merged in PRs #188/#189. This implementation purges every owner workout and queued delete during ordinary session teardown; the 2026-08-22 specification reconciliation found that it violates D-004 and the IP-2.7 retained-history contract. Correction is runbook Step 2; no correction is claimed here. | `main` (behavior to correct) |
 | 2026-08-13 | IP-2.7 one-shot background bootstrap — merged in PR #189. `downloadAndRestoreWorkouts` restarts from page 1 after interruption and deduplicates by `clientSyncId`/remote ID; `history_restored` is a per-user boolean. There is no cursor, revision, tombstone, ongoing pull, or remote-image restore. | `main` |
 | 2026-08-31 | W1 retained-owner-data correction — normal session exit retains owner rows/queues and awaits explicit-owner restore-flag reset plus provider invalidation | `workout-reliability@1315378` |
+| 2026-08-31 | W2 schema-free sync safety — restore failure no longer blocks queued push; sync flights coalesce; transport failures stop bounded passes; connectivity uses platform state without public-DNS polling | `workout-reliability@0b87574` |
 
 Each phase file's evidence log carries the detail, including what was
 deliberately *not* claimed. The auth-hardening slice's per-phase detail lives in
@@ -307,7 +309,7 @@ until its package's manual checks carry dated evidence.
 | Audit finding | Disposition |
 | --- | --- |
 | Multiple Prisma clients/pools | IP-1.6 centralized on one adapter-backed client; deployed connection measurement in MC-1.12/MC-1.13 |
-| Generic/string-matched backend errors | IP-2.6 delivered typed errors in the *mounted* image controller; the auth-hardening error contract (Phase 4) then moved the stable code from `error`→`code` across every mounted emitter (auth middleware incl. `AUTH_ACCESS_INVALID`, rate-limit, activity-image) and made the Flutter client branch on `code`, deleting its `error`-string heuristic; the unmounted social controllers still branch on message strings |
+| Generic/string-matched backend errors | IP-2.6 delivered typed errors in the *mounted* image controller; the auth-hardening error contract (Phase 4) then moved the stable code from `error`→`code` across mounted auth/rate-limit/activity-image emitters and made the Flutter client branch on `code`. The unstaged Step 4 worktree moves activity DELETE to the existing typed mapper; `GET /activities/:id` and the unmounted social controllers still contain legacy message-string branches |
 | `app.ts` listens and starts jobs on import | Seam added in IP-0.5, ownership in IP-1.6; deployed shutdown is MC-1.13, readiness maturity IP-5.1 |
 | Environment loads after imported R2 dependencies | Fixed in IP-0.5 and live; a deployed fail-closed smoke is still owed (MC-0.5 area) |
 | Health ignores dependencies; cold start slow | IP-5.1 |
@@ -319,7 +321,7 @@ until its package's manual checks carry dated evidence.
 | Duplicate local/object-storage avatar implementations | Local pipeline removed in IP-0.3/0.4; deployed route inventory remains |
 | Conflicting Android Gradle files | Duplicate authority removed in `a9f2535`; toolchain bumped in `f6b9d0a`; foreground-service/signing/release proof stays IP-3.4/IP-5.5 |
 | Google identity added outside the audit sequence | Merged; MC-2.4 owns migration, console, Android device, and branding. D-008 keeps iOS out of release scope unless a later decision reopens it |
-| Connectivity initial-state/public-DNS defect | W2 repository correction locally verified; full IP-4.1 state/retry package and external evidence remain open |
+| Connectivity initial-state/public-DNS defect | W2 repository correction committed as `0b87574`; full IP-4.1 state/retry package and external evidence remain open |
 | iOS configuration/readiness incomplete | D-008 already declares Android-only release scope; keep iOS scaffolding explicitly unsupported unless a later decision funds and proves it |
 | Production ad IDs / early monetization | IP-5.5/5.7 |
 | Stale README/backend/config/privacy claims | IP-5.6. Includes the open fact that both map screens fetch tiles from `tile.openstreetmap.org` while the privacy policy describes no third-party contact |

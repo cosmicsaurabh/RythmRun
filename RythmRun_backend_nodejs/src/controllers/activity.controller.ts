@@ -134,11 +134,11 @@ export class ActivityController {
 
             // Transform and validate query parameters
             const queryDto = plainToClass(GetActivitiesQueryDto, query);
-            const errors = await validate(queryDto, { 
+            const errors = await validate(queryDto, {
                 forbidUnknownValues: true,
-                whitelist: true 
+                whitelist: true
             });
-            
+
             if (errors.length > 0) {
                 return res.status(400).json({
                     status: 'error',
@@ -159,7 +159,7 @@ export class ActivityController {
             });
 
         } catch (error) {
-            console.error('Get activities error:', error);
+            console.error(`Get activities error (${safeErrorName(error)})`);
             return res.status(500).json({
                 status: 'error',
                 message: 'Internal server error'
@@ -192,7 +192,7 @@ export class ActivityController {
                 });
             }
 
-            console.error('Get activity error:', error);
+            console.error(`Get activity error (${safeErrorName(error)})`);
             return res.status(500).json({
                 status: 'error',
                 message: 'Internal server error'
@@ -279,14 +279,12 @@ export class ActivityController {
             });
 
         } catch (error: any) {
-            if (error?.message === 'Activity not found or unauthorized') {
-                return res.status(404).json({
-                    status: 'error',
-                    message: error.message
-                });
+            const validationResponse = sendActivityError(res, error);
+            if (validationResponse) {
+                return validationResponse;
             }
 
-            console.error('Delete activity error:', error);
+            console.error(`Delete activity error (${safeErrorName(error)})`);
             return res.status(500).json({
                 status: 'error',
                 message: 'Internal server error'
