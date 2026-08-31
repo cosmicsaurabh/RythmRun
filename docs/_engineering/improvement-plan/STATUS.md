@@ -14,42 +14,56 @@ proof open) · `In progress` · `Planned` · `Blocked` · `Deferred`
 in [ACTION-REQUIRED.md](./ACTION-REQUIRED.md). "Merged and tested locally" is not
 "done" anywhere in this program.
 
-_Last updated: 2026-08-22 after the documentation-only repository-arming
-follow-up on `workout-reliability`._
+_Last updated: 2026-08-31 after the W1 retained-owner-data correction and
+documentation reconciliation on `workout-reliability`._
 
 ## Current handoff
 
 - **Branch/base:** `workout-reliability`, based on `origin/main@792bd52`.
-  Current HEAD is the pre-existing local, unpushed documentation commit
-  `6c75fb2` (`i dont know`), one commit ahead of `origin/main`. Do not amend,
-  reset, or push it without maintainer direction.
-- **Checkpoint:** W0 repository arming only. The complete audit register, resume
-  protocol, live handoff, and current-behavior documentation corrections are
-  ready in the worktree for maintainer review. All 12 changed paths are
-  documentation/control files and are staged for review. Nothing from this
-  follow-up is committed or pushed.
-- **Staged paths:** `AGENTS.md`, `CLAUDE.md`, root `README.md`, the auth
-  architecture and sync audit, plus `ACTION-REQUIRED.md`, the improvement
-  README, runbook, STATUS, IP-1/IP-2 phase files, and new
-  `AUDIT-REGISTER.md`.
+  Current HEAD is W0 documentation commit `53cb751`, two commits ahead of
+  `origin/main` and matching `origin/workout-reliability`. Do not amend, reset,
+  or push any further checkpoint without maintainer direction.
+- **Checkpoint:** W1 retained owner data at session exit. The runtime change,
+  focused tests, full Flutter verification, and maintained-document
+  reconciliation are complete. W1 is **Documentation reconciled; unstaged**.
+  The worktree contains 13 changed Dart paths (seven library and six test) and
+  the seven owning documentation paths; the index is empty. There is no W1
+  commit.
 - **Current behavior:** ordinary logout, account switch, and forced
-  authentication loss still fire `clearLocalWorkouts(userId)` and
-  `setHistoryRestored(false)` without awaiting either future. The purge can
-  erase all owner rows and queued deletes. Runbook Step 2 records the correction
-  target, but no runtime or test change has begun.
-- **Finding disposition:** W0 resolves no runtime finding. `SYNC-01` and
-  `SYNC-09` remain open, every source audit is retained, and the audit register
-  maps each finding group to its later checkpoint and retirement gate.
-- **Verification:** documentation checks are recorded below. No application
-  gate is claimed for this documentation-only follow-up. The Flutter runtime and
-  test tree has no worktree diff from HEAD.
+  authentication loss retain every owner-scoped workout, queued deletion,
+  point, status, and activity-image row. Teardown awaits the old user's
+  explicit-owner `history_restored=false` write and user-scope invalidation
+  before credential cleanup completes. The persistence boundary verifies both
+  write success and readback; a failed reset leaves providers and credentials
+  available for recovery instead of completing cleanup. A forced-loss exit
+  left pending across restart reruns that owner's teardown before credential
+  removal. Provider and SQL ownership keep retained A rows inaccessible to B.
+  The owner-scoped local purge primitive remains intact for a future explicit
+  account-deletion path; no in-app deletion flow currently invokes it.
+- **Finding disposition:** the W1 repository corrections for `SYNC-01` / F-01
+  and `SYNC-09` are implemented and locally verified. MC-1.6 and MC-2.3 remain
+  pending, `SYNC-01b` remains open, and every source audit remains active until
+  its full retirement gate passes.
+- **Verification:** one focused command across seven suites passed 79 tests,
+  including five local database ownership/purge cases and real-SQLite gate
+  coverage. `flutter pub get --enforce-lockfile` passed; `flutter test --no-pub`
+  passed 366 tests; the analyzer command reported nine existing infos, zero
+  warnings, and zero errors; changed-file `dart format --set-exit-if-changed`
+  changed none of the 13 Dart files; root `git diff --check` passed. W1 changes
+  an internal Flutter repository API, but no backend or server HTTP API; no
+  backend gate was required or claimed.
 - **Blockers/nonclaims:** IP-0 operational containment remains the release P0.
-  No ACTION item, runtime correction, encryption-at-rest design,
-  account-deletion E2E, merge, app release, device, staging, or production
-  behavior is verified by this checkpoint.
-- **Next action:** the maintainer reviews and commits the staged W0
-  documentation. Do not push or begin Step 2 unless the maintainer explicitly
-  asks.
+  No ACTION item, encrypted database/photo design, wrapped-key or backup rule,
+  migration/performance/key-loss result, account-deletion E2E, merge, app
+  release, device, staging, or production behavior is verified by W1. W1 also
+  does not deliver exit-time sync/disclosure (`SYNC-01b`), cursor pull,
+  tombstones, remote-image restore, or any Step 3 behavior. A failed
+  `history_restored=true` completion write can still abort a sync pass before
+  push while the durable work remains queued; Step 3 owns that isolation.
+- **Next action:** the maintainer reviews the unstaged W1 checkpoint and decides
+  whether to stage it. Do not stage, commit, or push without maintainer
+  direction. Step 3 requires W1 to be accepted and committed plus explicit
+  maintainer authorization to begin W2.
 
 Always verify this snapshot with `git status --short --branch`, `git diff`, and
 `git diff --cached`; git wins if a later action made this handoff stale.
@@ -87,8 +101,16 @@ plus the IP-2.7 bootstrapping work (3 net new tests).
 
 W0 documentation verification on 2026-08-22: tracked diff whitespace check,
 all-changed-file trailing-whitespace scan, and relative Markdown-link scan pass;
-the staged checkpoint contains only documentation/control files, and both
-application trees match HEAD. No application gate is claimed for W0.
+the checkpoint contained only documentation/control files, and both application
+trees matched its parent. W0 was committed locally as `53cb751`; no application
+gate is claimed for it.
+
+W1 local verification on 2026-08-31: one focused command across seven suites
+passed 79 tests, including five local database ownership/purge cases and the
+real-SQLite gate tests; locked Flutter restore passed; all 366 Flutter tests
+passed; analysis reported nine existing infos and no warnings or errors;
+formatting changed none of the 13 Dart files; root diff whitespace check passed.
+These are repository results, not manual or release evidence.
 
 ## Deployment reality — corrected 2026-08-11
 
@@ -163,7 +185,7 @@ All seven delivered; each waits on a device, staging, or hosted gate.
 | 2.4 Profile, recovery, deletion | Verification | ✓ | Code delivered for profile, password recovery, and account deletion slices. Production exposure gated by MC-2.5 |
 | 2.5 Private routes; disable social | Verification | ✓ | Merged (PR #165, `bd78d9a`). Apply the migration on staging/production; complete the IP-5.6 policy review |
 | 2.6 API abuse controls & typed errors | Verification | ✓ | Code delivered for abuse-control and storage-boundary slices (items 1–9). MC-2.6 owns deployed edge configuration |
-| 2.7 Protect retained routes/photos at rest | In progress | △ | Per-user SQL scoping and a one-shot background bootstrap exist. Current normal-session teardown purges all owner rows without awaiting the purge or bootstrap-flag reset, violating D-004 and risking unsynced work/queued deletes. Runbook Step 2 is planned but not started. The threat-model, encrypted-store/library/performance, backup, key-loss, account-deletion E2E, and device gates remain open |
+| 2.7 Protect retained routes/photos at rest | In progress | △ | W1 repository behavior now retains every owner row and queued operation across normal session exit and awaits the restore-flag reset/invalidation. The plaintext-store threat model, encrypted-store/library/performance decision, backup and key-loss behavior, account-deletion E2E, MC-1.6/MC-2.3, and device gates remain open |
 | 2.8 Google identity extension | Verification | ✓ | Merged `c805f62`. MC-2.4. Its no-implicit-link behavior is superseded by 2.9 |
 | 2.9 Email verification & safe linking | Verification | ✓ | Merged (PR #164). MC-2.5 |
 
@@ -191,11 +213,11 @@ the full contracts and sequence.
 Lowest-numbered unblocked packages. The operational IP-0 gates run in parallel
 and are not substitutes.
 
-1. **Review W0 repository arming** — inspect and commit the staged
-   control-document follow-up. No code work is authorized by this handoff.
-2. **Runbook Step 2 / IP-2.7 correction** — when the maintainer explicitly asks
-   to begin code, retain owner data across normal session exit and await teardown
-   reset/invalidation. Step 3 remains behind that checkpoint.
+1. **Review W1 retained-owner-data correction** — inspect the unstaged runtime,
+   test, and documentation checkpoint and decide whether to stage it.
+2. **Runbook Step 3 / W2 sync safety** — only after W1 is accepted and committed
+   and the maintainer explicitly authorizes W2, isolate restore failure from
+   push and make sync passes complete. No Step 3 work has begun.
 
 ## Delivery history
 

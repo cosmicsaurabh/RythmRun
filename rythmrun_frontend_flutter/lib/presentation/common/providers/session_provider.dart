@@ -179,6 +179,36 @@ class SessionNotifier extends StateNotifier<SessionData> {
       if (!_isSessionOperationCurrent(generation)) return;
       if (hasPendingCleanup) {
         await _authenticationAttemptGate.suspendAndDrain();
+        final pendingUser = await _authRepository.getCurrentUser();
+        if (!_isSessionOperationCurrent(generation)) return;
+        if (pendingUser != null) {
+          try {
+            _userScopeTeardown.activateUserScope(pendingUser.id);
+            final teardown = await _userScopeTeardown.teardown(
+              reason: UserScopeExitReason.forcedAuthenticationLoss,
+            );
+            if (!_isSessionOperationCurrent(generation)) return;
+            if (!teardown.isCompleted) {
+              state = SessionData(
+                state: SessionState.checking,
+                errorMessage:
+                    teardown.message ?? 'Account cleanup failed. Please retry.',
+                exitRequirement: teardown.requirement,
+                pendingExitReason: UserScopeExitReason.forcedAuthenticationLoss,
+              );
+              return;
+            }
+          } catch (_) {
+            if (!_isSessionOperationCurrent(generation)) return;
+            state = const SessionData(
+              state: SessionState.checking,
+              errorMessage: 'Account cleanup failed. Please retry.',
+              exitRequirement: UserScopeExitRequirement.accountCleanup,
+              pendingExitReason: UserScopeExitReason.forcedAuthenticationLoss,
+            );
+            return;
+          }
+        }
         // Finishing an exit interrupted by process death is still an exit:
         // clear the native Google session here too, so a forced loss that
         // completes on restart leaves the same clean state as one that ran to

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rythmrun_frontend_flutter/core/di/injection_container.dart';
 import 'package:rythmrun_frontend_flutter/presentation/common/session/user_scope_teardown.dart';
@@ -18,19 +17,7 @@ userScopeTeardownProvider = Provider<UserScopeTeardown>((ref) {
   final operationGate = ref.watch(userScopeOperationGateProvider);
   String? activeUserId;
 
-  void invalidateUserState({bool includeEntryForms = true}) {
-    final userId = int.tryParse(activeUserId ?? '');
-    if (userId != null && userId > 0) {
-      try {
-        ref.read(workoutRepositoryProvider).clearLocalWorkouts(userId);
-        ref.read(workoutRepositoryProvider).setHistoryRestored(false);
-      } catch (e) {
-        debugPrint(
-          'Teardown: Failed to clear local workouts for user $userId: $e',
-        );
-      }
-    }
-
+  void invalidateProviders({bool includeEntryForms = true}) {
     ref.invalidate(liveTrackingProvider);
     ref.invalidate(trackingHistoryProvider);
     ref.invalidate(trackingHistoryDetailsProvider);
@@ -50,6 +37,16 @@ userScopeTeardownProvider = Provider<UserScopeTeardown>((ref) {
     activeUserId = null;
   }
 
+  Future<void> invalidateUserState() async {
+    final ownerUserId = int.tryParse(activeUserId ?? '');
+    if (ownerUserId != null && ownerUserId > 0) {
+      await ref
+          .read(workoutRepositoryProvider)
+          .setHistoryRestored(ownerUserId, false);
+    }
+    invalidateProviders();
+  }
+
   void activateWork(String userId) {
     final numericUserId = int.tryParse(userId);
     if (numericUserId == null || numericUserId <= 0) {
@@ -66,7 +63,7 @@ userScopeTeardownProvider = Provider<UserScopeTeardown>((ref) {
     if (activeUserId != userId) {
       // Providers can be recreated by still-mounted widgets between teardown
       // and the auth-state frame. Clear them again before publishing B.
-      invalidateUserState(includeEntryForms: false);
+      invalidateProviders(includeEntryForms: false);
     }
     operationGate.activate(numericUserId);
     activeUserId = userId;

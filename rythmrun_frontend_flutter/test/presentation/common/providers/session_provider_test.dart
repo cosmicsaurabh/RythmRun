@@ -86,6 +86,53 @@ void main() {
       },
     );
 
+    test(
+      'credential cleanup waits for user-scope teardown to complete',
+      () async {
+        final events = <String>[];
+        final allowTeardown = Completer<void>();
+        addTearDown(() {
+          if (!allowTeardown.isCompleted) {
+            allowTeardown.complete();
+          }
+        });
+        final repository = _FakeAuthRepository(events: events);
+        final teardown = _FakeUserScopeTeardown(
+          events: events,
+          allowTeardown: allowTeardown,
+        );
+        final notifier = SessionNotifier(
+          repository,
+          teardown,
+          autoInitialize: false,
+        );
+        addTearDown(notifier.dispose);
+        notifier.onLoginSuccess(userA);
+
+        final pendingLogout = notifier.logout();
+        await _flushAsyncWork();
+
+        expect(events, <String>['activate:7', 'teardown']);
+        expect(repository.clearCalls, 0);
+        expect(notifier.state.state, SessionState.checking);
+        expect(notifier.state.user, userA);
+
+        allowTeardown.complete();
+        final result = await pendingLogout;
+
+        expect(result.isCompleted, isTrue);
+        expect(events, <String>[
+          'activate:7',
+          'teardown',
+          'mark-cleanup',
+          'remote',
+          'clear',
+        ]);
+        expect(repository.clearCalls, 1);
+        expect(notifier.state.state, SessionState.unauthenticated);
+      },
+    );
+
     test('active workout blocks logout until a decision is supplied', () async {
       final events = <String>[];
       final repository = _FakeAuthRepository(events: events);
@@ -237,6 +284,15 @@ void main() {
         // effects, so Google was not signed out then; completing the exit on
         // restart must still clear the native Google session.
         expect(repository.googleSignOutCalls, 1);
+        expect(events, <String>[
+          'activate:7',
+          'mark-cleanup',
+          'teardown',
+          'activate:7',
+          'activate:7',
+          'teardown',
+          'clear',
+        ]);
       },
     );
 
@@ -460,8 +516,46 @@ void main() {
       expect(notifier.state.user, isNull);
       expect(repository.currentUser, isNull);
       expect(repository.authCleanupPending, isFalse);
-      expect(events, <String>['clear']);
+      expect(events, <String>['activate:7', 'teardown', 'clear']);
     });
+
+    test(
+      'startup blocks credential cleanup when retained-owner teardown fails',
+      () async {
+        final events = <String>[];
+        final repository = _FakeAuthRepository(
+          events: events,
+          currentUser: userA,
+          authCleanupPending: true,
+        );
+        final notifier = SessionNotifier(
+          repository,
+          _FakeUserScopeTeardown(
+            events: events,
+            teardownResult: const UserScopeTeardownResult.blocked(
+              requirement: UserScopeExitRequirement.accountCleanup,
+              message: 'history reset failed',
+            ),
+          ),
+        );
+        addTearDown(notifier.dispose);
+
+        await _flushAsyncWork();
+
+        expect(notifier.state.state, SessionState.checking);
+        expect(notifier.state.user, isNull);
+        expect(notifier.state.errorMessage, 'history reset failed');
+        expect(
+          notifier.state.pendingExitReason,
+          UserScopeExitReason.forcedAuthenticationLoss,
+        );
+        expect(repository.currentUser, userA);
+        expect(repository.authCleanupPending, isTrue);
+        expect(repository.clearCalls, 0);
+        expect(repository.googleSignOutCalls, 0);
+        expect(events, <String>['activate:7', 'teardown']);
+      },
+    );
 
     test(
       'refreshing verification state commits a newly verified email',
@@ -1108,12 +1202,14 @@ class _FakeUserScopeTeardown implements UserScopeTeardown {
   final UserScopeExitRequirement requirement;
   final UserScopeTeardownResult teardownResult;
   final bool throwRequirement;
+  final Completer<void>? allowTeardown;
 
   _FakeUserScopeTeardown({
     required this.events,
     this.requirement = UserScopeExitRequirement.none,
     this.teardownResult = const UserScopeTeardownResult.completed(),
     this.throwRequirement = false,
+    this.allowTeardown,
   });
 
   @override
@@ -1133,6 +1229,7 @@ class _FakeUserScopeTeardown implements UserScopeTeardown {
     UserScopeExitDecision? decision,
   }) async {
     events.add('teardown');
+    await allowTeardown?.future;
     return teardownResult;
   }
 }

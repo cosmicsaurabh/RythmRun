@@ -49,11 +49,11 @@ class SyncCoordinator {
     }
 
     try {
-      final isRestored = await _workoutRepository.isHistoryRestored();
+      final isRestored = await _workoutRepository.isHistoryRestored(userId);
       if (!isRestored) {
         onRestoreStart?.call();
         await _workoutRepository.downloadAndRestoreWorkouts();
-        await _workoutRepository.setHistoryRestored(true);
+        await _workoutRepository.setHistoryRestored(userId, true);
         onRestoreComplete?.call();
       }
 

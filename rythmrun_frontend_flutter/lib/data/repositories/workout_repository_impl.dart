@@ -481,22 +481,24 @@ class WorkoutRepositoryImpl implements WorkoutRepository {
   }
 
   @override
-  Future<bool> isHistoryRestored() async {
+  Future<bool> isHistoryRestored(int ownerUserId) async {
+    if (ownerUserId <= 0) {
+      throw ArgumentError.value(ownerUserId, 'ownerUserId', 'Must be positive');
+    }
     try {
-      final userId = await getCurrentUserId();
-      if (userId == null) return false;
-      return await _authRepository.isHistoryRestored(userId.toString());
+      return await _authRepository.isHistoryRestored(ownerUserId.toString());
     } catch (e) {
       throw Exception('Failed to check if history is restored: $e');
     }
   }
 
   @override
-  Future<void> setHistoryRestored(bool value) async {
+  Future<void> setHistoryRestored(int ownerUserId, bool value) async {
+    if (ownerUserId <= 0) {
+      throw ArgumentError.value(ownerUserId, 'ownerUserId', 'Must be positive');
+    }
     try {
-      final userId = await getCurrentUserId();
-      if (userId == null) return;
-      await _authRepository.setHistoryRestored(userId.toString(), value);
+      await _authRepository.setHistoryRestored(ownerUserId.toString(), value);
     } catch (e) {
       throw Exception('Failed to set history restored flag: $e');
     }
