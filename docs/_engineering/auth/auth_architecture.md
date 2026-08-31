@@ -6,7 +6,9 @@ This document provides a high-level overview of the authentication, session stat
 
 ## Session States
 
-The application's active session is represented by `SessionState` and managed inside [session_provider.dart](file:///Users/saurabhreshape/per-repo/RythmRun/rythmrun_frontend_flutter/lib/presentation/common/providers/session_provider.dart):
+The application's active session is represented by `SessionState` and managed
+inside
+[`session_provider.dart`](../../../rythmrun_frontend_flutter/lib/presentation/common/providers/session_provider.dart):
 
 ```mermaid
 stateDiagram-v2
@@ -15,11 +17,11 @@ stateDiagram-v2
     checking --> authenticated : Fresh credentials found
     checking --> authenticatedOffline : Expired credentials (offline allowed)
     checking --> unauthenticated : No credentials / Revoked
-    
+
     state authenticated {
         [*] --> online
     }
-    
+
     state authenticatedOffline {
         [*] --> offlineMode
     }
@@ -33,7 +35,9 @@ stateDiagram-v2
 
 - **`initial`**: The default state before any initialization checks have run.
 - **`checking`**: The state when the app is executing startup database reads or active online/offline validation checks.
-- **`authenticated`**: Full access. The user has valid, fresh credentials and is fully synced with the backend.
+- **`authenticated`**: The user has valid, fresh credentials and can use online
+  operations. Workout/image sync may still be queued, restoring, blocked, or
+  failed; this state does not mean that data is fully synchronized.
 - **`authenticatedOffline`**: Bounded offline access. The user is logged in locally, but the app operates in offline-first mode. Direct API mutations and sync are disabled via the `OnlineOperationGuard`.
 - **`unauthenticated`**: Guest state. The user must sign in or register to access the app.
 - **`refreshing`**: A manual token refresh is in progress.
@@ -50,19 +54,19 @@ sequenceDiagram
     participant Provider as SessionProvider
     participant DB as Platform Secure Storage
     participant API as Backend (onrender.com)
-    
+
     App->>Provider: Initialize Session (Boot)
     Provider->>DB: Read user credentials & offline policy (Parallelized)
     DB-->>Provider: Returns (user, expired?, 7-day-ok?)
-    
+
     alt User exists & within 7-day window
         alt Token is expired
             Provider-->>App: Emit authenticatedOffline (Instantly opens Home Screen)
             Note over Provider, API: Silent Background Refresh
-            Provider->>API: POST /auth/refresh (unawaited)
+            Provider->>API: POST /api/users/refresh-token (unawaited)
             alt Refresh Success
                 API-->>Provider: Return new token pair
-                Provider-->>App: Transition to authenticated (Synced)
+                Provider-->>App: Transition to authenticated (Online)
             else Refresh Rejected (401 Revoked)
                 API-->>Provider: Return 401
                 Provider->>DB: Clear local session
@@ -73,7 +77,7 @@ sequenceDiagram
         else Token is fresh
             Provider-->>App: Emit authenticated (Instantly opens Home Screen)
             Note over Provider, API: Silent Background Validation
-            Provider->>API: GET /auth/validate-session (unawaited)
+            Provider->>API: GET /api/users/me (unawaited)
             alt Validation Invalid (401)
                 API-->>Provider: Return 401
                 Provider->>DB: Clear local session
@@ -92,22 +96,49 @@ sequenceDiagram
 
 ---
 
-## Data Clearance on Logout (Multi-User Privacy at Rest)
+## Session exit and retained owner data
 
-To guarantee complete separation of local user data on shared devices:
-- **Logout Database Purge:** When a user logs out (voluntary or forced), the app immediately wipes all local workouts, tracking points, and cached image metadata belonging to that `userId` from the local SQLite database.
-- **Trophy Preservation:** This satisfies privacy requirements (IP-2.7) by ensuring that one account cannot see or mutate another account's local state.
+Current normal logout, account switch, and forced authentication loss quiesce
+tracking and drain admitted user work. Provider invalidation then calls
+`clearLocalWorkouts(userId)` and `setHistoryRestored(false)` without awaiting
+either future. The purge deletes every owner workout and queued remote deletion;
+SQLite cascades remove the related points, status changes, and activity-image
+rows.
+
+Provider state and local reads/mutations are user-scoped, so another account
+cannot read any surviving rows. That boundary does not make the destructive
+normal-session purge safe: it can erase offline work and violates the retained
+history rule in D-004. This is an open IP-2.7 / `SYNC-01` defect.
+
+Runbook Step 2 is planned, not implemented. Its target is to retain every owner
+row across normal session exit, await the bootstrap-flag reset and provider
+invalidation, and reserve destructive purge for explicit account deletion. The
+IP-2.7 encrypted database/file migration, backup exclusion, key-loss behavior,
+and device proof also remain open.
 
 ---
 
 ## Bootstrapping History on Login
 
-When a user logs in (or restores a session after reinstalling/logging out), the app automatically triggers a **Bootstrapping Sync**:
-1. **Background Retrieval:** The synchronization happens in the background immediately at login (via the `SyncCoordinator`’s startup sequence). This pre-populates the local database before the user opens the Activities tab.
-2. **Perceived Latency:** Since data is already written in SQLite, the history screen opens instantly without showing loading spinners.
-3. **Pagination & Rendering:**
-   - **Network:** Paging (e.g., 50 items/page) is used when fetching from the server to prevent timeouts.
-   - **Local SQLite:** Local database queries retrieve all cached items in a single query since reading from SQLite is fast (under 5ms). Visual virtualization is handled in Flutter using `ListView.builder`, keeping memory usage tiny.
+When a user authenticates and the per-user `history_restored` flag is false, the
+`SyncCoordinator` starts a one-shot background bootstrap:
+
+1. It fetches `GET /api/activities?page=N&limit=50` pages. These are full
+   activity payloads, including routes; pagination limits row count but does not
+   guarantee a small response or prevent a timeout.
+2. It inserts only activities not already identified locally by
+   `clientSyncId`/remote ID. If the process stops before completion, the flag
+   stays false and the next run restarts at page 1; deduplication makes the
+   replay idempotent.
+3. It sets the flag true only after all pages complete. Current session exit
+   fires a reset to false without awaiting it and purges the owner's local rows.
+   Step 2 plans to await the reset while retaining those rows, so the same owner
+   can recheck remote history without losing local-first data.
+
+This is transitional restore behavior, not full bidirectional sync. It has no
+cursor/revision, ongoing pull, remote tombstones, remote-image restore, or
+per-item failure isolation, and a restore failure currently prevents push in
+the same coordinator pass. IP-4 owns those corrections.
 
 ---
 

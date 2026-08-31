@@ -10,7 +10,7 @@ published: false
 | Priority | P1 |
 | Target | 1–2 weeks, including physical-device evidence |
 | Owner | Unassigned |
-| Last updated | 2026-07-17 |
+| Last updated | 2026-08-22 |
 | Depends on | IP-1 tracking state/units; IP-2.1–IP-2.3 stable session identity/offline rules for recovery integration |
 | Platform gate | Android first; iOS remains out of release scope until IP-5 |
 | Exit condition | Crash recovery, screen-off, failure-injection, and long-session gates pass |
@@ -23,11 +23,33 @@ After this phase, an active workout is a durable state machine rather than an in
 
 - `live_tracking_provider.dart` keeps the session, start time, current pause, total pause, and points in memory.
 - The first SQLite write occurs only after the user taps Finish.
-- The provider subscribes directly to the global location singleton, while the map maintains another subscription.
+- The provider owns the single production GPS subscription. The map consumes provider state, but still rebuilds full route segments and recreates resources too often.
 - The Android manifest contains foreground location permissions but no complete foreground-location service declaration/permission set.
 - `LiveTrackingService` uses generic `LocationSettings`, not a configured foreground notification lifecycle.
 - Every accepted point copies the full point list, the map rebuilds route segments, and the whole Track screen can update every second; long sessions trend toward quadratic work.
 - App lifecycle handling currently triggers cloud sync but does not checkpoint an active session.
+
+The active [GPS tracking](../tracking/gps-tracking-audit.md),
+[battery/durability](../tracking/battery-durability-audit.md),
+[UX/accessibility](../tracking/workout-tracking-ux-accessibility-audit.md),
+[map/tile](../tracking/map-tile-reliability-audit.md),
+[background design](../tracking/android-background-tracking-design.md), and
+[foreground-service](../tracking/android-foreground-service-audit.md) reports are
+indexed by the implementation runbook rather than copied into this phase's
+delivery evidence. Their reconciliation established these constraints:
+
+- stop/restart GPS on Pause only after the durable engine can serialize the
+  transition and handle resume failure;
+- do not assume a Dart timer proves a five-second screen-off heartbeat while the
+  CPU sleeps; bound claims to committed transitions/points and device evidence;
+- do not add a continuous wake lock, background-location permission, or boot
+  auto-start by default;
+- keep `recoverable` derived from an orphan checkpoint, not stored as another
+  authoritative state;
+- coordinate route-policy versioning and active checkpoints in one SQLite
+  migration after the IP-2.7 storage decision; and
+- treat route-quality thresholds, WAL/journal mode, sampling density, and battery
+  claims as measurement-gated.
 
 ## Scope
 
@@ -225,6 +247,13 @@ All tables are user-reachable only through a parent checkpoint scoped by `user_i
 
 ### IP-3.4 — Implement Android foreground/screen-off tracking
 
+**Architecture decision gate (no code delivered):** the recommended baseline is
+one app-owned minimal `location` foreground service, one cached Flutter engine,
+and the same durable Dart engine used by the UI. It requests no background
+location, does not auto-start at boot, and holds no continuous wake lock by
+default. Notification actions are idempotent durable transitions; Finish is a
+two-step action unless the maintainer records a different product decision.
+
 **Primary files**
 
 - `rythmrun_frontend_flutter/android/app/src/main/AndroidManifest.xml`
@@ -287,7 +316,7 @@ At minimum:
 2. Expose lightweight engine snapshots: current point, total distance, active duration, pace, and a route-display revision/chunk.
 3. Maintain an incremental or bounded display polyline. Sampling/simplification affects rendering only; persisted route fidelity remains intact.
 4. Make widgets use Riverpod selectors so the one-second elapsed tick does not rebuild the whole tracking/map tree.
-5. Remove the map's direct location subscription and full segment reconstruction on each point.
+5. Keep the map on the existing provider-owned GPS feed; remove full segment reconstruction and per-rebuild resource creation on each point.
 6. Lazily build/activate home tabs so an offstage map does not request location before the user enters tracking.
 7. Move existing large image decode/resize/JPEG work off the UI isolate, preserve the durable original/thumbnail/checksum ordering, and add cancellation/failure/frame-time tests.
 8. Measure memory, frame time, DB write time, image processing frame impact, and battery for a synthetic multi-hour route; record device/build configuration.

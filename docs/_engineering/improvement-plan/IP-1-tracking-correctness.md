@@ -10,7 +10,7 @@ published: false
 | Priority | P1 |
 | Target | 7 focused work packages after IP-0 |
 | Owner | Unassigned |
-| Last updated | 2026-07-17 |
+| Last updated | 2026-08-22 |
 | Depends on | IP-0 patched deployment; incident containment remains active until IP-0 exits |
 | Exit condition | Metrics, account-switch, cascade, PATCH, long-payload, and CI gates pass |
 
@@ -19,6 +19,15 @@ published: false
 After this phase, a user can trust the app's distance, active duration, speed, pace, and calorie inputs; paused or rejected GPS movement cannot corrupt those metrics; completed local data is accessible only by its owner; SQLite cascades are enforced; unrelated backend edits preserve route history; and minimum CI protects the corrected behavior.
 
 Repository-only IP-1 work was explicitly selected by the maintainer on 2026-07-11 while IP-0 operational gates remain open. No migration execution, deployment, historic-value rewrite, or production enablement is authorized by this status change; those actions remain in [ACTION-REQUIRED.md](./ACTION-REQUIRED.md).
+
+The active [GPS route-quality audit](../tracking/gps-route-quality-audit.md)
+raised plausible stationary-jitter,
+warm-up, max-speed, elevation, and missing-field risks. It did not include device
+calibration and therefore does not establish replacement thresholds or reopen a
+delivered package by itself. IP-1 remains in Verification; MC-1.5 and runbook
+Step 6 decide whether the v1 policy remains or a versioned IP-1 follow-up is
+required. Do not interpret `altitude == 0.0` as missing data or copy synthetic
+constants into production without an availability seam and device evidence.
 
 ## Why this phase is next
 
@@ -114,7 +123,7 @@ it, is below. The evidence log at the bottom of this file is the record.
 | Pause, move, resume | Paused and bridge movement add 0 m | Fake-stream test + device run |
 | Finish while paused | Open pause excluded exactly once | Fake-clock test |
 | GPS jump then valid point | Jump rejected; valid point uses last accepted anchor | Policy/provider test |
-| A logout → B login | A work drains; local clear succeeds; no A cache or late callback is visible under B | Session/provider/repository integration tests + MC-1.6 |
+| A logout → B login | A work drains; A rows remain owner-scoped and inaccessible under B; no A cache or late callback is visible under B | No-purge session/provider/repository integration tests + MC-1.6 |
 | Delete owned workout | All child rows cascade; foreign key check clean | SQLite migration test |
 | PATCH name only | Route/status rows unchanged | Controller/service plus Prisma query-shape/stateful fake; real PostgreSQL in MC-1.8 |
 | 750-point payload | Authenticated body is parsed and reaches the create handler | Final-tree socket-boundary test; persisted create in MC-1.8 |

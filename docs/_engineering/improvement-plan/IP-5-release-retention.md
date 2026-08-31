@@ -10,7 +10,7 @@ published: false
 | Priority | P2 after all P0/P1 gates |
 | Target | 3–6 weeks for IP-5.1–IP-5.6 release controls; IP-5.7 estimated separately after the gate |
 | Owner | Unassigned |
-| Last updated | 2026-07-17 |
+| Last updated | 2026-08-22 |
 | Depends on | Verified exit gates for IP-0 through IP-4 |
 | Exit condition | Staging, operations, CI/E2E, platform, documentation, and focused-product release gates pass |
 
@@ -286,7 +286,7 @@ An iOS project folder compiling is not evidence of store readiness.
    must say it is the qualified reviewer's call, and no edit to the public
    policy has been made on the basis of this note.
 7. Keep this improvement directory unpublished from the policy site and free of incident evidence/secrets.
-8. Meet third-party attribution and usage obligations on every surface that consumes a third-party source, and keep the list current as surfaces are added. Map tiles are the live case: OpenStreetMap requires visible credit wherever its tiles are displayed. Delivered on the live-tracking and history map screens on 2026-08-11 (`028d469`); a new tile surface inherits the same obligation, and tile-usage-policy limits (traffic, caching, user agent) are still unreviewed.
+8. Meet third-party attribution and usage obligations on every surface that consumes a third-party source, and keep the list current as surfaces are added. Map tiles are the live case: visible OpenStreetMap credit was delivered on the live-tracking and history map screens on 2026-08-11 (`028d469`), and a new tile surface inherits that obligation. Keep the [active map/tile audit](../tracking/map-tile-reliability-audit.md) until its findings are dispositioned, and recheck provider, traffic, cache, application-identification, logging, and degraded-mode behavior against current official policy during runbook Step 11 and release review; a dated static audit is not a continuing compliance claim.
 
 **Acceptance**
 
