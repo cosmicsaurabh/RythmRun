@@ -25,6 +25,9 @@ void main() {
     final sync = coordinator.syncAll();
     await imageRepository.reachedSync.future;
 
+    final overlappingSync = coordinator.syncAll();
+    await _pumpMicrotasks();
+
     expect(workoutRepository.syncCalls, 1);
     expect(imageRepository.syncCalls, 1);
     expect(operationGate.activeLeaseCount, 1);
@@ -38,12 +41,129 @@ void main() {
     expect(didDrain, isFalse);
 
     imageRepository.allowSync.complete();
-    await sync;
+    await Future.wait(<Future<void>>[sync, overlappingSync]);
     await drain;
 
     expect(didDrain, isTrue);
+    expect(workoutRepository.syncCalls, 1);
+    expect(imageRepository.syncCalls, 1);
     expect(operationGate.activeLeaseCount, 0);
   });
+
+  test(
+    'overlapping syncAll calls coalesce into one bounded whole-flight follow-up',
+    () async {
+      final restoreReached = Completer<void>();
+      final allowRestore = Completer<void>();
+      final followUpWorkoutReached = Completer<void>();
+      final allowFollowUpWorkout = Completer<void>();
+      late _FakeWorkoutRepository workoutRepository;
+      workoutRepository = _FakeWorkoutRepository(
+        onDownloadAndRestore: () async {
+          restoreReached.complete();
+          await allowRestore.future;
+        },
+        onSync: () async {
+          if (workoutRepository.syncCalls == 2) {
+            followUpWorkoutReached.complete();
+            await allowFollowUpWorkout.future;
+          }
+        },
+      );
+      final imageRepository = _FakeActivityImageRepository();
+      final operationGate = UserScopeOperationGate()..activate(7);
+      var restoreStartCalls = 0;
+      var restoreCompleteCalls = 0;
+      var restoreFailedCalls = 0;
+      final coordinator = SyncCoordinator(
+        workoutRepository: workoutRepository,
+        activityImageRepository: imageRepository,
+        authRepository: _MutableAuthRepository(7),
+        operationGate: operationGate,
+        onRestoreStart: () => restoreStartCalls += 1,
+        onRestoreComplete: () => restoreCompleteCalls += 1,
+        onRestoreFailed: () => restoreFailedCalls += 1,
+      );
+
+      final firstSync = coordinator.syncAll();
+      await restoreReached.future;
+      final overlappingSyncs = <Future<void>>[
+        coordinator.syncAll(),
+        coordinator.syncAll(),
+        coordinator.syncAll(),
+      ];
+      await _pumpMicrotasks();
+
+      expect(workoutRepository.downloadAndRestoreWorkoutsCalls, 1);
+      expect(operationGate.activeLeaseCount, 1);
+
+      allowRestore.complete();
+      await followUpWorkoutReached.future;
+      final requestDuringFollowUp = coordinator.syncAll();
+      await _pumpMicrotasks();
+      allowFollowUpWorkout.complete();
+
+      await Future.wait(<Future<void>>[
+        firstSync,
+        ...overlappingSyncs,
+        requestDuringFollowUp,
+      ]);
+
+      expect(workoutRepository.historyRestoredReadOwnerIds, <int>[7, 7]);
+      expect(workoutRepository.downloadAndRestoreWorkoutsCalls, 1);
+      expect(workoutRepository.setHistoryRestoredCalls, 1);
+      expect(workoutRepository.syncCalls, 2);
+      expect(imageRepository.syncCalls, 2);
+      expect(restoreStartCalls, 1);
+      expect(restoreCompleteCalls, 1);
+      expect(restoreFailedCalls, 0);
+      expect(operationGate.activeLeaseCount, 0);
+    },
+  );
+
+  test(
+    'overlap from another owner cannot retarget the active restore flight',
+    () async {
+      final restoreReached = Completer<void>();
+      final allowRestore = Completer<void>();
+      final authRepository = _MutableAuthRepository(7);
+      final workoutRepository = _FakeWorkoutRepository(
+        onDownloadAndRestore: () async {
+          restoreReached.complete();
+          await allowRestore.future;
+        },
+      );
+      final imageRepository = _FakeActivityImageRepository();
+      final operationGate = UserScopeOperationGate()..activate(7);
+      var restoreCompleteCalls = 0;
+      var restoreFailedCalls = 0;
+      final coordinator = SyncCoordinator(
+        workoutRepository: workoutRepository,
+        activityImageRepository: imageRepository,
+        authRepository: authRepository,
+        operationGate: operationGate,
+        onRestoreComplete: () => restoreCompleteCalls += 1,
+        onRestoreFailed: () => restoreFailedCalls += 1,
+      );
+
+      final firstSync = coordinator.syncAll();
+      await restoreReached.future;
+      authRepository.currentUserId = 8;
+      final otherOwnerSync = coordinator.syncAll();
+      await _pumpMicrotasks();
+      allowRestore.complete();
+
+      await Future.wait(<Future<void>>[firstSync, otherOwnerSync]);
+
+      expect(workoutRepository.historyRestoredReadOwnerIds, <int>[7]);
+      expect(workoutRepository.setHistoryRestoredCalls, 0);
+      expect(workoutRepository.syncCalls, 0);
+      expect(imageRepository.syncCalls, 0);
+      expect(restoreCompleteCalls, 0);
+      expect(restoreFailedCalls, 1);
+      expect(operationGate.activeLeaseCount, 0);
+    },
+  );
 
   test('owner change after workout sync prevents image sync', () async {
     final authRepository = _MutableAuthRepository(7);
@@ -170,35 +290,120 @@ void main() {
     expect(completeCalled, isFalse);
   });
 
-  test('syncAll triggers onRestoreFailed on error during restore', () async {
-    final authRepository = _MutableAuthRepository(7);
+  test(
+    'restore failure stays visible while workout and image push run',
+    () async {
+      final authRepository = _MutableAuthRepository(7);
+      final workoutRepository = _FakeWorkoutRepository(
+        onDownloadAndRestore: () async {
+          throw Exception('Network error');
+        },
+      );
+      final imageRepository = _FakeActivityImageRepository();
+      final operationGate = UserScopeOperationGate()..activate(7);
+
+      var startCalled = false;
+      var completeCalled = false;
+      var failedCalled = false;
+
+      final coordinator = SyncCoordinator(
+        workoutRepository: workoutRepository,
+        activityImageRepository: imageRepository,
+        authRepository: authRepository,
+        operationGate: operationGate,
+        onRestoreStart: () => startCalled = true,
+        onRestoreComplete: () => completeCalled = true,
+        onRestoreFailed: () => failedCalled = true,
+      );
+
+      await coordinator.syncAll();
+
+      expect(startCalled, isTrue);
+      expect(completeCalled, isFalse);
+      expect(failedCalled, isTrue);
+      expect(workoutRepository.syncCalls, 1);
+      expect(imageRepository.syncCalls, 1);
+    },
+  );
+
+  test('restore flag write failure does not block queued push', () async {
     final workoutRepository = _FakeWorkoutRepository(
-      onDownloadAndRestore: () async {
-        throw Exception('Network error');
+      onSetHistoryRestored: () async {
+        throw Exception('Preference write failed');
       },
     );
     final imageRepository = _FakeActivityImageRepository();
-    final operationGate = UserScopeOperationGate()..activate(7);
-
-    var startCalled = false;
     var completeCalled = false;
     var failedCalled = false;
-
     final coordinator = SyncCoordinator(
       workoutRepository: workoutRepository,
       activityImageRepository: imageRepository,
-      authRepository: authRepository,
-      operationGate: operationGate,
-      onRestoreStart: () => startCalled = true,
+      authRepository: _MutableAuthRepository(7),
+      operationGate: UserScopeOperationGate()..activate(7),
       onRestoreComplete: () => completeCalled = true,
+      onRestoreFailed: () => failedCalled = true,
+    );
+
+    await coordinator.syncAll();
+
+    expect(workoutRepository.downloadAndRestoreWorkoutsCalls, 1);
+    expect(workoutRepository.setHistoryRestoredCalls, 1);
+    expect(workoutRepository.historyRestoredValue, isFalse);
+    expect(completeCalled, isFalse);
+    expect(failedCalled, isTrue);
+    expect(workoutRepository.syncCalls, 1);
+    expect(imageRepository.syncCalls, 1);
+  });
+
+  test('push failure is not reported as a restore failure', () async {
+    final workoutRepository = _FakeWorkoutRepository(
+      onSync: () async {
+        throw Exception('Push failed');
+      },
+    )..historyRestoredValue = true;
+    var failedCalled = false;
+    final coordinator = SyncCoordinator(
+      workoutRepository: workoutRepository,
+      activityImageRepository: _FakeActivityImageRepository(),
+      authRepository: _MutableAuthRepository(7),
+      operationGate: UserScopeOperationGate()..activate(7),
       onRestoreFailed: () => failedCalled = true,
     );
 
     await expectLater(coordinator.syncAll(), throwsA(isA<Exception>()));
 
-    expect(startCalled, isTrue);
+    expect(failedCalled, isFalse);
+  });
+
+  test('scope suspension rejects stale restore completion and push', () async {
+    final operationGate = UserScopeOperationGate()..activate(7);
+    late Future<void> drain;
+    final workoutRepository = _FakeWorkoutRepository(
+      onDownloadAndRestore: () async {
+        drain = operationGate.suspendAndDrain();
+      },
+    );
+    final imageRepository = _FakeActivityImageRepository();
+    var completeCalled = false;
+    var failedCalled = false;
+    final coordinator = SyncCoordinator(
+      workoutRepository: workoutRepository,
+      activityImageRepository: imageRepository,
+      authRepository: _MutableAuthRepository(7),
+      operationGate: operationGate,
+      onRestoreComplete: () => completeCalled = true,
+      onRestoreFailed: () => failedCalled = true,
+    );
+
+    await coordinator.syncAll();
+    await drain;
+
+    expect(workoutRepository.setHistoryRestoredCalls, 0);
+    expect(workoutRepository.historyRestoredValue, isFalse);
     expect(completeCalled, isFalse);
     expect(failedCalled, isTrue);
+    expect(workoutRepository.syncCalls, 0);
+    expect(imageRepository.syncCalls, 0);
   });
 }
 
@@ -210,6 +415,7 @@ Future<void> _pumpMicrotasks() async {
 class _FakeWorkoutRepository implements WorkoutRepository {
   final Future<void> Function()? onSync;
   final Future<void> Function()? onDownloadAndRestore;
+  final Future<void> Function()? onSetHistoryRestored;
   int syncCalls = 0;
   bool historyRestoredValue = false;
   int downloadAndRestoreWorkoutsCalls = 0;
@@ -217,7 +423,11 @@ class _FakeWorkoutRepository implements WorkoutRepository {
   final List<int> historyRestoredReadOwnerIds = <int>[];
   final List<int> historyRestoredWriteOwnerIds = <int>[];
 
-  _FakeWorkoutRepository({this.onSync, this.onDownloadAndRestore});
+  _FakeWorkoutRepository({
+    this.onSync,
+    this.onDownloadAndRestore,
+    this.onSetHistoryRestored,
+  });
 
   @override
   Future<void> syncWorkouts() async {
@@ -235,6 +445,7 @@ class _FakeWorkoutRepository implements WorkoutRepository {
   Future<void> setHistoryRestored(int ownerUserId, bool value) async {
     setHistoryRestoredCalls++;
     historyRestoredWriteOwnerIds.add(ownerUserId);
+    await onSetHistoryRestored?.call();
     historyRestoredValue = value;
   }
 

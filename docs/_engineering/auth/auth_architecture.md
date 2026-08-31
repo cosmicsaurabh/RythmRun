@@ -140,14 +140,26 @@ When a user authenticates and the per-user `history_restored` flag is false, the
 3. It sets the flag true only after all pages complete. Normal session exit now
    awaits the old user's reset to false while retaining the owner's local rows,
    so that owner can recheck remote history without losing local-first data.
-   The persistence service verifies each boolean write and readback. A failed
-   `history_restored=true` completion write can still abort that sync pass before
-   push while the durable work remains queued; runbook Step 3 owns isolation.
+   The persistence service verifies each boolean write and readback.
+4. Flag reads, restore downloads, and the final `history_restored=true` write
+   run inside an isolated restore stage. Failure does not report restore
+   completion, records the existing internal `SyncProgress.failed` value, and
+   continues with owner-checked workout/delete/image push. The current banner
+   renders only the restoring state, so failure and manual retry are not yet
+   visible UI.
+5. `fetchActivities` is a read-only GET under the authenticated request
+   coordinator's idempotent replay policy. If its access token expires, one
+   successful single-flight refresh may safely replay that GET.
+6. `SyncCoordinator` admits one owner-bound flight. A same-owner request that
+   arrives while it runs awaits that flight and coalesces into at most one
+   bounded follow-up pass. Owner/gate checks between restore, workout push, and
+   image push reject stale account completion; workout-only requests use the
+   same bounded follow-up rule inside the repository.
 
 This is transitional restore behavior, not full bidirectional sync. It has no
 cursor/revision, ongoing pull, remote tombstones, remote-image restore, or
-per-item failure isolation, and a restore failure currently prevents push in
-the same coordinator pass. IP-4 owns those corrections.
+per-item restore isolation. It also has no complete visible sync-state UI or
+manual retry. IP-4 owns those remaining corrections.
 
 ---
 
@@ -162,11 +174,26 @@ the same coordinator pass. IP-4 owns those corrections.
 
 ## Connectivity Classification
 
-When network requests fail, the app differentiates between **device offline** states and **backend service downtime** to avoid misleading user feedback:
+`ConnectivityService` now reports only platform network-interface availability.
+It performs one initial platform check, follows platform changes, emits the
+current value to each subscriber before later changes, and rejects stale events
+from a stopped/restarted monitor. It does not poll `8.8.8.8:53`, run a recurring
+reachability timer, or claim that an available Wi-Fi/cellular interface proves
+internet or backend reachability. The retained `slow` enum value is a
+legacy/external state; the platform monitor itself emits connected or
+disconnected.
 
-- **True Device Offline:** The device is disconnected from Wi-Fi and Cellular networks (or the DNS check to `8.8.8.8` fails).
-  - Exception: `AuthSessionUnavailableReason.network`
-  - User Messaging: *"The session could not be refreshed while offline."*
-- **Backend Service Unavailable:** The device is connected to the internet, but the request to `rythmrun.onrender.com` fails (timeouts, 502 Bad Gateway, or connection refused).
-  - Exception: `AuthSessionUnavailableReason.serviceUnavailable`
-  - User Messaging: *"The authentication service is temporarily unavailable."*
+Authentication classification combines that platform fact with the outcome of
+the real refresh request:
+
+- **Platform state `disconnected` + `NetworkException`:** return
+  `AuthSessionUnavailableReason.network` and show *"The session could not be
+  refreshed while offline."* The disconnected state normally means no reported
+  interface; an initial platform-check failure also uses this conservative
+  state.
+- **Interface available + request failure:** return
+  `AuthSessionUnavailableReason.serviceUnavailable` and show *"The
+  authentication service is temporarily unavailable."* This includes transport
+  failures while an interface exists and handled HTTP/service failures; it does
+  not assert whether the cause was the backend, a captive portal, or upstream
+  connectivity.

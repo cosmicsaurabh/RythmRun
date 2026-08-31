@@ -14,32 +14,64 @@ import 'package:rythmrun_frontend_flutter/core/di/injection_container.dart';
 import 'package:rythmrun_frontend_flutter/core/services/connectivity_service.dart';
 import 'package:rythmrun_frontend_flutter/core/services/settings_service.dart';
 import 'package:rythmrun_frontend_flutter/core/utils/feature_gate.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/models/live_tracking_state.dart';
+import 'package:rythmrun_frontend_flutter/presentation/features/live_tracking/providers/live_tracking_provider.dart';
 import 'theme/app_theme.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize services
-  await SettingsService.initialize();
-  ConnectivityService().startMonitoring();
-
-  // Print configuration on app startup
-  AppConfig.printConfig();
-
-  runApp(const ProviderScope(child: RythmRunApp()));
+bool shouldSyncAfterConnectivityChange(
+  ConnectivityStatus? previous,
+  ConnectivityStatus? next,
+) {
+  // Initial availability and recovery from disconnected each request one sync.
+  // A later slow-to-connected promotion is the same recovery, not a new one.
+  return next != null &&
+      next != ConnectivityStatus.disconnected &&
+      (previous == null || previous == ConnectivityStatus.disconnected);
 }
 
-class RythmRunApp extends ConsumerStatefulWidget {
-  const RythmRunApp({super.key});
+bool shouldSyncOnResume({required bool hasActiveSession}) {
+  return !hasActiveSession;
+}
+
+/// Owns the lifecycle and connectivity hooks that can request a sync pass.
+///
+/// The optional listenables and callbacks keep these app-level side effects
+/// observable without constructing the full navigation tree in widget tests.
+class AppSyncTriggerObserver extends ConsumerStatefulWidget {
+  const AppSyncTriggerObserver({
+    required this.child,
+    this.sessionListenable,
+    this.connectivityListenable,
+    this.liveTrackingListenable,
+    this.syncRequest,
+    this.refreshSession,
+    super.key,
+  });
+
+  final Widget child;
+  final ProviderListenable<SessionData>? sessionListenable;
+  final ProviderListenable<AsyncValue<ConnectivityStatus>>?
+  connectivityListenable;
+  final ProviderListenable<LiveTrackingState>? liveTrackingListenable;
+  final Future<void> Function()? syncRequest;
+  final void Function()? refreshSession;
 
   @override
-  ConsumerState<RythmRunApp> createState() => _RythmRunAppState();
+  ConsumerState<AppSyncTriggerObserver> createState() =>
+      _AppSyncTriggerObserverState();
 }
 
-class _RythmRunAppState extends ConsumerState<RythmRunApp>
+class _AppSyncTriggerObserverState extends ConsumerState<AppSyncTriggerObserver>
     with WidgetsBindingObserver {
-  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
-  bool _isShowingExitResolutionDialog = false;
+  ProviderListenable<SessionData> get _sessionListenable =>
+      widget.sessionListenable ?? sessionProvider;
+
+  ProviderListenable<AsyncValue<ConnectivityStatus>>
+  get _connectivityListenable =>
+      widget.connectivityListenable ?? connectivityStatusProvider;
+
+  ProviderListenable<LiveTrackingState> get _liveTrackingListenable =>
+      widget.liveTrackingListenable ?? liveTrackingProvider;
 
   @override
   void initState() {
@@ -56,30 +88,33 @@ class _RythmRunAppState extends ConsumerState<RythmRunApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _syncIfAvailable('app resume');
+      _syncIfAvailable('app resume', deferWhileActiveWorkout: true);
     }
   }
 
-  void _syncIfAvailable(String reason) {
-    final session = ref.read(sessionProvider);
+  void _syncIfAvailable(String reason, {bool deferWhileActiveWorkout = false}) {
+    final session = ref.read(_sessionListenable);
     if (session.pendingExitReason != null) return;
-    final sessionState = session.state;
-    final hasSyncAccess = FeatureGate.isFeatureAvailable(
-      'sync_workouts',
-      sessionState,
-    );
-    if (!hasSyncAccess) {
+    if (!FeatureGate.isFeatureAvailable('sync_workouts', session.state)) {
+      return;
+    }
+    if (deferWhileActiveWorkout &&
+        !shouldSyncOnResume(
+          hasActiveSession: ref.read(_liveTrackingListenable).hasActiveSession,
+        )) {
       return;
     }
 
-    ref.read(syncCoordinatorProvider).syncAll().catchError((error) {
+    final sync =
+        widget.syncRequest ?? ref.read(syncCoordinatorProvider).syncAll;
+    sync().catchError((error) {
       debugPrint('Sync on $reason failed: $error');
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<SessionData>(sessionProvider, (previous, next) {
+    ref.listen<SessionData>(_sessionListenable, (previous, next) {
       final hadSyncAccess = FeatureGate.isFeatureAvailable(
         'sync_workouts',
         previous?.state ?? SessionState.initial,
@@ -92,7 +127,67 @@ class _RythmRunAppState extends ConsumerState<RythmRunApp>
       if (!hadSyncAccess && hasSyncAccess && next.pendingExitReason == null) {
         _syncIfAvailable('session restore');
       }
+    });
+    ref.listen<AsyncValue<ConnectivityStatus>>(_connectivityListenable, (
+      previous,
+      next,
+    ) {
+      final previousStatus = previous?.valueOrNull;
+      final nextStatus = next.valueOrNull;
+      if (!shouldSyncAfterConnectivityChange(previousStatus, nextStatus)) {
+        return;
+      }
 
+      final session = ref.read(_sessionListenable);
+      if (session.pendingExitReason != null) return;
+      if (!FeatureGate.isFeatureAvailable('sync_workouts', session.state)) {
+        if (session.state == SessionState.authenticatedOffline ||
+            (session.state == SessionState.checking &&
+                session.errorMessage != null)) {
+          final refreshSession = widget.refreshSession;
+          if (refreshSession != null) {
+            refreshSession();
+          } else if (widget.sessionListenable == null) {
+            ref.read(sessionProvider.notifier).refreshSession();
+          }
+        }
+        return;
+      }
+
+      _syncIfAvailable('reconnect');
+    });
+
+    return widget.child;
+  }
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize services
+  await SettingsService.initialize();
+  await ConnectivityService().startMonitoring();
+
+  // Print configuration on app startup
+  AppConfig.printConfig();
+
+  runApp(const ProviderScope(child: RythmRunApp()));
+}
+
+class RythmRunApp extends ConsumerStatefulWidget {
+  const RythmRunApp({super.key});
+
+  @override
+  ConsumerState<RythmRunApp> createState() => _RythmRunAppState();
+}
+
+class _RythmRunAppState extends ConsumerState<RythmRunApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  bool _isShowingExitResolutionDialog = false;
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen<SessionData>(sessionProvider, (previous, next) {
       if (next.state == SessionState.checking &&
           next.pendingExitReason != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -109,51 +204,21 @@ class _RythmRunAppState extends ConsumerState<RythmRunApp>
         });
       }
     });
-    ref.listen<AsyncValue<ConnectivityStatus>>(connectivityStatusProvider, (
-      previous,
-      next,
-    ) {
-      final previousStatus = previous?.valueOrNull;
-      final nextStatus = next.valueOrNull;
-
-      if (previousStatus == ConnectivityStatus.connected ||
-          nextStatus != ConnectivityStatus.connected) {
-        return;
-      }
-
-      final session = ref.read(sessionProvider);
-      if (session.pendingExitReason != null) return;
-      final sessionState = session.state;
-      final hasSyncAccess = FeatureGate.isFeatureAvailable(
-        'sync_workouts',
-        sessionState,
-      );
-      if (!hasSyncAccess) {
-        if (sessionState == SessionState.authenticatedOffline ||
-            (sessionState == SessionState.checking &&
-                session.errorMessage != null)) {
-          ref.read(sessionProvider.notifier).refreshSession();
-        }
-        return;
-      }
-
-      _syncIfAvailable('reconnect');
-    });
-
     final settings = ref.watch(settingsProvider);
-    ref.watch(connectivityStatusProvider);
 
-    return SessionStackNormalizer(
-      navigatorKey: _navigatorKey,
-      child: MaterialApp(
+    return AppSyncTriggerObserver(
+      child: SessionStackNormalizer(
         navigatorKey: _navigatorKey,
-        title: 'RythmRun',
-        debugShowCheckedModeBanner: false,
-        theme: lightTheme,
-        darkTheme: darkTheme,
-        themeMode: settings.flutterThemeMode,
-        home: const AuthWrapper(),
-        routes: buildAppRoutes(),
+        child: MaterialApp(
+          navigatorKey: _navigatorKey,
+          title: 'RythmRun',
+          debugShowCheckedModeBanner: false,
+          theme: lightTheme,
+          darkTheme: darkTheme,
+          themeMode: settings.flutterThemeMode,
+          home: const AuthWrapper(),
+          routes: buildAppRoutes(),
+        ),
       ),
     );
   }

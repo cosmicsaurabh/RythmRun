@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/connectivity_service.dart';
 
@@ -6,7 +8,7 @@ final connectivityStatusProvider = StreamProvider<ConnectivityStatus>((ref) {
   final service = ConnectivityService();
 
   // Start monitoring when provider is first accessed
-  service.startMonitoring();
+  unawaited(service.startMonitoring());
 
   // Stop monitoring when provider is disposed
   ref.onDispose(() {

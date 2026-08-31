@@ -331,6 +331,9 @@ class ActivityImageRepositoryImpl implements ActivityImageRepository {
         return false;
       }
       await _markRetryingOrFailed(userId, image, error);
+      if (error is NetworkException) {
+        return false;
+      }
       return true;
     }
   }
